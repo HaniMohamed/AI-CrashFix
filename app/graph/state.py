@@ -5,6 +5,10 @@ class CrashState(TypedDict):
     exception: str
     stacktrace: List[Dict]
 
+    app_version: str
+    device: str
+    platform: str
+
     mapped_frames: List[Dict]
     repo_context: Dict
 

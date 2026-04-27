@@ -2,3 +2,4 @@ langgraph
 openai
 google-genai
 python-dotenv
+google-cloud-bigquery

@@ -12,3 +12,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+BQ_PROJECT_ID = os.getenv("BQ_PROJECT_ID")
+BQ_DATASET = os.getenv("BQ_DATASET", "firebase_crashlytics")
