@@ -6,7 +6,7 @@ from app.utils.llm_helpers import parse_json, extract_top_commits
 llm = LLMService()
 
 
-def llm_root_cause_analysis(state):
+def llm_analysis(state):
     prompt_input = {
         "mapped_frames": state["mapped_frames"],
         "repo_context": state["repo_context"],

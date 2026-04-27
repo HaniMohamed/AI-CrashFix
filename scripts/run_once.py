@@ -1,4 +1,5 @@
 from app.graph.graph_builder import build_graph
+from pprint import pprint
 
 graph = build_graph()
 
@@ -15,4 +16,4 @@ initial_state = {
 }
 
 result = graph.invoke(initial_state)
-print(result)
+pprint(result, sort_dicts=False, width=120)

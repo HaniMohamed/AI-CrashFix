@@ -1,1 +1,25 @@
  
+from app.config import LLM_PROVIDER
+
+from app.services.providers.openai_provider import OpenAIProvider
+from app.services.providers.gemini_provider import GeminiProvider
+
+
+class LLMService:
+
+    def __init__(self):
+        if LLM_PROVIDER == "openai":
+            self.provider = OpenAIProvider()
+
+        elif LLM_PROVIDER == "gemini":
+            self.provider = GeminiProvider()
+
+        else:
+            raise ValueError(f"Unknown LLM provider: {LLM_PROVIDER}")
+
+    def call(self, system_prompt: str, user_prompt: str) -> str:
+        try:
+            return self.provider.call(system_prompt, user_prompt)
+
+        except Exception as e:
+            raise RuntimeError(f"LLM call failed: {str(e)}")

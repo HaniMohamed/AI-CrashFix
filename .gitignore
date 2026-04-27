@@ -57,3 +57,5 @@ Thumbs.db
 
 ## AIDevMate
 .ai/aidevmate_file_cache.json
+
+.env
