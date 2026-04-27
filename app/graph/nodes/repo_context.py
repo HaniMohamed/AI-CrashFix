@@ -1,9 +1,11 @@
+import os
 from app.services.git_service import GitService
 from app.services.repo_service import RepoService
 
 git_service = GitService()
 repo_service = RepoService()
 
+REPO_ROOT = os.getcwd()
 def repo_context(state):
     context = []
 
@@ -11,12 +13,12 @@ def repo_context(state):
         file = frame["file"]
         line = frame["line"]
 
-        code = repo_service.get_file_context(file, line)
-        blame = git_service.get_blame(file, line)
-        commits = git_service.get_recent_commits(file)
+        code = repo_service.get_file_context(os.path.join(REPO_ROOT, file), line)
+        blame = git_service.get_blame(os.path.join(REPO_ROOT, file), line)
+        commits = git_service.get_recent_commits(os.path.join(REPO_ROOT, file))
 
         context.append({
-            "file": file,
+            "file": os.path.join(REPO_ROOT, file),
             "line": line,
             "code": code,
             "blame": blame,
