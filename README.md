@@ -6,6 +6,9 @@ Crash-to-fix pipeline scaffold (LangGraph).
 - **Python**: 3.11+ recommended
 - **ripgrep (`rg`)**: used by `app/graph/nodes/map_stacktrace.py`
 
+### Configure repo root
+Set `REPO_ROOT` in `.env` to the **target repository** you want to analyze (your app repo).
+
 ### Install ripgrep (macOS)
 If you see `zsh: command not found: rg`, install ripgrep:
 

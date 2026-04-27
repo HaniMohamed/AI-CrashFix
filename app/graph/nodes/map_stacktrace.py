@@ -3,6 +3,8 @@ import os
 import subprocess
 from typing import List, Dict
 
+from app.config import REPO_ROOT
+
 # ==============================
 # Regex Patterns
 # ==============================
@@ -22,8 +24,6 @@ IOS_REGEX = re.compile(
 # ==============================
 # Config
 # ==============================
-
-REPO_ROOT = os.getcwd()
 
 ANDROID_SRC_PATHS = [
     "android/app/src/main/java",
@@ -50,7 +50,10 @@ def run_rg_search(query: str) -> str:
 
 
 def file_exists(path: str) -> bool:
-    return path and os.path.exists(path)
+    if not path:
+        return False
+    candidate = path if os.path.isabs(path) else os.path.join(REPO_ROOT, path)
+    return os.path.exists(candidate)
 
 
 def normalize_frame(frame_type, file, line, method=None):

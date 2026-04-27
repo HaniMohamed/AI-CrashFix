@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=".env", override=False)
 
+REPO_ROOT = os.getenv("REPO_ROOT", os.getcwd())
+
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # or "openai"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

@@ -1,14 +1,19 @@
 import subprocess
+import os
+
+from app.config import REPO_ROOT
 
 class GitService:
 
     def get_blame(self, file, line):
-        cmd = f"git blame -L {line},{line} {file}"
-        return subprocess.getoutput(cmd)
+        file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
+        cmd = ["git", "blame", "-L", f"{line},{line}", file_path]
+        return subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
 
     def get_recent_commits(self, file):
-        cmd = f"git log -n 5 --pretty=format:'%h|%an|%s|%ad' --date=short {file}"
-        output = subprocess.getoutput(cmd)
+        file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
+        cmd = ["git", "log", "-n", "5", "--pretty=format:%h|%an|%s|%ad", "--date=short", file_path]
+        output = subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
 
         commits = []
         for line in output.split("\n"):
@@ -24,5 +29,7 @@ class GitService:
         return commits
 
     def file_changed_recently(self, file):
-        cmd = f"git log -1 -- {file}"
-        return bool(subprocess.getoutput(cmd))
+        file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
+        cmd = ["git", "log", "-1", "--", file_path]
+        out = subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
+        return bool(out.strip())

@@ -1,8 +1,18 @@
 
+import os
+
+from app.config import REPO_ROOT
+
 class RepoService:
 
+    def _abs_path(self, path: str) -> str:
+        if not path:
+            return path
+        return path if os.path.isabs(path) else os.path.join(REPO_ROOT, path)
+
     def get_file_context(self, file, line, radius=20):
-        with open(file, "r") as f:
+        file_path = self._abs_path(file)
+        with open(file_path, "r") as f:
             lines = f.readlines()
 
         start = max(0, line - radius)
@@ -13,7 +23,8 @@ class RepoService:
 
 
     def extract_method(self, file_path, line_number):
-        with open(file_path, "r") as f:
+        abs_path = self._abs_path(file_path)
+        with open(abs_path, "r") as f:
             lines = f.readlines()
 
         # naive but effective for MVP
