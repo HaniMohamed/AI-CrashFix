@@ -1,3 +1,59 @@
+## Python / bytecode
+__pycache__/
+*.py[cod]
+*$py.class
 
-# AIDevMate
+## Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+## Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+## Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+## Type checking / tooling caches
+.mypy_cache/
+.pyre/
+.ruff_cache/
+.pytype/
+
+## Jupyter
+.ipynb_checkpoints/
+
+## Logs
+*.log
+
+## OS / filesystem
+.DS_Store
+Thumbs.db
+
+## IDEs / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+## Secrets / env files
+.env
+.env.*
+
+## Local data / artifacts (optional, common)
+*.sqlite3
+*.db
+
+## AIDevMate
 .ai/aidevmate_file_cache.json
