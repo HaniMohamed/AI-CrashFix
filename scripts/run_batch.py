@@ -17,9 +17,12 @@ from app.services.crashlytics_service import CrashlyticsService
 from app.graph.observability import node_span, ensure_run_id
 
 
-def _initial_state_for_crash(crash: dict[str, Any], *, run_id: str) -> dict[str, Any]:
+def _initial_state_for_crash(
+    crash: dict[str, Any], *, run_id: str, skip_jira_creation: bool
+) -> dict[str, Any]:
     return {
         "graph_run_id": run_id,
+        "skip_jira_creation": bool(skip_jira_creation),
         "crash_id": crash.get("crash_id") or "",
         "exception": crash.get("exception") or "",
         "stacktrace": crash.get("stacktrace") or [],
@@ -84,7 +87,9 @@ def main() -> int:
                 pass
             continue
 
-        state = _initial_state_for_crash(crash, run_id=run_id)
+        state = _initial_state_for_crash(
+            crash, run_id=run_id, skip_jira_creation=args.skip_jira_creation
+        )
 
         try:
             with node_span(state, "batch.process_crash"):

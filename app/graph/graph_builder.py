@@ -31,7 +31,9 @@ def build_graph():
         "llm_analysis",
         instrument_router(
             "route_after_llm_analysis",
-            lambda state: "jira_create" if state["confidence"] > 0.7 else END,
+            lambda state: END
+            if state.get("skip_jira_creation")
+            else ("jira_create" if state["confidence"] > 0.7 else END),
         ),
     )
 
