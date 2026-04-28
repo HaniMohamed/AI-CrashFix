@@ -1,6 +1,8 @@
 from typing import TypedDict, List, Dict, Optional
 
 class CrashState(TypedDict):
+    graph_run_id: Optional[str]
+    skip_jira_creation: Optional[bool]
     crash_id: str
     exception: str
     stacktrace: List[Dict]
