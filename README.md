@@ -33,16 +33,16 @@ Dependencies are listed in `requirements.txt`:
 pip install -r requirements.txt
 ```
 
-### Run once (module mode)
-Run from the repo root so imports resolve correctly:
+### Run batch
+Fetch \(N\) recent crashes and process each crash through the graph:
 
 ```bash
-python -m scripts.run_once
+python scripts/run_batch.py --limit 10
 ```
 
 ### Debug in Cursor / VS Code
 Use the included launch config in `.vscode/launch.json`:
-- **Debug run_once (module)** (runs `module: scripts.run_once`)
+- Update your launch config to run `scripts/run_batch.py` (or run it from the terminal as above).
 
 ### Notes
 - `.env` exists at the repo root but integrations are not wired yet in this scaffold.
