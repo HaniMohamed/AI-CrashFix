@@ -4,7 +4,7 @@ from pprint import pprint
 graph = build_graph()
 
 initial_state = {
-    "crash_id": "test",
+    "crash_id": "",
     "exception": "",
     "stacktrace": [],
     "mapped_frames": [],

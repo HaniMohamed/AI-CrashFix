@@ -8,6 +8,10 @@ from app.graph.nodes.llm_analysis import llm_analysis
 from app.graph.nodes.jira_create import jira_create
 from app.graph.nodes.git_regression import git_regression
 
+from app.services.crash_store import CrashStore
+
+crash_store = CrashStore()
+
 def build_graph():
     graph = StateGraph(CrashState)
 
@@ -20,7 +24,11 @@ def build_graph():
 
     graph.set_entry_point("fetch_crash")
 
-    graph.add_edge("fetch_crash", "map_stacktrace")
+    graph.add_conditional_edges(
+        "fetch_crash",
+        lambda state: "map_stacktrace" if not crash_store.is_processed(state["crash_id"]) else END
+    )
+
     graph.add_edge("map_stacktrace", "repo_context")
     graph.add_edge("repo_context", "git_regression")
     graph.add_edge("git_regression", "llm_analysis")
@@ -29,5 +37,6 @@ def build_graph():
         "llm_analysis",
         lambda state: "jira_create" if state["confidence"] > 0.7 else END
     )
+
 
     return graph.compile()
