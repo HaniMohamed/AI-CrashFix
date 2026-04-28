@@ -1,10 +1,11 @@
 import sqlite3
 from datetime import datetime
+from app.config import BQ_PROJECT_ID
 
 
 class CrashStore:
 
-    def __init__(self, db_path="crash_store.db"):
+    def __init__(self, db_path=f"{BQ_PROJECT_ID}_crash_store.db"):
         self.conn = sqlite3.connect(db_path)
         self._create_table()
 
@@ -21,10 +22,15 @@ class CrashStore:
         self.conn.commit()
 
     def insert_crash(self, crash_id: str,):
+        now = datetime.utcnow().isoformat()
         self.conn.execute("""
-        INSERT INTO crashes (crash_id, jira_issue_id, status, created_at)
-        VALUES (?, ?, ?, ?)
-        """, (crash_id, None, "pending", datetime.utcnow().isoformat()))
+        INSERT INTO crashes (crash_id, jira_issue_id, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(crash_id) DO UPDATE SET
+            jira_issue_id = excluded.jira_issue_id,
+            status = excluded.status,
+            updated_at = excluded.updated_at
+        """, (crash_id, None, "pending", now, now))
         self.conn.commit()
 
     def mark_processed(self, crash_id: str, jira_issue_id: str = None):
@@ -38,4 +44,7 @@ class CrashStore:
         cursor = self.conn.execute("""
         SELECT status FROM crashes WHERE crash_id=? AND status = "completed"
         """, (crash_id,))
-        return cursor.fetchone()[0] == "completed"
+        row = cursor.fetchone()
+        if not row:
+            return False
+        return row[0] == "completed"
