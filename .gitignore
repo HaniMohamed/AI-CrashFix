@@ -49,7 +49,6 @@ Thumbs.db
 
 ## Secrets / env files
 .env
-.env.*
 
 ## Local data / artifacts (optional, common)
 *.sqlite3
@@ -57,5 +56,3 @@ Thumbs.db
 
 ## AIDevMate
 .ai/aidevmate_file_cache.json
-
-.env

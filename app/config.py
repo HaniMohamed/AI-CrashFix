@@ -17,3 +17,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 BQ_PROJECT_ID = os.getenv("BQ_PROJECT_ID")
 BQ_DATASET = os.getenv("BQ_DATASET", "firebase_crashlytics")
+
+
+JIRA_SERVER_URL = os.getenv("JIRA_SERVER_URL")
+JIRA_PROJECT_KEY = os.getenv("JIRA_PROJECT_KEY")
+JIRA_TOKEN = os.getenv("JIRA_TOKEN")
+JIRA_VERIFY_SSL = os.getenv("JIRA_VERIFY_SSL", "true")
