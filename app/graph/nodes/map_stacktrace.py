@@ -12,8 +12,16 @@ crash_store = CrashStore()
 # Regex Patterns
 # ==============================
 
-DART_REGEX = re.compile(
-    r'#\d+\s+(?P<method>[\w.<>\s]+)\s+\(package:(?P<package>[\w_]+)/(?P<path>.*\.dart):(?P<line>\d+):\d+\)'
+# Matches Flutter-style Dart frames like:
+#   #0 SomeClass.method (lib/foo/bar.dart:12:34)
+LIB_DART_REGEX = re.compile(
+    r'#\d+\s+(?P<method>[\w.<>\s]+)\s+\((?P<path>lib/.*?\.dart):(?P<line>\d+):\d+\)'
+)
+
+# Matches package frames like:
+#   #3 Widget.build (package:flutter/src/widgets/framework.dart:123:45)
+PACKAGE_DART_REGEX = re.compile(
+    r'#\d+\s+(?P<method>[\w.<>\s]+)\s+\(package:(?P<package>[\w_]+)/(?P<path>.*?\.dart):(?P<line>\d+):\d+\)'
 )
 
 ANDROID_REGEX = re.compile(
@@ -97,26 +105,28 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
     frames = []
 
     for line in stack_lines:
-        match = DART_REGEX.search(line)
+        match = LIB_DART_REGEX.search(line)
+        if match:
+            file_path = match.group("path")
+            line_no = match.group("line")
+            method = match.group("method").strip()
+            if file_exists(file_path):
+                frames.append(normalize_frame("dart", file_path, line_no, method))
+            continue
+
+        match = PACKAGE_DART_REGEX.search(line)
         if not match:
             continue
 
+        # For CrashLens repo mapping, package: frames are usually Flutter/Dart SDK noise.
+        # Only map them if they can be resolved to an actual repo file without guessing.
         path = match.group("path")
         line_no = match.group("line")
         method = match.group("method").strip()
 
-        file_path = os.path.join("lib", path)
-
-        if not file_exists(file_path):
-            # fallback search by filename
-            file_name = os.path.basename(path)
-            found = run_rg_search(file_name)
-            if found:
-                file_path = found
-            else:
-                continue
-
-        frames.append(normalize_frame("dart", file_path, line_no, method))
+        candidate = os.path.join("lib", path)
+        if file_exists(candidate):
+            frames.append(normalize_frame("dart", candidate, line_no, method))
 
     return frames
 
