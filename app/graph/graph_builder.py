@@ -28,7 +28,6 @@ def build_graph():
         "fetch_crash",
         lambda state: "map_stacktrace" if not crash_store.is_processed(state["crash_id"]) else END
     )
-
     graph.add_edge("map_stacktrace", "repo_context")
     graph.add_edge("repo_context", "git_regression")
     graph.add_edge("git_regression", "llm_analysis")
