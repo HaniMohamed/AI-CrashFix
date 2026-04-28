@@ -4,9 +4,6 @@ import subprocess
 from typing import List, Dict
 
 from app.config import REPO_ROOT
-from app.services.crash_store import CrashStore
-
-crash_store = CrashStore()
 
 # ==============================
 # Regex Patterns
@@ -238,7 +235,5 @@ def map_stacktrace(state: Dict) -> Dict:
 
     # Take top 5 most relevant frames
     state["mapped_frames"] = unique_frames[:5]
-
-    crash_store.insert_crash(state["crash_id"])
 
     return state
