@@ -1,7 +1,7 @@
 from google import genai
 
 from app.config import GOOGLE_API_KEY, GEMINI_MODEL
-from app.services.providers.base import LLMProvider
+from app.services.llm_providers.base import LLMProvider
 
 
 class GeminiProvider(LLMProvider):

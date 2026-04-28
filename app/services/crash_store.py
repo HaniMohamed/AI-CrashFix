@@ -14,7 +14,7 @@ class CrashStore:
             crash_id TEXT PRIMARY KEY,
             jira_issue_id TEXT,
             status TEXT DEFAULT "pending",
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)

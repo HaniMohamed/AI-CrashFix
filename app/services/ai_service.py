@@ -1,8 +1,8 @@
  
 from app.config import LLM_PROVIDER
 
-from app.services.providers.openai_provider import OpenAIProvider
-from app.services.providers.gemini_provider import GeminiProvider
+from app.services.llm_providers.openai_provider import OpenAIProvider
+from app.services.llm_providers.gemini_provider import GeminiProvider
 
 
 class LLMService:

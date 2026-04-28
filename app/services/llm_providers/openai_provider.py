@@ -1,6 +1,6 @@
 from openai import OpenAI
 from app.config import OPENAI_API_KEY, OPENAI_URL
-from app.services.providers.base import LLMProvider
+from app.services.llm_providers.base import LLMProvider
 
 
 class OpenAIProvider(LLMProvider):
