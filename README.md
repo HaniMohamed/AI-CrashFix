@@ -40,9 +40,29 @@ Fetch \(N\) recent crashes and process each crash through the graph:
 python scripts/run_batch.py --limit 10
 ```
 
+#### Useful flags
+- **Mock mode (no BigQuery)**:
+
+```bash
+python scripts/run_batch.py --limit 10 --mock
+```
+
+- **Skip Jira creation** (runs analysis, but routes to `END` instead of `jira_create`):
+
+```bash
+python scripts/run_batch.py --limit 10 --mock --skip-jira-creation
+```
+
+- **Print final state per crash**:
+
+```bash
+python scripts/run_batch.py --limit 3 --mock --skip-jira-creation --print-results
+```
+
 ### Debug in Cursor / VS Code
 Use the included launch config in `.vscode/launch.json`:
-- Update your launch config to run `scripts/run_batch.py` (or run it from the terminal as above).
+- **Debug run_batch**: runs `scripts/run_batch.py` from the workspace root.
+- **Debug cron_runner**: runs `scripts/cron_runner.py` (which calls the batch runner).
 
 ### Notes
-- `.env` exists at the repo root but integrations are not wired yet in this scaffold.
+- Logging is controlled by `CRASHLENS_GRAPH_LOG_LEVEL` and `CRASHLENS_GRAPH_LOG_STYLE` (see `app/graph/observability.py`).

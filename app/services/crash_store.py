@@ -5,7 +5,7 @@ from app.config import BQ_PROJECT_ID
 
 class CrashStore:
 
-    def __init__(self, db_path=f"{BQ_PROJECT_ID}_crash_store.db"):
+    def __init__(self, db_path=f"db/{BQ_PROJECT_ID}_crash_store.db"):
         self.conn = sqlite3.connect(db_path)
         self._create_table()
 
