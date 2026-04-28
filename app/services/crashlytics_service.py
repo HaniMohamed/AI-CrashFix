@@ -1,6 +1,9 @@
- 
-from google.cloud import bigquery
 from app.config import BQ_PROJECT_ID, BQ_DATASET, GOOGLE_APPLICATION_CREDENTIALS
+
+try:
+    from google.cloud import bigquery  # type: ignore
+except Exception:  # pragma: no cover
+    bigquery = None
 
 try:
     from google.oauth2 import service_account
@@ -11,6 +14,10 @@ except Exception:  # pragma: no cover
 class CrashlyticsService:
 
     def __init__(self):
+        if bigquery is None:
+            raise RuntimeError(
+                "Missing dependency for BigQuery. Install google-cloud-bigquery to enable Crashlytics fetch."
+            )
         # BigQuery expects a google-auth Credentials object (not a string path).
         credentials = None
         if GOOGLE_APPLICATION_CREDENTIALS and service_account is not None:
