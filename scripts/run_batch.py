@@ -36,11 +36,7 @@ def _initial_state_for_crash(crash: dict) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch N recent crashes and process each via the CrashLens graph.")
     parser.add_argument("--limit", type=int, default=10, help="How many recent crashes to fetch from Crashlytics/BigQuery.")
-    parser.add_argument(
-        "--include-processed",
-        action="store_true",
-        help="If set, do not skip crashes already marked completed in the local CrashStore.",
-    )
+   
     parser.add_argument("--print-results", action="store_true", help="Pretty-print each final state.")
     args = parser.parse_args()
 
@@ -60,10 +56,11 @@ def main() -> int:
         if not crash_id:
             continue
 
-        if not args.include_processed and crash_store.is_processed(crash_id):
+        if crash_store.is_processed(crash_id):
             skipped += 1
             continue
-
+        
+        crash_store.insert_crash(crash_id)
         state = _initial_state_for_crash(crash)
         result = graph.invoke(state)
         processed += 1
