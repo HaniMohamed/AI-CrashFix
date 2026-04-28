@@ -17,7 +17,6 @@ def build_graph():
     graph.add_node("repo_context", repo_context)
     graph.add_node("git_regression", git_regression)
     graph.add_node("llm_analysis", llm_analysis)
-    graph.add_node("fix_generation", fix_generation)
     graph.add_node("jira_create", jira_create)
 
     graph.set_entry_point("fetch_crash")
@@ -26,10 +25,9 @@ def build_graph():
     graph.add_edge("map_stacktrace", "repo_context")
     graph.add_edge("repo_context", "git_regression")
     graph.add_edge("git_regression", "llm_analysis")
-    graph.add_edge("llm_analysis", "fix_generation")
 
     graph.add_conditional_edges(
-        "fix_generation",
+        "llm_analysis",
         lambda state: "jira_create" if state["confidence"] > 0.7 else END
     )
 

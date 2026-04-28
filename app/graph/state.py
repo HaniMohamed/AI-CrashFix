@@ -17,3 +17,5 @@ class CrashState(TypedDict):
     fix_suggestion: str
 
     jira_payload: Optional[Dict]
+
+    jira_issue_id: Optional[str]
