@@ -53,13 +53,13 @@ class CrashlyticsService:
 
     def _map_row(self, row):
         return {
-            "crash_id": row.get("issue_id"),
+            "crash_id": row.get("issue").get("issue_id"),
             "timestamp": str(row.get("event_timestamp")),
-            "exception": f"{row.get('exception_type')}: {row.get('exception_message')}",
-            "app_version": row.get("app_version"),
-            "device": row.get("device_model"),
+            "exception": f"{row.get('exception').get('type')}: {row.get('exception').get('message')}",
+            "app_version": row.get("application").get("version"),
+            "device": row.get("device").get("model") + " - " + row.get("device").get("os_version") + " - " + row.get("device").get("architecture"),
             "platform": row.get("platform"),
-            "stacktrace": self._parse_stacktrace(row.get("stacktrace"))
+            "stacktrace": self._parse_stacktrace(row.get("exception").get("stacktrace"))
         }
 
     def _parse_stacktrace(self, stacktrace):
