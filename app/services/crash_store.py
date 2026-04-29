@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 from datetime import datetime
@@ -19,7 +20,8 @@ class CrashStore:
             jira_issue_id TEXT,
             status TEXT DEFAULT "pending",
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            result TEXT DEFAULT NULL
         )
         """)
         self.conn.commit()
@@ -27,13 +29,20 @@ class CrashStore:
     def insert_crash(self, crash_id: str,):
         now = datetime.utcnow().isoformat()
         self.conn.execute("""
-        INSERT INTO crashes (crash_id, jira_issue_id, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO crashes (crash_id, jira_issue_id, status, created_at, updated_at, result)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(crash_id) DO UPDATE SET
             jira_issue_id = excluded.jira_issue_id,
             status = excluded.status,
-            updated_at = excluded.updated_at
-        """, (crash_id, None, "pending", now, now))
+            updated_at = excluded.updated_at,
+            result = excluded.result
+        """, (crash_id, None, "pending", now, now, None))
+        self.conn.commit()
+
+    def update_result(self, crash_id: str, result: dict):
+        self.conn.execute("""
+        UPDATE crashes SET result = ? WHERE crash_id = ?
+        """, (json.dumps(result), crash_id))
         self.conn.commit()
 
     def mark_processed(self, crash_id: str, jira_issue_id: str = None):

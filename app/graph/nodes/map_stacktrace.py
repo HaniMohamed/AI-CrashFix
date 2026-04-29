@@ -12,13 +12,13 @@ from app.config import REPO_ROOT
 # Matches Flutter-style Dart frames like:
 #   #0 SomeClass.method (lib/foo/bar.dart:12:34)
 LIB_DART_REGEX = re.compile(
-    r'#\d+\s+(?P<method>[\w.<>\s]+)\s+\((?P<path>lib/.*?\.dart):(?P<line>\d+):\d+\)'
+    r'#\d+\s+(?P<method>[\w.<>\s$]+)\s+\((?P<path>lib/.*?\.dart):(?P<line>\d+)(?::\d+)?\)'
 )
 
 # Matches package frames like:
 #   #3 Widget.build (package:flutter/src/widgets/framework.dart:123:45)
 PACKAGE_DART_REGEX = re.compile(
-    r'#\d+\s+(?P<method>[\w.<>\s]+)\s+\(package:(?P<package>[\w_]+)/(?P<path>.*?\.dart):(?P<line>\d+):\d+\)'
+    r'#\d+\s+(?P<method>[\w.<>\s$]+)\s+\(package:(?P<package>[\w_]+)/(?P<path>.*?\.dart):(?P<line>\d+)(?::\d+)?\)'
 )
 
 ANDROID_REGEX = re.compile(

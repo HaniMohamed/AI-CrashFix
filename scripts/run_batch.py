@@ -99,6 +99,8 @@ def main() -> int:
 
             if args.print_results:
                 pprint(result, sort_dicts=False, width=120)
+
+            crash_store.update_result(crash_id, result)
         except Exception:
             failed += 1
             # node_span already logged the error; keep moving to next crash.
