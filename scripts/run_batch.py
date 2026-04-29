@@ -87,6 +87,7 @@ def main() -> int:
                 pass
             continue
 
+        crash_store.insert_crash(crash_id)
         state = _initial_state_for_crash(
             crash, run_id=run_id, skip_jira_creation=args.skip_jira_creation
         )

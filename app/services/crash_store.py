@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 from datetime import datetime
 from app.config import BQ_PROJECT_ID
 
@@ -6,6 +7,8 @@ from app.config import BQ_PROJECT_ID
 class CrashStore:
 
     def __init__(self, db_path=f"db/{BQ_PROJECT_ID}_crash_store.db"):
+        # sqlite won't create parent folders automatically
+        Path(db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(db_path)
         self._create_table()
 

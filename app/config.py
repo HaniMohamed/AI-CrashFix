@@ -18,6 +18,14 @@ GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 BQ_PROJECT_ID = os.getenv("BQ_PROJECT_ID")
 BQ_DATASET = os.getenv("BQ_DATASET", "firebase_crashlytics")
 
+# Crashlytics export tables (within BQ_DATASET). Keep defaults aligned with current Firebase export.
+BQ_CRASHLYTICS_ANDROID_TABLE = os.getenv(
+    "BQ_CRASHLYTICS_ANDROID_TABLE", "sa_gov_gosi_taminaty_ANDROID"
+)
+BQ_CRASHLYTICS_IOS_TABLE = os.getenv(
+    "BQ_CRASHLYTICS_IOS_TABLE", "sa_gov_gosi_taminaty_IOS"
+)
+
 
 JIRA_SERVER_URL = os.getenv("JIRA_SERVER_URL")
 JIRA_PROJECT_KEY = os.getenv("JIRA_PROJECT_KEY")
