@@ -7,7 +7,6 @@ from app.graph.fix_generation_graph.nodes.validate_fix import validate_fix_node
 from app.graph.fix_generation_graph.nodes.enhance_fix import enhance_fix_node
 from app.graph.fix_generation_graph.nodes.finalize_fix import finalize_fix_node
 from app.graph.fix_generation_graph.nodes.fallback import fallback_node
-from app.graph.fix_generation_graph.nodes.decision import decision_node
 from app.graph.state import CrashState
 
 def build_fix_subgraph():
