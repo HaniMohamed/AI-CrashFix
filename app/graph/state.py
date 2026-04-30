@@ -34,3 +34,8 @@ class CrashState(TypedDict):
     final_fix: Optional[str] = None
     fix_ready: bool = False
     needs_manual_review: bool = False
+
+    # PR generation state
+    pr_title: Optional[str] = None
+    pr_body: Optional[str] = None
+    pr_url: Optional[str] = None
