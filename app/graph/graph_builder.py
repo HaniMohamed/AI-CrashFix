@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, END
 from app.graph.state import CrashState
-
+from app.graph.fix_generation_graph.fix_generation_graph import build_fix_subgraph
 from app.graph.nodes.map_stacktrace import map_stacktrace
 from app.graph.nodes.repo_context import repo_context
 from app.graph.nodes.llm_analysis import llm_analysis
@@ -13,6 +13,7 @@ crash_store = CrashStore()
 
 def build_graph():
     graph = StateGraph(CrashState)
+   
 
     graph.add_node("map_stacktrace", instrument_node("map_stacktrace", map_stacktrace))
     graph.add_node("repo_context", instrument_node("repo_context", repo_context))
@@ -20,9 +21,11 @@ def build_graph():
     graph.add_node("llm_analysis", instrument_node("llm_analysis", llm_analysis))
     graph.add_node("jira_create", instrument_node("jira_create", jira_create))
 
+    # Fix generation subgraph
+    fix_subgraph = build_fix_subgraph()
+    graph.add_node("fix_generation",instrument_node("fix_generation", fix_subgraph))
+
     graph.set_entry_point("map_stacktrace")
-
-
     graph.add_edge("map_stacktrace", "repo_context")
     graph.add_edge("repo_context", "git_regression")
     graph.add_edge("git_regression", "llm_analysis")
@@ -31,11 +34,18 @@ def build_graph():
         "llm_analysis",
         instrument_router(
             "route_after_llm_analysis",
-            lambda state: END
-            if state.get("skip_jira_creation")
-            else ("jira_create" if state["confidence"] > 0.7 else END),
+            lambda state: (
+                "fix_generation"
+                if state.get("skip_jira_creation")
+                else "jira_create"
+            ),
         ),
     )
 
+    # If Jira created → then generate fix
+    graph.add_edge("jira_create", "fix_generation")
+
+    # After fix generation → always END
+    graph.add_edge("fix_generation", END)
 
     return graph.compile()

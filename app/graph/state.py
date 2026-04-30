@@ -21,3 +21,16 @@ class CrashState(TypedDict):
     jira_payload: Optional[Dict]
 
     jira_issue_id: Optional[str]
+
+
+
+    # Fix generation state
+    generated_fix: Optional[str] = None
+    review_feedback: Optional[str] = None
+    validation_result: Optional[bool] = None
+    iteration_count: int = 0
+    max_iterations: int = 3
+
+    final_fix: Optional[str] = None
+    fix_ready: bool = False
+    needs_manual_review: bool = False
