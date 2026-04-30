@@ -86,7 +86,7 @@ class GitService:
 
         jira = jira_ticket_id.strip().upper()
         slug = self._slugify_title(title)
-        branch_name = f"bugfix/{jira}-{slug}"
+        branch_name = f"ai-bugfix/{jira}-{slug}"
         base = MAIN_BRANCH
 
         # 1) Sync refs
