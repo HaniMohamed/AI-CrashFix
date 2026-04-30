@@ -31,6 +31,9 @@ class CrashState(TypedDict):
     fix_risk: str = ""
     fix_tests: List[str] = []
     fix_review_feedback: Optional[str] = None
+    fix_review_approved: Optional[bool] = None
+    fix_required_changes: List[str] = []
+    fix_review_questions: List[str] = []
     fix_validation_result: Optional[bool] = None
     fix_iteration_count: int = 0
     fix_max_iterations: int = 3
