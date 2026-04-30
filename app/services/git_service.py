@@ -1,7 +1,23 @@
-import subprocess
-import os
+from __future__ import annotations
 
-from app.config import REPO_ROOT, MAIN_BRANCH
+import json
+import os
+import ssl
+import subprocess
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+from app.config import (
+    GITLAB_PROJECT,
+    GITLAB_SERVER_URL,
+    GITLAB_SSL_CA_BUNDLE,
+    GITLAB_TOKEN,
+    GITLAB_VERIFY_SSL,
+    MAIN_BRANCH,
+    REPO_ROOT,
+)
 
 class GitService:
 
@@ -9,8 +25,101 @@ class GitService:
         cmd = ["git", *args]
         return subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
 
-    def _slugify_title(self, title: str, max_len: int = 50) -> str:
-        s = title.strip().lower()
+    def _parse_bool(self, value: Any, default: bool = True) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "y", "on"}:
+            return True
+        if text in {"0", "false", "no", "n", "off"}:
+            return False
+        return default
+
+    def _gitlab_api_base(self) -> str:
+        base = (GITLAB_SERVER_URL or "").strip()
+        if not base:
+            raise RuntimeError("Missing GitLab server URL. Set GITLAB_SERVER_URL.")
+        base = base.rstrip("/")
+        if base.endswith("/api/v4"):
+            return base
+        return f"{base}/api/v4"
+
+    def _gitlab_project_id(self) -> str:
+        project = (GITLAB_PROJECT or "").strip()
+        if not project:
+            raise RuntimeError("Missing GitLab project path. Set GITLAB_PROJECT (namespace/project).")
+        return urllib.parse.quote(project, safe="")
+
+    def _gitlab_headers(self) -> dict[str, str]:
+        token = (GITLAB_TOKEN or "").strip()
+        if not token:
+            raise RuntimeError("Missing GitLab token. Set GITLAB_TOKEN.")
+        return {
+            "PRIVATE-TOKEN": token,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+    def _gitlab_ssl_context(self) -> ssl.SSLContext | None:
+        verify = self._parse_bool(GITLAB_VERIFY_SSL, default=True)
+        if verify:
+            if GITLAB_SSL_CA_BUNDLE:
+                return ssl.create_default_context(cafile=GITLAB_SSL_CA_BUNDLE)
+            return None
+        return ssl._create_unverified_context()  # noqa: SLF001
+
+    def _gitlab_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
+    ) -> Any:
+        base = self._gitlab_api_base()
+        url = f"{base}{path}"
+        if params:
+            query = urllib.parse.urlencode(params)
+            url = f"{url}?{query}"
+
+        data = None
+        if json_data is not None:
+            data = json.dumps(json_data).encode("utf-8")
+
+        req = urllib.request.Request(
+            url,
+            data=data,
+            method=method.upper(),
+            headers=self._gitlab_headers(),
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=30, context=self._gitlab_ssl_context()) as resp:
+                raw = resp.read()
+                if not raw:
+                    return {}
+                try:
+                    return json.loads(raw.decode("utf-8"))
+                except json.JSONDecodeError:
+                    return {"raw_response": raw.decode("utf-8", errors="replace")}
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            raise RuntimeError(f"GitLab API error ({exc.code}) for {method} {path}: {body}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"GitLab request failed: {exc}") from exc
+
+    def _slugify_title(self, title: str, max_len: int = 50, jira_issue_id: str | None = None) -> str:
+        s = title.strip()
+        if jira_issue_id:
+            jira = jira_issue_id.strip()
+            if jira:
+                upper = s.upper()
+                jira_upper = jira.upper()
+                if upper.startswith(jira_upper):
+                    s = s[len(jira) :].lstrip(" :-_#/[]()")
+        s = s.lower()
         out: list[str] = []
         prev_dash = False
         for ch in s:
@@ -85,7 +194,7 @@ class GitService:
             raise ValueError("title is required")
 
         jira = jira_ticket_id.strip().upper()
-        slug = self._slugify_title(title)
+        slug = self._slugify_title(title, jira_issue_id=jira)
         branch_name = f"ai-bugfix/{jira}-{slug}"
         base = MAIN_BRANCH
 
@@ -126,35 +235,29 @@ class GitService:
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to push branch {branch_name!r}.\n\n{e.output}") from e
 
-        # 5) Create PR (requires GitHub CLI)
+        # 5) Create PR (GitLab merge request)
         pr_title = f"{jira}: {title.strip()}"
         pr_body = (body or "").strip()
-        gh_cmd = [
-            "gh",
-            "pr",
-            "create",
-            "--base",
-            base,
-            "--head",
-            branch_name,
-            "--title",
-            pr_title,
-            "--body",
-            pr_body,
-        ]
-        if draft:
-            gh_cmd.append("--draft")
+        normalized_title = pr_title
+        if draft and not normalized_title.lower().startswith("draft:"):
+            normalized_title = f"Draft: {normalized_title}"
 
-        try:
-            out = subprocess.check_output(gh_cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT).strip()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to create PR via GitHub CLI.\n\n{e.output}") from e
+        project_id = self._gitlab_project_id()
+        response = self._gitlab_request(
+            "POST",
+            f"/projects/{project_id}/merge_requests",
+            json_data={
+                "source_branch": branch_name,
+                "target_branch": base,
+                "title": normalized_title,
+                "description": pr_body,
+            },
+        )
 
-        # `gh pr create` usually prints the PR URL on success.
         return {
             "base": base,
             "branch": branch_name,
-            "pr_title": pr_title,
-            "pr_url": out,
+            "pr_title": normalized_title,
+            "pr_url": response.get("web_url") or "",
         }
     

@@ -1,49 +1,51 @@
-from typing import TypedDict, List, Dict, Optional
+from __future__ import annotations
 
-class CrashState(TypedDict):
-    graph_run_id: Optional[str]
-    skip_jira_creation: Optional[bool]
+from typing import Any, TypedDict
+
+
+class CrashState(TypedDict, total=False):
+    graph_run_id: str
+    mock: bool
+    skip_jira_creation: bool
     crash_id: str
     exception: str
-    stacktrace: List[Dict]
+    stacktrace: list[dict[str, Any]]
 
-    app_version: str
-    device: str
-    platform: str
+    app_version: str | None
+    device: str | None
+    platform: str | None
 
-    mapped_frames: List[Dict]
-    repo_context: Dict
+    mapped_frames: list[dict[str, Any]]
+    repo_context: dict[str, Any]
 
     root_cause: str
     confidence: float
     fix_suggestion: str
 
-    jira_payload: Optional[Dict]
+    jira_payload: dict[str, Any] | None
 
-    jira_issue_id: Optional[str]
-
-
+    jira_issue_id: str | None
 
     # Fix generation state
-    generated_fix: Optional[str] = None
-    fix_impacted_files: List[str] = []
-    fix_rationale: str = ""
-    fix_risk: str = ""
-    fix_tests: List[str] = []
-    fix_review_feedback: Optional[str] = None
-    fix_review_approved: Optional[bool] = None
-    fix_required_changes: List[str] = []
-    fix_review_questions: List[str] = []
-    fix_validation_result: Optional[bool] = None
-    fix_iteration_count: int = 0
-    fix_max_iterations: int = 3
+    generated_fix: str | None
+    fix_impacted_files: list[str]
+    fix_rationale: str
+    fix_risk: str
+    fix_tests: list[str]
+    fix_review_feedback: str | None
+    fix_review_approved: bool | None
+    fix_required_changes: list[str]
+    fix_review_questions: list[str]
+    fix_validation_result: bool | None
+    fix_iteration_count: int
+    fix_max_iterations: int
 
-    final_fix: Optional[str] = None
-    fix_ready: Optional[bool] = None
+    final_fix: str | None
+    fix_ready: bool | None
 
     # PR generation state
-    pr_title: Optional[str] = None
-    pr_body: Optional[str] = None
-    pr_url: Optional[str] = None
-    pr_branch: Optional[str] = None
-    pr_error: Optional[str] = None
+    pr_title: str | None
+    pr_body: str | None
+    pr_url: str | None
+    pr_branch: str | None
+    pr_error: str | None

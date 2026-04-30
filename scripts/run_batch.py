@@ -18,10 +18,11 @@ from app.graph.observability import node_span, ensure_run_id
 
 
 def _initial_state_for_crash(
-    crash: dict[str, Any], *, run_id: str, skip_jira_creation: bool
+    crash: dict[str, Any], *, run_id: str, skip_jira_creation: bool, mock: bool
 ) -> dict[str, Any]:
     return {
         "graph_run_id": run_id,
+        "mock": bool(mock),
         "skip_jira_creation": bool(skip_jira_creation),
         "crash_id": crash.get("crash_id") or "",
         "exception": crash.get("exception") or "",
@@ -89,7 +90,7 @@ def main() -> int:
 
         crash_store.insert_crash(crash_id)
         state = _initial_state_for_crash(
-            crash, run_id=run_id, skip_jira_creation=args.skip_jira_creation
+            crash, run_id=run_id, skip_jira_creation=args.skip_jira_creation, mock=args.mock
         )
 
         try:

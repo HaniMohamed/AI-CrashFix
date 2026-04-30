@@ -42,13 +42,23 @@ def _jira_ssl_context() -> ssl.SSLContext | None:
     return ssl._create_unverified_context()  # noqa: SLF001
 
 
-def create_jira_issue(summary: str, description: str, project_key: str | None, issue_type: str) -> dict[str, Any]:
+def create_jira_issue(
+    summary: str,
+    description: str,
+    project_key: str | None,
+    issue_type: str,
+    *,
+    mock: bool = False,
+) -> dict[str, Any]:
     """
     Create a Jira issue via REST API.
 
     Uses:
     - JIRA_SERVER_URL + JIRA_TOKEN + JIRA_PROJECT_KEY (from app.config)
     """
+
+    if mock:
+        return mock_create_jira_issue(summary, description, project_key, issue_type)
 
     project = (project_key or JIRA_PROJECT_KEY or "").strip()
     if not project:
@@ -90,3 +100,10 @@ def create_jira_issue(summary: str, description: str, project_key: str | None, i
         raise RuntimeError(f"Jira API error ({exc.code}) creating issue: {body}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Jira request failed: {exc}") from exc
+
+def mock_create_jira_issue(summary: str, description: str, project_key: str | None, issue_type: str) -> dict[str, Any]:
+    return {
+        "id": "DE-XXXX",
+        "key": "DE-XXXX",
+        "self": "https://jira.example.com/rest/api/2/issue/DE-XXXX",
+    }

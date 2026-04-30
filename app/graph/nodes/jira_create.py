@@ -53,7 +53,13 @@ def jira_create(state):
 
     project_key = state.get("project_key")
     issue_type = state.get("issue_type") or "Bug"
-    issue = create_jira_issue(summary, description, project_key, issue_type)
+    issue = create_jira_issue(
+        summary,
+        description,
+        project_key,
+        issue_type,
+        mock=bool(state.get("mock")),
+    )
     state["jira_issue_id"] = issue.get("id")
     if state["jira_issue_id"]:
         crash_store.mark_processed(state["crash_id"], state["jira_issue_id"])
