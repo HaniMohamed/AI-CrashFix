@@ -46,5 +46,7 @@ def build_fix_subgraph():
 
     fix_graph.add_edge("enhance_fix", "review_fix")
     fix_graph.add_edge("finalize_fix", "generate_pr")
+    fix_graph.add_edge("generate_pr", END)
+    fix_graph.add_edge("fallback", END)
 
     return fix_graph.compile()
