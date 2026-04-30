@@ -44,3 +44,6 @@ class CrashState(TypedDict):
     # PR generation state
     pr_title: Optional[str] = None
     pr_body: Optional[str] = None
+    pr_url: Optional[str] = None
+    pr_branch: Optional[str] = None
+    pr_error: Optional[str] = None
