@@ -49,6 +49,8 @@ def USER_PROMPT(prompt_input):
     - max_iterations: {prompt_input.get("fix_max_iterations")}
     - previous_generated_fix: {prompt_input.get("generated_fix")}
     - review_feedback: {prompt_input.get("fix_review_feedback")}
+    - required_changes: {prompt_input.get("fix_required_changes")}
+    - reviewer_questions: {prompt_input.get("fix_review_questions")}
 
     ---
 
