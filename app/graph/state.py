@@ -38,6 +38,9 @@ class CrashState(TypedDict):
     fix_iteration_count: int = 0
     fix_max_iterations: int = 3
 
+    final_fix: Optional[str] = None
+    fix_ready: Optional[bool] = None
+
     # PR generation state
     pr_title: Optional[str] = None
     pr_body: Optional[str] = None
