@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=".env", override=False)
 
 REPO_ROOT = os.getenv("REPO_ROOT", os.getcwd())
+MAIN_BRANCH = os.getenv("MAIN_BRANCH", "main")
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # or "openai"
 
