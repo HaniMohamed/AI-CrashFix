@@ -238,7 +238,43 @@ class GitService:
             return True
         return False
 
+    def _normalize_diff_text(self, diff_text: str) -> str:
+        """
+        Make LLM-produced diffs more "git apply"-friendly.
+        - Converts CRLF to LF
+        - If text contains literal '\\n' but no real newlines, decode escapes
+        - Ensures trailing newline
+        - If patch begins with ---/+++ without a 'diff --git' header, prepend one
+        """
+        text = diff_text or ""
+
+        # If the string contains literal "\n" sequences but no actual newlines,
+        # it's likely we received an escaped diff string.
+        if "\n" not in text and "\\n" in text:
+            try:
+                text = text.encode("utf-8").decode("unicode_escape")
+            except Exception:
+                # If decoding fails, continue with original text; git will error meaningfully.
+                pass
+
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if text and not text.endswith("\n"):
+            text += "\n"
+
+        stripped = text.lstrip()
+        if stripped.startswith("--- "):
+            lines = stripped.splitlines()
+            if len(lines) >= 2 and lines[1].startswith("+++ "):
+                old_path = lines[0][4:].strip()
+                new_path = lines[1][4:].strip()
+                if old_path.startswith("a/") and new_path.startswith("b/") and "diff --git " not in stripped:
+                    header = f"diff --git {old_path} {new_path}\n"
+                    text = header + stripped + ("\n" if not stripped.endswith("\n") else "")
+
+        return text
+
     def apply_unified_diff(self, diff_text: str) -> None:
+        diff_text = self._normalize_diff_text(diff_text)
         if not self._looks_like_unified_diff(diff_text):
             raise ValueError("final_fix does not look like a unified diff (expected 'diff --git' or '---/+++').")
 
@@ -248,7 +284,16 @@ class GitService:
                 fp.write(diff_text)
                 tmp_path = fp.name
 
-            code, out = self._run_git_no_check(["apply", "--3way", "--whitespace=fix", tmp_path])
+            # Only use --3way when we have a git-style diff (diff --git header),
+            # otherwise git can emit confusing errors about missing blobs.
+            args = ["apply", "--whitespace=fix"]
+            if "diff --git " in diff_text:
+                args.insert(1, "--3way")
+            else:
+                # For traditional ---/+++ patches, -p1 matches a/ and b/ prefixes.
+                args.extend(["-p1"])
+
+            code, out = self._run_git_no_check([*args, tmp_path])
             if code != 0:
                 raise RuntimeError(f"Failed to apply diff via git apply.\n\n{out}")
         finally:
