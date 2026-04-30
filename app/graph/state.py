@@ -26,16 +26,15 @@ class CrashState(TypedDict):
 
     # Fix generation state
     generated_fix: Optional[str] = None
-    review_feedback: Optional[str] = None
-    validation_result: Optional[bool] = None
-    iteration_count: int = 0
-    max_iterations: int = 3
-
-    final_fix: Optional[str] = None
-    fix_ready: bool = False
-    needs_manual_review: bool = False
+    fix_impacted_files: List[str] = []
+    fix_rationale: str = ""
+    fix_risk: str = ""
+    fix_tests: List[str] = []
+    fix_review_feedback: Optional[str] = None
+    fix_validation_result: Optional[bool] = None
+    fix_iteration_count: int = 0
+    fix_max_iterations: int = 3
 
     # PR generation state
     pr_title: Optional[str] = None
     pr_body: Optional[str] = None
-    pr_url: Optional[str] = None

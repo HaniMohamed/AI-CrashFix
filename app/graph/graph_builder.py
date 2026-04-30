@@ -23,7 +23,10 @@ def build_graph():
 
     # Fix generation subgraph
     fix_subgraph = build_fix_subgraph()
-    graph.add_node("fix_generation",instrument_node("fix_generation", fix_subgraph))
+    graph.add_node(
+        "fix_generation",
+        instrument_node("fix_generation", lambda state: fix_subgraph.invoke(state)),
+    )
 
     graph.set_entry_point("map_stacktrace")
     graph.add_edge("map_stacktrace", "repo_context")
