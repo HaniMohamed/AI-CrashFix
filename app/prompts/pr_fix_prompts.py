@@ -39,8 +39,8 @@ def PR_FIX_PROMPT_INPUT(prompt_input):
     - fix_risk: {prompt_input.get("fix_risk")}
     - fix_tests: {prompt_input.get("fix_tests")}
 
-    ### FINAL FIX (patch / diff / instructions)
-    {prompt_input.get("final_fix")}
+    ### GENERATED DIFF (prepared unified diff)
+    {prompt_input.get("generated_diff")}
 
     REQUIREMENTS:
     - Title format:

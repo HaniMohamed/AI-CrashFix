@@ -40,7 +40,7 @@ class CrashState(TypedDict, total=False):
     fix_iteration_count: int
     fix_max_iterations: int
 
-    final_fix: str | None
+    generated_diff: str | None
     fix_ready: bool | None
 
     # PR generation state

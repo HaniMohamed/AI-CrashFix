@@ -20,7 +20,11 @@ from app.config import (
     REPO_ROOT,
 )
 
+
 class GitService:
+    # -----------------------------
+    # Low-level git helpers
+    # -----------------------------
 
     def _run_git(self, args: list[str]) -> str:
         cmd = ["git", *args]
@@ -30,6 +34,10 @@ class GitService:
         cmd = ["git", *args]
         proc = subprocess.run(cmd, cwd=REPO_ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return proc.returncode, proc.stdout or ""
+
+    # -----------------------------
+    # GitLab API helpers
+    # -----------------------------
 
     def _parse_bool(self, value: Any, default: bool = True) -> bool:
         if value is None:
@@ -147,36 +155,46 @@ class GitService:
             slug = "fix"
         return slug[:max_len].rstrip("-")
 
-    def get_blame(self, file, line):
+    # -----------------------------
+    # Repo metadata helpers
+    # -----------------------------
+
+    def get_blame(self, file: str, line: int) -> str:
         file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
         cmd = ["git", "blame", "-L", f"{line},{line}", file_path]
         return subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
 
-    def get_recent_commits(self, file):
+    def get_recent_commits(self, file: str, limit: int = 5) -> list[dict[str, str]]:
         file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
         cmd = ["git", "log", "-n", "5", "--pretty=format:%h|%an|%s|%ad", "--date=short", file_path]
         output = subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
 
-        commits = []
-        for line in output.split("\n"):
-            parts = line.split("|")
+        commits: list[dict[str, str]] = []
+        for row in output.split("\n"):
+            parts = row.split("|")
             if len(parts) == 4:
-                commits.append({
-                    "hash": parts[0],
-                    "author": parts[1],
-                    "message": parts[2],
-                    "date": parts[3]
-                })
+                commits.append(
+                    {
+                        "hash": parts[0],
+                        "author": parts[1],
+                        "message": parts[2],
+                        "date": parts[3],
+                    }
+                )
 
-        return commits
+        return commits[:limit]
 
-    def file_changed_recently(self, file):
-        file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
-        cmd = ["git", "log", "-1", "--", file_path]
-        out = subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
-        return bool(out.strip())
+    def read_repo_file(self, relative_path: str) -> str:
+        if not relative_path or not relative_path.strip():
+            raise ValueError("relative_path is required")
+        path = relative_path.strip()
+        abs_path = path if os.path.isabs(path) else os.path.join(REPO_ROOT, path)
+        with open(abs_path, "r", encoding="utf-8") as f:
+            return f.read()
 
-
+    # -----------------------------
+    # Branch / PR workflow
+    # -----------------------------
 
     def git_fetch(self):
         cmd = ["git", "fetch"]
@@ -226,6 +244,10 @@ class GitService:
 
         return {"base": base, "branch": branch_name}
 
+    # -----------------------------
+    # Patch handling
+    # -----------------------------
+
     def _looks_like_unified_diff(self, text: str) -> bool:
         t = (text or "").lstrip()
         if not t:
@@ -273,10 +295,29 @@ class GitService:
 
         return text
 
+    def _extract_paths_from_diff(self, diff_text: str) -> list[str]:
+        """
+        Best-effort extraction of impacted file paths from a unified diff.
+        Returns repo-relative paths (without leading a/ or b/).
+        """
+        text = diff_text or ""
+        paths: list[str] = []
+        for line in text.splitlines():
+            if not line.startswith("+++ "):
+                continue
+            p = line[4:].strip()
+            if p == "/dev/null":
+                continue
+            if p.startswith(("a/", "b/")):
+                p = p[2:]
+            if p and p not in paths:
+                paths.append(p)
+        return paths
+
     def apply_unified_diff(self, diff_text: str) -> None:
         diff_text = self._normalize_diff_text(diff_text)
         if not self._looks_like_unified_diff(diff_text):
-            raise ValueError("final_fix does not look like a unified diff (expected 'diff --git' or '---/+++').")
+            raise ValueError("generated_diff does not look like a unified diff (expected 'diff --git' or '---/+++').")
 
         tmp_path: str | None = None
         try:
@@ -284,16 +325,27 @@ class GitService:
                 fp.write(diff_text)
                 tmp_path = fp.name
 
-            # Only use --3way when we have a git-style diff (diff --git header),
-            # otherwise git can emit confusing errors about missing blobs.
-            args = ["apply", "--whitespace=fix"]
-            if "diff --git " in diff_text:
-                args.insert(1, "--3way")
-            else:
-                # For traditional ---/+++ patches, -p1 matches a/ and b/ prefixes.
-                args.extend(["-p1"])
+            def try_apply(args: list[str]) -> tuple[int, str]:
+                return self._run_git_no_check([*args, tmp_path])
 
-            code, out = self._run_git_no_check([*args, tmp_path])
+            has_diff_git = "diff --git " in diff_text
+            has_index_line = "\nindex " in diff_text or diff_text.startswith("index ")
+
+            primary_args = ["apply", "--whitespace=fix"]
+            if has_diff_git and has_index_line:
+                primary_args.insert(1, "--3way")
+            else:
+                primary_args.extend(["-p1"])
+
+            code, out = try_apply(primary_args)
+            if code != 0 and "--3way" in primary_args:
+                fallback_args = ["apply", "--whitespace=fix", "-p1"]
+                code2, out2 = try_apply(fallback_args)
+                if code2 == 0:
+                    code, out = 0, out2
+                else:
+                    out = f"{out}\n\n--- fallback (no --3way) ---\n{out2}"
+
             if code != 0:
                 raise RuntimeError(f"Failed to apply diff via git apply.\n\n{out}")
         finally:
@@ -367,40 +419,3 @@ class GitService:
             "pr_title": normalized_title,
             "pr_url": response.get("web_url") or "",
         }
-
-    def create_branch_and_pr_from_main(
-        self,
-        jira_ticket_id: str,
-        title: str,
-        body: str | None = None,
-        *,
-        draft: bool = False,
-    ) -> dict:
-        """
-        Fetches latest remote state, creates a branch from config.MAIN_BRANCH, pushes it,
-        and opens a PR targeting config.MAIN_BRANCH.
-        """
-        jira = jira_ticket_id.strip().upper()
-        branch_info = self.create_branch_from_main(jira_ticket_id=jira_ticket_id, title=title)
-        base = branch_info["base"]
-        branch_name = branch_info["branch"]
-
-        # Preserve prior behavior: push branch even if empty, then create MR.
-        self.push_current_branch(branch_name=branch_name)
-
-        pr_title = f"{jira}: {title.strip()}"
-        mr = self.create_merge_request(
-            source_branch=branch_name,
-            target_branch=base,
-            title=pr_title,
-            body=body,
-            draft=draft,
-        )
-
-        return {
-            "base": base,
-            "branch": branch_name,
-            "pr_title": mr["pr_title"],
-            "pr_url": mr["pr_url"],
-        }
-    
