@@ -64,7 +64,7 @@ def USER_PROMPT(prompt_input):
     - Does the fix address the crash root cause shown by stacktrace/mapped frames?
     - Does it only touch files that exist in REPO CONTEXT?
     - Is it minimal and low-risk? Any unintended side-effects?
-    - Is it implementable as-is (clear patch-like snippets, no missing dependencies)?
+    - Is it implementable as-is as a unified diff that can be applied with `git apply`?
     - Are tests/validation steps appropriate?
 
     ## Output format (STRICT)

@@ -55,14 +55,15 @@ def USER_PROMPT(prompt_input):
     ---
 
     ## What to produce
-    Return a fix proposal that can be applied directly to the repo context. Prefer the smallest change that:
+    Return a fix proposal that can be applied directly to the repo context as a UNIFIED DIFF patch.
+    Prefer the smallest change that:
     - prevents the crash
     - preserves intended behavior (do not invent new product requirements)
     - includes defensive handling only where justified by evidence
 
     ## Guardrails
     - Do not reference files/functions that are not present in REPO CONTEXT.
-    - Do not paste entire files; include only the minimal patch-like snippet(s) needed.
+    - Do not paste entire files; include only the minimal diff hunks needed.
     - If multiple fixes are plausible, choose the lowest-risk one and briefly state the trade-off.
     - If evidence is insufficient, set fix to exactly "insufficient evidence".
 
@@ -70,7 +71,7 @@ def USER_PROMPT(prompt_input):
     Return JSON ONLY (no markdown, no backticks, no explanations outside JSON).
 
     {{
-      "fix": "A concise patch-like change description or code snippet(s). Use file paths that exist in repo_context.",
+      "fix": "A unified diff that can be applied with `git apply` from repo root. Must include file paths and @@ hunks. If insufficient evidence, set to exactly: insufficient evidence",
       "impacted_files": ["relative/path/from/repo_root.ext"],
       "rationale": "1-3 sentences, evidence-based.",
       "risk": "low|medium|high",

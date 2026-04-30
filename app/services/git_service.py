@@ -4,6 +4,7 @@ import json
 import os
 import ssl
 import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,6 +25,11 @@ class GitService:
     def _run_git(self, args: list[str]) -> str:
         cmd = ["git", *args]
         return subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
+
+    def _run_git_no_check(self, args: list[str]) -> tuple[int, str]:
+        cmd = ["git", *args]
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        return proc.returncode, proc.stdout or ""
 
     def _parse_bool(self, value: Any, default: bool = True) -> bool:
         if value is None:
@@ -176,18 +182,7 @@ class GitService:
         cmd = ["git", "fetch"]
         subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
 
-    def create_branch_and_pr_from_main(
-        self,
-        jira_ticket_id: str,
-        title: str,
-        body: str | None = None,
-        *,
-        draft: bool = False,
-    ) -> dict:
-        """
-        Fetches latest remote state, creates a branch from config.MAIN_BRANCH, pushes it,
-        and opens a PR targeting config.MAIN_BRANCH.
-        """
+    def create_branch_from_main(self, jira_ticket_id: str, title: str) -> dict[str, str]:
         if not jira_ticket_id or not jira_ticket_id.strip():
             raise ValueError("jira_ticket_id is required")
         if not title or not title.strip():
@@ -229,16 +224,85 @@ class GitService:
                 f"Failed to create branch {branch_name!r}. It may already exist.\n\n{e.output}"
             ) from e
 
-        # 4) Push branch
-        try:
-            self._run_git(["push", "-u", "origin", branch_name])
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to push branch {branch_name!r}.\n\n{e.output}") from e
+        return {"base": base, "branch": branch_name}
 
-        # 5) Create PR (GitLab merge request)
-        pr_title = f"{jira}: {title.strip()}"
-        pr_body = (body or "").strip()
-        normalized_title = pr_title
+    def _looks_like_unified_diff(self, text: str) -> bool:
+        t = (text or "").lstrip()
+        if not t:
+            return False
+        if "diff --git " in t:
+            return True
+        if "--- " in t and "+++ " in t:
+            return True
+        if t.startswith("@@ "):
+            return True
+        return False
+
+    def apply_unified_diff(self, diff_text: str) -> None:
+        if not self._looks_like_unified_diff(diff_text):
+            raise ValueError("final_fix does not look like a unified diff (expected 'diff --git' or '---/+++').")
+
+        tmp_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile("w", delete=False, dir=REPO_ROOT, suffix=".diff") as fp:
+                fp.write(diff_text)
+                tmp_path = fp.name
+
+            code, out = self._run_git_no_check(["apply", "--3way", "--whitespace=fix", tmp_path])
+            if code != 0:
+                raise RuntimeError(f"Failed to apply diff via git apply.\n\n{out}")
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+        status = self._run_git(["status", "--porcelain"]).strip()
+        if not status:
+            raise RuntimeError("Diff applied cleanly but produced no working tree changes.")
+
+    def commit_all(self, message: str) -> None:
+        if not message or not message.strip():
+            raise ValueError("commit message is required")
+
+        self._run_git(["add", "-A"])
+        status = self._run_git(["status", "--porcelain"]).strip()
+        if not status:
+            raise RuntimeError("No changes to commit after applying fix.")
+
+        try:
+            self._run_git(["commit", "-m", message.strip()])
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to commit changes.\n\n{e.output}") from e
+
+    def push_current_branch(self, branch_name: str | None = None) -> None:
+        if branch_name:
+            args = ["push", "-u", "origin", branch_name]
+        else:
+            args = ["push", "-u", "origin", "HEAD"]
+        try:
+            self._run_git(args)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to push branch.\n\n{e.output}") from e
+
+    def create_merge_request(
+        self,
+        *,
+        source_branch: str,
+        target_branch: str,
+        title: str,
+        body: str | None = None,
+        draft: bool = False,
+    ) -> dict[str, str]:
+        if not source_branch or not source_branch.strip():
+            raise ValueError("source_branch is required")
+        if not target_branch or not target_branch.strip():
+            raise ValueError("target_branch is required")
+        if not title or not title.strip():
+            raise ValueError("title is required")
+
+        normalized_title = title.strip()
         if draft and not normalized_title.lower().startswith("draft:"):
             normalized_title = f"Draft: {normalized_title}"
 
@@ -247,17 +311,51 @@ class GitService:
             "POST",
             f"/projects/{project_id}/merge_requests",
             json_data={
-                "source_branch": branch_name,
-                "target_branch": base,
+                "source_branch": source_branch,
+                "target_branch": target_branch,
                 "title": normalized_title,
-                "description": pr_body,
+                "description": (body or "").strip(),
             },
+        )
+
+        return {
+            "pr_title": normalized_title,
+            "pr_url": response.get("web_url") or "",
+        }
+
+    def create_branch_and_pr_from_main(
+        self,
+        jira_ticket_id: str,
+        title: str,
+        body: str | None = None,
+        *,
+        draft: bool = False,
+    ) -> dict:
+        """
+        Fetches latest remote state, creates a branch from config.MAIN_BRANCH, pushes it,
+        and opens a PR targeting config.MAIN_BRANCH.
+        """
+        jira = jira_ticket_id.strip().upper()
+        branch_info = self.create_branch_from_main(jira_ticket_id=jira_ticket_id, title=title)
+        base = branch_info["base"]
+        branch_name = branch_info["branch"]
+
+        # Preserve prior behavior: push branch even if empty, then create MR.
+        self.push_current_branch(branch_name=branch_name)
+
+        pr_title = f"{jira}: {title.strip()}"
+        mr = self.create_merge_request(
+            source_branch=branch_name,
+            target_branch=base,
+            title=pr_title,
+            body=body,
+            draft=draft,
         )
 
         return {
             "base": base,
             "branch": branch_name,
-            "pr_title": normalized_title,
-            "pr_url": response.get("web_url") or "",
+            "pr_title": mr["pr_title"],
+            "pr_url": mr["pr_url"],
         }
     
