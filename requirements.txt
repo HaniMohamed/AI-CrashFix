@@ -3,3 +3,4 @@ openai
 google-genai
 python-dotenv
 google-cloud-bigquery
+google-cloud-logging

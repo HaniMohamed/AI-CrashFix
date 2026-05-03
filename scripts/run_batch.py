@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.config import CRASHLYTICS_FETCH_BACKEND
 from app.graph.graph_builder import build_graph
 from app.services.crash_store import CrashStore
 from app.services.crashlytics_service import CrashlyticsService
@@ -44,11 +45,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Fetch N recent crashes and process each via the AI Crash Fix graph."
     )
-    parser.add_argument("--limit", type=int, default=10, help="How many recent crashes to fetch from Crashlytics/BigQuery.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="How many recent crashes to fetch (BigQuery or Cloud Logging per CRASHLYTICS_FETCH_BACKEND).",
+    )
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="Use mocked crash list (no BigQuery).",
+        help="Use mocked crash list (no live Crashlytics fetch).",
     )
     parser.add_argument("--print-results", action="store_true", help="Pretty-print each final state.")
     parser.add_argument("--skip-jira-creation", action="store_true", help="Skip Jira creation.", default=False)
@@ -61,7 +67,15 @@ def main() -> int:
     batch_state: dict[str, Any] = {}
     run_id = ensure_run_id(batch_state)
 
-    with node_span(batch_state, "batch.fetch", extra={"limit": args.limit, "mock": args.mock}):
+    with node_span(
+        batch_state,
+        "batch.fetch",
+        extra={
+            "limit": args.limit,
+            "mock": args.mock,
+            "crashlytics_backend": CRASHLYTICS_FETCH_BACKEND,
+        },
+    ):
         crashes = (
             service.fetch_recent_crashes_mock(limit=args.limit)
             if args.mock

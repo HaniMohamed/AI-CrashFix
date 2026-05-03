@@ -4,6 +4,7 @@ from app.config import (
     BQ_CRASHLYTICS_ANDROID_TABLE,
     BQ_CRASHLYTICS_IOS_TABLE,
     GOOGLE_APPLICATION_CREDENTIALS,
+    CRASHLYTICS_FETCH_BACKEND,
 )
 
 try:
@@ -12,33 +13,74 @@ except Exception:  # pragma: no cover
     bigquery = None
 
 try:
+    from google.cloud import logging as cloud_logging  # type: ignore
+except Exception:  # pragma: no cover
+    cloud_logging = None
+
+try:
     from google.oauth2 import service_account
 except Exception:  # pragma: no cover
     service_account = None
 
 
+def _resolve_crashlytics_backend(raw: str) -> str:
+    normalized = (raw or "bigquery").strip().lower()
+    if normalized in ("cloud_logging", "logging", "gcl"):
+        return "cloud_logging"
+    if normalized in ("bigquery", "bq"):
+        return "bigquery"
+    raise ValueError(
+        f"Unknown CRASHLYTICS_FETCH_BACKEND={raw!r}; use 'bigquery' or 'cloud_logging'."
+    )
+
+
 class CrashlyticsService:
 
     def __init__(self):
-        if bigquery is None:
+        self._backend = _resolve_crashlytics_backend(CRASHLYTICS_FETCH_BACKEND)
+        credentials = self._load_credentials()
+        self.client = None
+        self._logging_client = None
+
+        if self._backend == "bigquery":
+            if bigquery is None:
+                raise RuntimeError(
+                    "Missing dependency for BigQuery. Install google-cloud-bigquery to enable Crashlytics fetch."
+                )
+            if not BQ_PROJECT_ID:
+                raise RuntimeError("BQ_PROJECT_ID is required when CRASHLYTICS_FETCH_BACKEND=bigquery.")
+            # If credentials is None, BigQuery will use Application Default Credentials.
+            self.client = bigquery.Client(project=BQ_PROJECT_ID, credentials=credentials)
+            return
+
+        if cloud_logging is None:
             raise RuntimeError(
-                "Missing dependency for BigQuery. Install google-cloud-bigquery to enable Crashlytics fetch."
+                "Missing dependency for Cloud Logging. Install google-cloud-logging to enable Crashlytics fetch."
             )
-        # BigQuery expects a google-auth Credentials object (not a string path).
-        credentials = None
+        if not BQ_PROJECT_ID:
+            raise RuntimeError(
+                "BQ_PROJECT_ID (GCP project id) is required when CRASHLYTICS_FETCH_BACKEND=cloud_logging."
+            )
+        self._logging_client = cloud_logging.Client(project=BQ_PROJECT_ID, credentials=credentials)
+
+    @staticmethod
+    def _load_credentials():
+        """BigQuery and Cloud Logging expect a google-auth Credentials object (not a path string)."""
         if GOOGLE_APPLICATION_CREDENTIALS and service_account is not None:
-            credentials = service_account.Credentials.from_service_account_file(
+            return service_account.Credentials.from_service_account_file(
                 GOOGLE_APPLICATION_CREDENTIALS
             )
-
-        # If credentials is None, BigQuery will use Application Default Credentials.
-        self.client = bigquery.Client(project=BQ_PROJECT_ID, credentials=credentials)
+        return None
 
     def fetch_recent_crashes(self, limit=10):
         """
-        Fetch latest crash events from BigQuery
+        Fetch latest crash events from BigQuery or Cloud Logging (see CRASHLYTICS_FETCH_BACKEND).
         """
+        if self._backend == "cloud_logging":
+            return self._fetch_recent_crashes_cloud_logging(limit=limit)
+        return self._fetch_recent_crashes_bigquery(limit=limit)
 
+    def _fetch_recent_crashes_bigquery(self, limit: int) -> list[dict]:
         # Crashlytics export is split by app/platform into concrete tables.
         # We union Android + iOS into a single stream and then apply a global LIMIT.
         android_table = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
@@ -51,6 +93,7 @@ class CrashlyticsService:
             "android" AS _source_platform
           FROM {android_table} AS t
           WHERE t.is_fatal IS TRUE
+            AND UPPER(TRIM(t.error_type)) = 'FATAL'
 
           UNION ALL
 
@@ -59,6 +102,7 @@ class CrashlyticsService:
             "ios" AS _source_platform
           FROM {ios_table} AS t
           WHERE t.is_fatal IS TRUE
+            AND UPPER(TRIM(t.error_type)) = 'FATAL'
         )
         SELECT * FROM unioned
         ORDER BY event_timestamp DESC
@@ -73,6 +117,200 @@ class CrashlyticsService:
             crashes.append(self._map_row(self._row_to_dict(row)))
 
         return crashes
+
+    def _fetch_recent_crashes_cloud_logging(self, limit: int) -> list[dict]:
+        assert self._logging_client is not None
+        project_id = BQ_PROJECT_ID
+        # Firebase Crashlytics → Cloud Logging uses firebasecrashlytics.googleapis.com/events;
+        # older samples may use crashlytics.googleapis.com/crash_events.
+        fb = f'logName="projects/{project_id}/logs/firebasecrashlytics.googleapis.com%2Fevents"'
+        legacy = f'logName="projects/{project_id}/logs/crashlytics.googleapis.com%2Fcrash_events"'
+        fatal = '(jsonPayload.issue.errorType="FATAL" OR jsonPayload.errorType="FATAL")'
+        filter_str = f"({fb} OR {legacy}) AND {fatal}"
+        entries = self._logging_client.list_entries(
+            filter_=filter_str,
+            max_results=int(limit),
+            order_by="timestamp desc",
+        )
+
+        crashes: list[dict] = []
+        for entry in entries:
+            payload = self._logging_entry_payload_dict(entry)
+            if not self._logging_payload_is_fatal_crash(payload):
+                continue
+            row = self._logging_payload_to_row(payload)
+            if not row:
+                continue
+            crashes.append(self._map_row(row))
+
+        return crashes
+
+    @staticmethod
+    def _logging_payload_is_fatal_crash(payload: dict) -> bool:
+        """Only Firebase ``issue.errorType`` (or top-level ``errorType``) equal to FATAL counts as a crash."""
+        if not isinstance(payload, dict):
+            return False
+        issue = payload.get("issue")
+        if isinstance(issue, dict):
+            et = issue.get("errorType") or issue.get("error_type")
+            if et is None:
+                return False
+            return str(et).strip().upper() == "FATAL"
+        et = payload.get("errorType") or payload.get("error_type")
+        if et is None:
+            return False
+        return str(et).strip().upper() == "FATAL"
+
+    @staticmethod
+    def _logging_entry_payload_dict(entry) -> dict:
+        """Resolve structured Crashlytics jsonPayload from a LogEntry."""
+        payload = getattr(entry, "json_payload", None)
+        if isinstance(payload, dict):
+            return payload
+        raw = getattr(entry, "payload", None)
+        return raw if isinstance(raw, dict) else {}
+
+    @staticmethod
+    def _normalize_logging_frame_dict(frame: dict) -> dict:
+        out = dict(frame)
+        if "line" in out and out["line"] is not None and not isinstance(out["line"], int):
+            try:
+                out["line"] = int(str(out["line"]).strip())
+            except (TypeError, ValueError):
+                pass
+        return out
+
+    @staticmethod
+    def _normalize_logging_exception_dict(exc: dict) -> dict:
+        out = dict(exc)
+        if out.get("exception_message") is None:
+            em = out.get("exceptionMessage") or out.get("message")
+            if em is not None:
+                out["exception_message"] = em
+        frames = out.get("frames")
+        if isinstance(frames, list):
+            out["frames"] = [
+                CrashlyticsService._normalize_logging_frame_dict(f)
+                if isinstance(f, dict)
+                else f
+                for f in frames
+            ]
+        return out
+
+    @staticmethod
+    def _normalize_logging_thread_dict(thread: dict) -> dict:
+        out = dict(thread)
+        if out.get("queue_name") is None and out.get("queue") is not None:
+            out["queue_name"] = out["queue"]
+        frames = out.get("frames")
+        if isinstance(frames, list):
+            out["frames"] = [
+                CrashlyticsService._normalize_logging_frame_dict(f)
+                if isinstance(f, dict)
+                else f
+                for f in frames
+            ]
+        return out
+
+    @staticmethod
+    def _logging_payload_to_row(payload: dict) -> dict:
+        """
+        Align Cloud Logging jsonPayload with the nested dict shape expected by _map_row.
+
+        Supports Firebase Crashlytics Event JSON (camelCase, nested ``issue`` / ``version`` /
+        ``operatingSystem`` / ``blameFrame``) as well as flatter BigQuery-like keys.
+        """
+        if not isinstance(payload, dict):
+            return {}
+        row = dict(payload)
+
+        issue = row.get("issue")
+        if isinstance(issue, dict):
+            if row.get("issue_id") is None and issue.get("id") is not None:
+                row["issue_id"] = issue["id"]
+            if row.get("issue_title") is None and issue.get("title") is not None:
+                row["issue_title"] = issue["title"]
+            if row.get("issue_subtitle") is None and issue.get("subtitle") is not None:
+                row["issue_subtitle"] = issue["subtitle"]
+
+        if row.get("event_timestamp") is None and row.get("eventTime") is not None:
+            row["event_timestamp"] = row["eventTime"]
+        if row.get("received_timestamp") is None and row.get("receivedTime") is not None:
+            row["received_timestamp"] = row["receivedTime"]
+
+        aliases: list[tuple[str, str]] = [
+            ("issue_id", "issueId"),
+            ("issue_title", "issueTitle"),
+            ("issue_subtitle", "issueSubtitle"),
+            ("event_timestamp", "eventTimestamp"),
+            ("received_timestamp", "receivedTimestamp"),
+            ("installation_uuid", "installationUuid"),
+        ]
+        for snake, camel in aliases:
+            if row.get(snake) is None and camel in row and row[camel] is not None:
+                row[snake] = row[camel]
+
+        if row.get("issue_id") is None and row.get("eventId") is not None:
+            row["issue_id"] = str(row["eventId"])
+
+        ver = row.get("version")
+        if isinstance(ver, dict) and not row.get("application"):
+            row["application"] = {
+                "display_version": ver.get("displayVersion") or ver.get("display_version"),
+                "build_version": ver.get("buildVersion") or ver.get("build_version"),
+            }
+
+        os_raw = row.get("operating_system") or row.get("operatingSystem")
+        if isinstance(os_raw, dict) and not row.get("operating_system"):
+            display_name = os_raw.get("displayName") or os_raw.get("display_name")
+            if display_name:
+                row["operating_system"] = {
+                    "name": display_name,
+                    "display_version": None,
+                    "device_type": os_raw.get("device_type") or os_raw.get("deviceType"),
+                    "type": os_raw.get("type") or os_raw.get("os"),
+                    "modification_state": os_raw.get("modification_state")
+                    or os_raw.get("modificationState"),
+                }
+            else:
+                row["operating_system"] = {
+                    "name": os_raw.get("name")
+                    or os_raw.get("os")
+                    or os_raw.get("type"),
+                    "display_version": os_raw.get("display_version")
+                    or os_raw.get("displayVersion"),
+                    "device_type": os_raw.get("device_type") or os_raw.get("deviceType"),
+                    "type": os_raw.get("type") or os_raw.get("os"),
+                    "modification_state": os_raw.get("modification_state")
+                    or os_raw.get("modificationState"),
+                }
+
+        bf = row.get("blame_frame") or row.get("blameFrame")
+        if isinstance(bf, dict) and not row.get("blame_frame"):
+            row["blame_frame"] = CrashlyticsService._normalize_logging_frame_dict(bf)
+
+        ex_list = row.get("exceptions")
+        if isinstance(ex_list, list):
+            row["exceptions"] = [
+                CrashlyticsService._normalize_logging_exception_dict(e)
+                if isinstance(e, dict)
+                else e
+                for e in ex_list
+            ]
+
+        threads = row.get("threads")
+        if isinstance(threads, list):
+            row["threads"] = [
+                CrashlyticsService._normalize_logging_thread_dict(t)
+                if isinstance(t, dict)
+                else t
+                for t in threads
+            ]
+
+        if row.get("platform") and not row.get("_source_platform"):
+            row["_source_platform"] = row["platform"]
+
+        return row
 
     def fetch_recent_crashes_mock_rows(self, limit: int = 10) -> list[dict]:
         """
@@ -93,7 +331,7 @@ class CrashlyticsService:
                     "bundle_identifier": "sa.gov.gosi.taminaty",
                     "event_id": f"mock-event-{idx:04d}",
                     "is_fatal": True,
-                    "error_type": "crash",
+                    "error_type": "FATAL",
                     "issue_id": issue_id,
                     "variant_id": "variant_mock",
                     "issue_title": "TypeError: Null check operator used on a null value",
@@ -257,7 +495,9 @@ class CrashlyticsService:
 
         exc = self._first_exception(row)
         exception_type = exc.get("type")
-        exception_message = exc.get("exception_message") or exc.get("message")
+        exception_message = (
+            exc.get("exception_message") or exc.get("message") or exc.get("exceptionMessage")
+        )
         exception_str = self._format_exception(exception_type, exception_message, issue_title, issue_subtitle)
 
         app = row.get("application") or {}

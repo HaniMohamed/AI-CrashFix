@@ -17,6 +17,8 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 BQ_PROJECT_ID = os.getenv("BQ_PROJECT_ID")
+# Crashlytics crash source: "bigquery" (exported tables) or "cloud_logging" (Crashlytics log router).
+CRASHLYTICS_FETCH_BACKEND = os.getenv("CRASHLYTICS_FETCH_BACKEND", "bigquery").strip().lower()
 BQ_DATASET = os.getenv("BQ_DATASET", "firebase_crashlytics")
 
 # Crashlytics export tables (within BQ_DATASET). Keep defaults aligned with current Firebase export.

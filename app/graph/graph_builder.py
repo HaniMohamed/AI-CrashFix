@@ -27,7 +27,12 @@ def build_graph():
     )
 
     graph.set_entry_point("map_stacktrace")
-    graph.add_edge("map_stacktrace", "repo_context")
+
+    graph.add_conditional_edges(
+        "map_stacktrace",
+        instrument_router("route_after_map_stacktrace",
+        lambda state: "repo_context" if state.get("mapped_frames") else END))
+
     graph.add_edge("repo_context", "git_regression")
     graph.add_edge("git_regression", "llm_analysis")
 
