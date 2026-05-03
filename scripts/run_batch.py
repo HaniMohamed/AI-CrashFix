@@ -41,7 +41,9 @@ def _initial_state_for_crash(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Fetch N recent crashes and process each via the CrashLens graph.")
+    parser = argparse.ArgumentParser(
+        description="Fetch N recent crashes and process each via the AI Crash Fix graph."
+    )
     parser.add_argument("--limit", type=int, default=10, help="How many recent crashes to fetch from Crashlytics/BigQuery.")
     parser.add_argument(
         "--mock",

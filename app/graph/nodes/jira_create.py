@@ -11,7 +11,7 @@ def jira_create(state):
     app_version = state.get("app_version")
     device = state.get("device")
 
-    summary = state.get("summary") or f"[CrashLens] {exception or crash_id or 'Crash'}"
+    summary = state.get("summary") or f"[AI Crash Fix] {exception or crash_id or 'Crash'}"
 
     if state.get("description"):
         description = state.get("description")

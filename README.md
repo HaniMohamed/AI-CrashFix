@@ -1,8 +1,8 @@
-## ai_crashlens
+## AI Crash Fix
 
 Crash-to-Jira-to-PR pipeline built with LangGraph.
 
-Given recent Crashlytics crashes, CrashLens:
+Given recent Crashlytics crashes, AI Crash Fix:
 - maps stack frames to repo locations
 - pulls targeted repo context and recent git history
 - asks an LLM for a **minimal unified-diff fix**
@@ -39,10 +39,10 @@ pip install -r requirements.txt
 ```
 
 ### Configuration (.env)
-CrashLens loads environment variables from `.env` (see `app/config.py`).
+AI Crash Fix loads environment variables from `.env` (see `app/config.py`).
 
 #### Required: target repo
-- **REPO_ROOT**: absolute path to the **target repository** CrashLens will read/apply patches to
+- **REPO_ROOT**: absolute path to the **target repository** AI Crash Fix will read/apply patches to
 - **MAIN_BRANCH**: base branch for feature branches (default: `main`)
 
 #### LLM provider
@@ -115,7 +115,7 @@ Use the included launch config in `.vscode/launch.json`:
 - **“Missing …” errors**: verify `.env` values listed above (LLM provider keys, `REPO_ROOT`, BigQuery/Jira/GitLab as needed).
 - **PR generation skipped**: `generate_pr` requires both a `final_fix` (unified diff) and a `jira_issue_id`. If Jira is skipped, PR creation will be skipped too.
 - **“Failed to apply diff via git apply”**: the generated patch didn’t apply cleanly to `REPO_ROOT`. Try re-running after ensuring the target repo is on the expected base branch and clean.
-- **No working tree changes after apply**: the diff applied but resulted in no net changes; CrashLens treats that as an error to avoid empty commits.
+- **No working tree changes after apply**: the diff applied but resulted in no net changes; AI Crash Fix treats that as an error to avoid empty commits.
 
 ### Notes
-- Logging is controlled by `CRASHLENS_GRAPH_LOG_LEVEL` and `CRASHLENS_GRAPH_LOG_STYLE` (see `app/graph/observability.py`).
+- Logging is controlled by `AI_CRASH_FIX_GRAPH_LOG_LEVEL` and `AI_CRASH_FIX_GRAPH_LOG_STYLE` (see `app/graph/observability.py`). The legacy variables `CRASHLENS_GRAPH_LOG_LEVEL` and `CRASHLENS_GRAPH_LOG_STYLE` are still read if the new names are not set.

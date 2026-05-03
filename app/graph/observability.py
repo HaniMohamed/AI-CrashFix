@@ -6,15 +6,15 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 
-from app.config import CRASHLENS_GRAPH_LOG_LEVEL, CRASHLENS_GRAPH_LOG_STYLE
+from app.config import AI_CRASH_FIX_GRAPH_LOG_LEVEL, AI_CRASH_FIX_GRAPH_LOG_STYLE
 
-_LOG_LEVEL = CRASHLENS_GRAPH_LOG_LEVEL.upper()
-_LOG_STYLE = CRASHLENS_GRAPH_LOG_STYLE.lower()  # pretty|json
+_LOG_LEVEL = AI_CRASH_FIX_GRAPH_LOG_LEVEL.upper()
+_LOG_STYLE = AI_CRASH_FIX_GRAPH_LOG_STYLE.lower()  # pretty|json
 _LOG_JSON = _LOG_STYLE == "json"
 
 
 def _logger() -> logging.Logger:
-    logger = logging.getLogger("crashlens.graph")
+    logger = logging.getLogger("ai_crash_fix.graph")
     if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(message)s"))

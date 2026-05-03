@@ -115,7 +115,7 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
         if not match:
             continue
 
-        # For CrashLens repo mapping, package: frames are usually Flutter/Dart SDK noise.
+        # For AI Crash Fix repo mapping, package: frames are usually Flutter/Dart SDK noise.
         # Only map them if they can be resolved to an actual repo file without guessing.
         path = match.group("path")
         line_no = match.group("line")
