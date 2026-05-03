@@ -1,5 +1,6 @@
 import re
 import os
+import glob
 import subprocess
 from typing import List, Dict
 
@@ -19,6 +20,11 @@ LIB_DART_REGEX = re.compile(
 #   #3 Widget.build (package:flutter/src/widgets/framework.dart:123:45)
 PACKAGE_DART_REGEX = re.compile(
     r'#\d+\s+(?P<method>[\w.<>\s$]+)\s+\(package:(?P<package>[\w_]+)/(?P<path>.*?\.dart):(?P<line>\d+)(?::\d+)?\)'
+)
+
+# Crashlytics-style short paths: (my_widget.dart:42) — project lib only, not (lib/...) or (package:...)
+BARE_DART_REGEX = re.compile(
+    r'#\d+\s+(?P<method>[\w.<>\s$]+)\s+\((?!(?:lib/|package:))(?P<file>[a-zA-Z0-9_]+\.dart):(?P<line>\d+)(?::\d+)?\)'
 )
 
 ANDROID_REGEX = re.compile(
@@ -98,6 +104,54 @@ def is_noise_frame(class_name: str) -> bool:
 # Dart Parser
 # ==============================
 
+def _dart_file_declares_pascal_symbol(abs_path: str, head: str) -> bool:
+    """True if this source file declares class/mixin/extension named head (word boundaries)."""
+    if not head or not head[0].isupper():
+        return False
+    he = re.escape(head)
+    try:
+        with open(abs_path, "r", encoding="utf-8", errors="ignore") as fh:
+            chunk = fh.read(262144)
+    except OSError:
+        return False
+    if re.search(rf"\bclass\s+{he}\b", chunk):
+        return True
+    if re.search(rf"\bmixin\s+{he}\b", chunk):
+        return True
+    if re.search(rf"\bextension\s+{he}\b", chunk):
+        return True
+    return False
+
+
+def resolve_dart_basename_under_lib(basename: str, method: str) -> str | None:
+    """Resolve a short stack filename to a path under lib/ only. Returns repo-relative posix path or None."""
+    lib_abs = os.path.join(REPO_ROOT, "lib")
+    if not os.path.isdir(lib_abs):
+        return None
+    pattern = os.path.join(lib_abs, "**", basename)
+    abs_hits = glob.glob(pattern, recursive=True)
+    if not abs_hits:
+        return None
+    rels = [os.path.relpath(p, REPO_ROOT) for p in abs_hits]
+    rels = [r.replace(os.sep, "/") for r in rels if r.replace(os.sep, "/").startswith("lib/")]
+    if not rels:
+        return None
+    head = (method or "").strip().split(".")[0]
+    if not head or not head[0].isupper():
+        return None
+    matches = []
+    for rel in rels:
+        abs_p = os.path.join(REPO_ROOT, rel)
+        if _dart_file_declares_pascal_symbol(abs_p, head):
+            matches.append(rel)
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+    matches.sort(key=len)
+    return matches[0]
+
+
 def parse_dart(stack_lines: List[str]) -> List[Dict]:
     frames = []
 
@@ -112,18 +166,26 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
             continue
 
         match = PACKAGE_DART_REGEX.search(line)
-        if not match:
+        if match:
+            # For AI Crash Fix repo mapping, package: frames are usually Flutter/Dart SDK noise.
+            # Only map them if they can be resolved to an actual repo file without guessing.
+            path = match.group("path")
+            line_no = match.group("line")
+            method = match.group("method").strip()
+
+            candidate = os.path.join("lib", path)
+            if file_exists(candidate):
+                frames.append(normalize_frame("dart", candidate.replace(os.sep, "/"), line_no, method))
             continue
 
-        # For AI Crash Fix repo mapping, package: frames are usually Flutter/Dart SDK noise.
-        # Only map them if they can be resolved to an actual repo file without guessing.
-        path = match.group("path")
-        line_no = match.group("line")
-        method = match.group("method").strip()
-
-        candidate = os.path.join("lib", path)
-        if file_exists(candidate):
-            frames.append(normalize_frame("dart", candidate, line_no, method))
+        bare = BARE_DART_REGEX.search(line)
+        if bare:
+            basename = bare.group("file")
+            line_no = bare.group("line")
+            method = bare.group("method").strip()
+            resolved = resolve_dart_basename_under_lib(basename, method)
+            if resolved and file_exists(resolved):
+                frames.append(normalize_frame("dart", resolved, line_no, method))
 
     return frames
 

@@ -35,12 +35,14 @@ def generate_pr_node(state: CrashState):
         return state
 
     jira_issue_id = state.get("jira_issue_id")
-    if not jira_issue_id or not str(jira_issue_id).strip():
+    if state.get("skip_jira_creation"):
+        jira_issue_id = ""
+    if not state.get("skip_jira_creation") and (not jira_issue_id or not str(jira_issue_id).strip()):
         state["pr_error"] = "Missing jira_issue_id; skipping PR creation."
         return state
 
     try:
-        jira = str(jira_issue_id).strip().upper()
+        jira = str(jira_issue_id).strip().upper() or "NOJIRA"
         git = GitService()
 
         # --- Step 1: LLM proposes MR title, description, and git commit subject (title is used for branch slug). ---
