@@ -65,7 +65,8 @@ def USER_PROMPT(prompt_input):
     - Only include changed lines (minimal diff); do not paste unchanged full files.
     - Context lines in hunks must match the current code shown in REPO CONTEXT exactly (whitespace-sensitive).
     - Prefer also including a `diff --git a/<path> b/<path>` header per file when multiple files change (recommended for `git apply`).
-    - Use LF newlines. End the patch with a trailing newline.
+    - Use LF newlines between every diff line (the string must contain real newline characters, not a single long line with spaces where newlines belong).
+    - End the patch with a trailing newline.
     - Do not wrap the patch in markdown code fences inside the JSON string.
 
     ### Example shape of "fix" (string value only; escape as JSON requires)

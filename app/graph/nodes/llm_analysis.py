@@ -1,9 +1,11 @@
 from app.services.ai_service import LLMService
+from app.services.crash_store import CrashStore
 
 from app.prompts.prompts import SYSTEM_PROMPT, USER_PROMPT
 from app.utils.llm_helpers import parse_json, extract_top_commits
 
 llm = LLMService()
+crash_store = CrashStore()
 
 
 def llm_analysis(state):
@@ -25,5 +27,9 @@ def llm_analysis(state):
     state["confidence"] = parsed["confidence"]
     state["fix_suggestion"] = parsed["fix_suggestion"]
     state["llm_explanation"] = parsed["explanation"]
+
+    cid = state.get("crash_id")
+    if cid:
+        crash_store.set_pipeline_flags(cid, analysis_done=True)
 
     return state

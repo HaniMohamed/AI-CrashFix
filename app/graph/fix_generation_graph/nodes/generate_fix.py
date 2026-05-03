@@ -2,7 +2,10 @@ from app.graph.state import CrashState
 
 from app.prompts.fix_generation_prompts import SYSTEM_PROMPT, USER_PROMPT
 from app.services.ai_service import LLMService
+from app.services.crash_store import CrashStore
 from app.utils.llm_helpers import parse_json
+
+crash_store = CrashStore()
 
 
 def _normalize_unified_diff_fix(fix: str | None) -> str | None:
@@ -65,4 +68,9 @@ def generate_fix_node(state: CrashState):
     state["fix_tests"] = parsed.get("tests", [])
     state["fix_iteration_count"] = state.get("fix_iteration_count", 0) + 1
     state.setdefault("fix_max_iterations", 3)
+
+    cid = state.get("crash_id")
+    if cid and normalized and str(normalized).lower() != "insufficient evidence":
+        crash_store.set_pipeline_flags(cid, fix_generated=True)
+
     return state

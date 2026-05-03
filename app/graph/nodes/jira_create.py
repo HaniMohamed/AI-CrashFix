@@ -61,6 +61,11 @@ def jira_create(state):
         mock=bool(state.get("mock")),
     )
     state["jira_issue_id"] = issue.get("id")
-    if state["jira_issue_id"]:
-        crash_store.mark_processed(state["crash_id"], state["jira_issue_id"])
+    cid = state.get("crash_id")
+    if cid and state.get("jira_issue_id"):
+        crash_store.set_pipeline_flags(
+            cid,
+            jira_created=True,
+            jira_issue_id=str(state["jira_issue_id"]),
+        )
     return state

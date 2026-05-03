@@ -6,10 +6,8 @@ from app.graph.nodes.repo_context import repo_context
 from app.graph.nodes.llm_analysis import llm_analysis
 from app.graph.nodes.jira_create import jira_create
 from app.graph.nodes.git_regression import git_regression
-from app.services.crash_store import CrashStore
 from app.graph.observability import instrument_node, instrument_router
 
-crash_store = CrashStore()
 
 def build_graph():
     graph = StateGraph(CrashState)
