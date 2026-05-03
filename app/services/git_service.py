@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import ssl
 import subprocess
 import tempfile
@@ -19,6 +20,49 @@ from app.config import (
     MAIN_BRANCH,
     REPO_ROOT,
 )
+
+_RE_UNIFIED_HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@\s*$")
+
+
+def _repair_unified_diff_hunk_counts(text: str) -> str:
+    """
+    Rewrite @@ hunk headers so old/new line counts match the hunk body.
+    LLMs often emit wrong counts (e.g. +68,5 with only four '+' lines), which makes `git apply` fail with "corrupt patch".
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = _RE_UNIFIED_HUNK_HEADER.match(line)
+        if not m:
+            out.append(line)
+            i += 1
+            continue
+        old_start = int(m.group(1))
+        new_start = int(m.group(3))
+        j = i + 1
+        body: list[str] = []
+        while j < len(lines):
+            L = lines[j]
+            if not L:
+                break
+            c0 = L[0]
+            if c0 in (" ", "+", "-"):
+                body.append(L)
+                j += 1
+                continue
+            if c0 == "\\" and "No newline" in L:
+                body.append(L)
+                j += 1
+                continue
+            break
+        old_count = sum(1 for L in body if L[0] in (" ", "-"))
+        new_count = sum(1 for L in body if L[0] in (" ", "+"))
+        out.append(f"@@ -{old_start},{old_count} +{new_start},{new_count} @@")
+        out.extend(body)
+        i = j
+    return "\n".join(out)
 
 
 class GitService:
@@ -265,6 +309,7 @@ class GitService:
         Make LLM-produced diffs more "git apply"-friendly.
         - Converts CRLF to LF
         - If text contains literal '\\n' but no real newlines, decode escapes
+        - Fixes @@ hunk line counts when they disagree with the hunk body (common LLM mistake)
         - Ensures trailing newline
         - If patch begins with ---/+++ without a 'diff --git' header, prepend one
         """
@@ -293,6 +338,9 @@ class GitService:
                     header = f"diff --git {old_path} {new_path}\n"
                     text = header + stripped + ("\n" if not stripped.endswith("\n") else "")
 
+        text = _repair_unified_diff_hunk_counts(text)
+        if text and not text.endswith("\n"):
+            text += "\n"
         return text
 
     def apply_unified_diff(self, diff_text: str) -> None:
@@ -340,17 +388,28 @@ class GitService:
         if not status:
             raise RuntimeError("Diff applied cleanly but produced no working tree changes.")
 
-    def commit_all(self, message: str) -> None:
+    def commit_changes(self, message: str, paths: list[str] | None = None) -> None:
+        """
+        Stage and commit only the fix-related paths (no `git add -A`).
+        With `paths`, runs `git add -- <paths>`. With an empty list, falls back to `git add -u`
+        (tracked modifications only — use when `paths` is unknown but the tree is otherwise clean).
+        """
         if not message or not message.strip():
             raise ValueError("commit message is required")
+        msg = message.strip()
 
-        self._run_git(["add", "-A"])
+        spec = list(dict.fromkeys(p.strip() for p in (paths or []) if p and str(p).strip()))
+        if spec:
+            self._run_git(["add", "--", *spec])
+        else:
+            self._run_git(["add", "-u"])
+
         status = self._run_git(["status", "--porcelain"]).strip()
         if not status:
-            raise RuntimeError("No changes to commit after applying fix.")
+            raise RuntimeError("No changes to commit after staging.")
 
         try:
-            self._run_git(["commit", "-m", message.strip()])
+            self._run_git(["commit", "-m", msg])
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to commit changes.\n\n{e.output}") from e
 

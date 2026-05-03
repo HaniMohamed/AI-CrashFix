@@ -9,21 +9,22 @@ def PR_SYSTEM_PROMPT():
     - Do NOT invent files, code, stack frames, tests, or results not present in the input.
     - Prefer clear, specific, non-fluffy language. Avoid marketing tone.
     - If information is missing, omit that section instead of guessing.
-    - Keep the title under 72 characters when possible.
+    - Keep pr_title and commit_message under 72 characters when possible (single-line commit subject).
 
     OUTPUT:
     Return JSON ONLY in this format:
 
     {
       "pr_title": "...",
-      "pr_body": "..."
+      "pr_body": "...",
+      "commit_message": "..."
     }
     """
 
 
 def PR_FIX_PROMPT_INPUT(prompt_input):
     return f"""
-    Generate a PR title and PR body for this fix.
+    Generate a PR title, PR body, and a one-line git commit message (subject) for this fix.
 
     Use these CrashState fields (some may be empty):
 
@@ -43,10 +44,14 @@ def PR_FIX_PROMPT_INPUT(prompt_input):
     {prompt_input.get("generated_fix")}
 
     REQUIREMENTS:
-    - Title format:
+    - pr_title format:
       - If jira_ticket_id is present: "<JIRA>: <imperative summary>"
       - Else: "<crash_id>: <imperative summary>"
-    - Body format (Markdown), include sections when applicable:
+    - commit_message format (single line, for `git commit -m`; no body paragraph, no markdown):
+      - If jira_ticket_id is present: "<JIRA>: <imperative summary>" (may match pr_title or be slightly shorter)
+      - Else: "<crash_id>: <imperative summary>"
+      - Imperative mood (e.g. "Fix null check in …" not "Fixed …").
+    - pr_body format (Markdown), include sections when applicable:
       - ## Summary (what & why)
       - ## Root cause
       - ## Fix
