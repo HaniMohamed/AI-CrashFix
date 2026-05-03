@@ -9,13 +9,15 @@ def SYSTEM_PROMPT():
     - Do NOT invent files, commits, or functions.
     - If evidence is insufficient, explicitly say "insufficient evidence".
     - Every conclusion must be backed by provided stacktrace or code context.
+    - The fix you propose must be expressed as a git-style unified diff (minimal hunks), suitable for `git apply` from repo root.
     """
     
 
 def USER_PROMPT(prompt_input):
     return f"""
-    You are generating a minimal, high-confidence fix for a production crash in a real codebase.
-    Use ONLY the evidence provided below. If you cannot determine a safe fix, output "insufficient evidence".
+    You are modifying an existing codebase (paths and snippets appear in REPO CONTEXT below).
+    Generate a minimal, high-confidence fix for a production crash. Use ONLY the evidence provided.
+    If you cannot determine a safe fix, set the JSON "fix" field to exactly: insufficient evidence
 
     ### CRASH METADATA
     - crash_id: {prompt_input.get("crash_id")}
@@ -54,8 +56,29 @@ def USER_PROMPT(prompt_input):
 
     ---
 
-    ## What to produce
-    Return a fix proposal that can be applied directly to the repo context as a UNIFIED DIFF patch.
+    ## Unified diff rules (for the JSON "fix" string)
+    You are modifying an existing codebase. The "fix" value must be ONLY the patch text: a valid unified diff, no prose inside that string.
+
+    Rules:
+    - Include file paths using git prefixes: lines starting with `--- a/<path>` and `+++ b/<path>` for each file (paths must exist in REPO CONTEXT).
+    - Use correct unified diff format: `---`, `+++`, and `@@ -start,count +start,count @@` hunk headers with accurate line counts.
+    - Only include changed lines (minimal diff); do not paste unchanged full files.
+    - Context lines in hunks must match the current code shown in REPO CONTEXT exactly (whitespace-sensitive).
+    - Prefer also including a `diff --git a/<path> b/<path>` header per file when multiple files change (recommended for `git apply`).
+    - Use LF newlines. End the patch with a trailing newline.
+    - Do not wrap the patch in markdown code fences inside the JSON string.
+
+    ### Example shape of "fix" (string value only; escape as JSON requires)
+    --- a/lib/services/api.dart
+    +++ b/lib/services/api.dart
+    @@ -10,7 +10,7 @@
+       Future<String> fetchData() async {{
+    -    final timeout = Duration(seconds: 25);
+    +    final timeout = Duration(seconds: 120);
+         return await http.get(url).timeout(timeout);
+       }}
+
+    ## What to produce (substance)
     Prefer the smallest change that:
     - prevents the crash
     - preserves intended behavior (do not invent new product requirements)
@@ -63,15 +86,13 @@ def USER_PROMPT(prompt_input):
 
     ## Guardrails
     - Do not reference files/functions that are not present in REPO CONTEXT.
-    - Do not paste entire files; include only the minimal diff hunks needed.
-    - If multiple fixes are plausible, choose the lowest-risk one and briefly state the trade-off.
-    - If evidence is insufficient, set fix to exactly "insufficient evidence".
+    - If multiple fixes are plausible, choose the lowest-risk one and briefly state the trade-off in "rationale".
 
     ## Output format (STRICT)
-    Return JSON ONLY (no markdown, no backticks, no explanations outside JSON).
+    Return JSON ONLY (no markdown fences around the whole response, no backticks, no explanations outside JSON).
 
     {{
-      "fix": "A unified diff that can be applied with `git apply` from repo root. Must include file paths and @@ hunks. If insufficient evidence, set to exactly: insufficient evidence",
+      "fix": "<unified diff as above, OR exactly the phrase insufficient evidence>",
       "impacted_files": ["relative/path/from/repo_root.ext"],
       "rationale": "1-3 sentences, evidence-based.",
       "risk": "low|medium|high",
