@@ -127,23 +127,52 @@ class CrashlyticsService:
         legacy = f'logName="projects/{project_id}/logs/crashlytics.googleapis.com%2Fcrash_events"'
         fatal = '(jsonPayload.issue.errorType="FATAL" OR jsonPayload.errorType="FATAL")'
         filter_str = f"({fb} OR {legacy}) AND {fatal}"
+        # Many consecutive log rows can be the same Crashlytics issue; fetch extra and keep one
+        # row per ``jsonPayload.issue.id`` (most recent first due to order_by).
+        lim = int(limit)
+        max_fetch = min(max(lim * 40, lim), 1000)
         entries = self._logging_client.list_entries(
             filter_=filter_str,
-            max_results=int(limit),
+            max_results=max_fetch,
             order_by="timestamp desc",
         )
 
         crashes: list[dict] = []
+        seen_keys: set[str] = set()
         for entry in entries:
+            if len(crashes) >= lim:
+                break
             payload = self._logging_entry_payload_dict(entry)
             if not self._logging_payload_is_fatal_crash(payload):
                 continue
             row = self._logging_payload_to_row(payload)
             if not row:
                 continue
+            key = self._cloud_logging_issue_group_key(payload, entry)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             crashes.append(self._map_row(row))
 
         return crashes
+
+    @staticmethod
+    def _cloud_logging_issue_group_key(payload: dict, entry) -> str:
+        """
+        Stable key for de-duplicating Cloud Logging crash rows: prefer Firebase ``issue.id``,
+        else fall back to log entry identity so we do not merge unrelated events.
+        """
+        if isinstance(payload, dict):
+            issue = payload.get("issue")
+            if isinstance(issue, dict) and issue.get("id") is not None:
+                sid = str(issue["id"]).strip()
+                if sid:
+                    return f"issue:{sid}"
+        ins = getattr(entry, "insert_id", None)
+        if ins:
+            return f"entry:{ins}"
+        ts = getattr(entry, "timestamp", None)
+        return f"fallback:{ts!s}:{id(entry)}"
 
     @staticmethod
     def _logging_payload_is_fatal_crash(payload: dict) -> bool:
