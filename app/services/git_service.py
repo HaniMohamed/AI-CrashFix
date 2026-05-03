@@ -24,6 +24,76 @@ from app.config import (
 _RE_UNIFIED_HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@\s*$")
 
 
+def _needs_unflatten_unified_diff(text: str) -> bool:
+    """True when --- / +++ / @@ or hunk rows are glued without newlines (common malformed LLM output)."""
+    if not text or not text.strip():
+        return False
+    if re.search(r"---\s+a/\S+\s+\+\+\+", text):
+        return True
+    if re.search(r"\+\+\+\s+b/\S+\s+@@", text):
+        return True
+    if re.search(r"@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?!\n)", text):
+        return True
+    return False
+
+
+def _unflatten_llm_unified_diff(text: str) -> str:
+    """
+    Insert missing newlines so a flattened pseudo-diff becomes a valid unified diff.
+    Does nothing if the text already looks multi-line structured.
+    """
+    if not _needs_unflatten_unified_diff(text):
+        return text
+    t = text
+    # --- a/path +++ b/path (same physical line)
+    t = re.sub(r"(---\s+a/\S+)\s+(\+\+\+\s+b/\S+)", r"\1\n\2", t)
+    # +++ b/path @@ -...
+    t = re.sub(r"(\+\+\+\s+b/\S+)\s+(@@\s*-)", r"\1\n\2", t)
+    # @@ header not followed by newline (body glued on same line)
+    t = re.sub(r"(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)(?!\n)", r"\1\n", t)
+    # Hunk body: multiple +/- lines concatenated (repeat until stable).
+    # Prefer specific closers before generic `)\s+-` to avoid splitting inside `"),` etc.
+    for _ in range(64):
+        before = t
+        # `}}));` / `}));` / `, }));` before next `-`/`+` hunk line (regex: `}` + N×`)` + `;`)
+        t = re.sub(r"(\}\}\)\);)\s+(-\s)", r"\1\n\2", t)
+        t = re.sub(r"(\}\}\)\);)\s+(\+\s)", r"\1\n\2", t)
+        t = re.sub(r"(,\s*\}\)\);)\s+(-\s)", r"\1\n\2", t)
+        t = re.sub(r"(,\s*\}\)\);)\s+(\+\s)", r"\1\n\2", t)
+        t = re.sub(r"(\}\)\);)\s+(-\s)", r"\1\n\2", t)
+        t = re.sub(r"(\}\)\);)\s+(\+\s)", r"\1\n\2", t)
+        t = re.sub(r"(;)\s+(-\s)", r";\n\2", t)
+        t = re.sub(r"(;)\s+(\+\s)", r";\n\2", t)
+        t = re.sub(r"(})\s+(-\s)", r"}\n\2", t)
+        t = re.sub(r"(})\s+(\+\s)", r"}\n\2", t)
+        t = re.sub(r"(])\s+(-\s)", r"]\n\2", t)
+        t = re.sub(r"(])\s+(\+\s)", r"]\n\2", t)
+        if t == before:
+            break
+    # Second minus/plus line glued after first: "- foo - bar", "+ x + y"
+    t = re.sub(r"(-[^\n]+?)\s+(-\s)", r"\1\n\2", t)
+    t = re.sub(r"(\+[^\n]+?)\s+(\+\s)", r"\1\n\2", t)
+    return _trim_glued_tail_after_plus_line(t)
+
+
+def _trim_glued_tail_after_plus_line(text: str) -> str:
+    """
+    LLMs sometimes paste the next statement onto a '+' line, e.g.
+    `+ return Left(...); } on DioException catch ...` — truncate before `);` when followed by `} on`.
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    for line in lines:
+        if line.startswith("+"):
+            last = None
+            for m in re.finditer(r"\);(?=\s+\}\s+on\b)", line):
+                last = m
+            if last is not None:
+                line = line[: last.end()]
+        out.append(line)
+    return "\n".join(out)
+
+
 def _repair_unified_diff_hunk_counts(text: str) -> str:
     """
     Rewrite @@ hunk headers so old/new line counts match the hunk body.
@@ -309,6 +379,7 @@ class GitService:
         Make LLM-produced diffs more "git apply"-friendly.
         - Converts CRLF to LF
         - If text contains literal '\\n' but no real newlines, decode escapes
+        - Un-flattens diffs where --- / +++ / @@ / hunk rows were glued without newlines
         - Fixes @@ hunk line counts when they disagree with the hunk body (common LLM mistake)
         - Ensures trailing newline
         - If patch begins with ---/+++ without a 'diff --git' header, prepend one
@@ -325,6 +396,7 @@ class GitService:
                 pass
 
         text = text.replace("\r\n", "\n").replace("\r", "\n")
+        text = _unflatten_llm_unified_diff(text)
         if text and not text.endswith("\n"):
             text += "\n"
 
