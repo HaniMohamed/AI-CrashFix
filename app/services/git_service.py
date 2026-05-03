@@ -295,29 +295,10 @@ class GitService:
 
         return text
 
-    def _extract_paths_from_diff(self, diff_text: str) -> list[str]:
-        """
-        Best-effort extraction of impacted file paths from a unified diff.
-        Returns repo-relative paths (without leading a/ or b/).
-        """
-        text = diff_text or ""
-        paths: list[str] = []
-        for line in text.splitlines():
-            if not line.startswith("+++ "):
-                continue
-            p = line[4:].strip()
-            if p == "/dev/null":
-                continue
-            if p.startswith(("a/", "b/")):
-                p = p[2:]
-            if p and p not in paths:
-                paths.append(p)
-        return paths
-
     def apply_unified_diff(self, diff_text: str) -> None:
         diff_text = self._normalize_diff_text(diff_text)
         if not self._looks_like_unified_diff(diff_text):
-            raise ValueError("generated_diff does not look like a unified diff (expected 'diff --git' or '---/+++').")
+            raise ValueError("Input does not look like a unified diff (expected 'diff --git' or '---' / '+++').")
 
         tmp_path: str | None = None
         try:
