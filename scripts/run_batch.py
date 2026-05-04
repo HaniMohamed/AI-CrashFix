@@ -15,7 +15,7 @@ from app.config import CRASHLYTICS_FETCH_BACKEND
 from app.graph.graph_builder import build_graph
 from app.services.crash_store import CrashStore
 from app.services.crashlytics_service import CrashlyticsService
-from app.graph.observability import node_span, ensure_run_id
+from app.graph.observability import ensure_run_id, node_span, record_graph_error
 
 
 def _initial_state_for_crash(
@@ -112,16 +112,21 @@ def main() -> int:
         try:
             with node_span(state, "batch.process_crash"):
                 result = graph.invoke(state)
-            processed += 1
-
-            if args.print_results:
-                pprint(result, sort_dicts=False, width=120)
-
-            crash_store.update_result(crash_id, result)
-        except Exception:
+        except Exception as e:
+            record_graph_error(state, "graph.invoke", e)
             failed += 1
             # node_span already logged the error; keep moving to next crash.
             continue
+
+        processed += 1
+
+        if args.print_results:
+            pprint(result, sort_dicts=False, width=120)
+
+        try:
+            crash_store.update_result(crash_id, result)
+        except Exception:
+            pass
 
     with node_span(
         batch_state,

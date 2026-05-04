@@ -3,6 +3,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -84,6 +85,13 @@ def ensure_run_id(state: Dict[str, Any]) -> str:
         run_id = uuid.uuid4().hex[:12]
         state["graph_run_id"] = run_id
     return str(run_id)
+
+
+def record_graph_error(state: Dict[str, Any], where: str, exc: BaseException) -> None:
+    """Set `graph_error` once (first failure wins) so outer spans do not mask node errors."""
+    if state.get("graph_error"):
+        return
+    state["graph_error"] = f"{where}: {type(exc).__name__}: {exc}"
 
 
 def _shape(value: Any) -> Any:
@@ -198,6 +206,7 @@ def node_span(state: Dict[str, Any], node: str, *, extra: Optional[Dict[str, Any
                 "extra": _safe_json(extra) if extra else None,
             }
         )
+        record_graph_error(state, node, e)
         raise
     else:
         dt_ms = int((time.perf_counter() - t0) * 1000)
@@ -243,8 +252,13 @@ def node_span(state: Dict[str, Any], node: str, *, extra: Optional[Dict[str, Any
 
 def instrument_node(node: str, fn: Callable[[Dict[str, Any]], Dict[str, Any]]) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
     def _wrapped(state: Dict[str, Any]) -> Dict[str, Any]:
-        with node_span(state, node):
-            return fn(state)
+        if not state.get("graph_run_start_time"):
+            state["graph_run_start_time"] = datetime.now(timezone.utc).isoformat()
+        try:
+            with node_span(state, node):
+                return fn(state)
+        finally:
+            state["graph_run_end_time"] = datetime.now(timezone.utc).isoformat()
 
     _wrapped.__name__ = getattr(fn, "__name__", "wrapped")
     _wrapped.__doc__ = getattr(fn, "__doc__", None)
@@ -255,7 +269,11 @@ def instrument_router(name: str, router: Callable[[Dict[str, Any]], Any]) -> Cal
     def _wrapped(state: Dict[str, Any]) -> Any:
         run_id = ensure_run_id(state)
         t0 = time.perf_counter()
-        route = router(state)
+        try:
+            route = router(state)
+        except Exception as e:
+            record_graph_error(state, f"router:{name}", e)
+            raise
         dt_ms = int((time.perf_counter() - t0) * 1000)
         log = _logger()
 

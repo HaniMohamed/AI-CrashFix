@@ -39,6 +39,7 @@ from app.graph.graph_builder import build_graph
 from app.graph.observability import (
     ensure_run_id,
     node_span,
+    record_graph_error,
     register_event_sink,
     unregister_event_sink,
 )
@@ -344,10 +345,7 @@ def _stream_one_crash(
     final_state: Dict[str, Any] = state
 
     try:
-        with node_span(
-            {"graph_run_id": run_id, "crash_id": crash_id},
-            "batch.process_crash",
-        ):
+        with node_span(state, "batch.process_crash"):
             # `stream_mode="values"` yields the full CrashState after each top-level
             # node. Inner subgraph nodes still surface as node_started/node_completed
             # via the observability sink (no extra snapshot per inner node).
@@ -372,23 +370,9 @@ def _stream_one_crash(
                     }
 
         yield from _drain(pending)
-
-        if crash_id:
-            try:
-                crash_store.update_result(crash_id, final_state)
-            except Exception:
-                # Persistence failure must not break the stream.
-                pass
-
-        counters["processed"] += 1
-        yield {
-            "type": CRASH_COMPLETED,
-            "run_id": run_id,
-            "crash_id": crash_id,
-            "final_state": redact_state(final_state),
-        }
     except Exception as e:
         yield from _drain(pending)
+        record_graph_error(state, "graph.stream", e)
         counters["failed"] += 1
         yield {
             "type": CRASH_FAILED,
@@ -396,3 +380,19 @@ def _stream_one_crash(
             "crash_id": crash_id,
             "error": {"type": type(e).__name__, "message": str(e)},
         }
+        return
+
+    if crash_id:
+        try:
+            crash_store.update_result(crash_id, final_state)
+        except Exception:
+            # Persistence failure must not break the stream.
+            pass
+
+    counters["processed"] += 1
+    yield {
+        "type": CRASH_COMPLETED,
+        "run_id": run_id,
+        "crash_id": crash_id,
+        "final_state": redact_state(final_state),
+    }
