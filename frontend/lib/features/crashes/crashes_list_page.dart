@@ -37,91 +37,115 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
     final query = ref.watch(crashesQueryProvider);
     final pageAsync = ref.watch(crashesProvider);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.xxl,
-        AppSpacing.xl,
-        AppSpacing.xxl,
-        AppSpacing.xxxl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Filters(
-            search: _search,
-            current: query,
-            onChanged: (q) =>
-                ref.read(crashesQueryProvider.notifier).state = q,
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          GlassCard(
-            padding: EdgeInsets.zero,
-            child: pageAsync.when(
-              loading: () => Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: Column(
-                  children: [
-                    for (var i = 0; i < 6; i++) ...[
-                      const LoadingShimmer(height: 36),
-                      const SizedBox(height: AppSpacing.sm),
+    return RefreshIndicator(
+      color: palette.primary,
+      backgroundColor: palette.surface2,
+      onRefresh: () async {
+        ref.invalidate(crashesProvider);
+        await ref.read(crashesProvider.future);
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xxl,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+          AppSpacing.xxxl,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Crash inventory',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Refresh list',
+                  onPressed: () => ref.invalidate(crashesProvider),
+                  icon: Icon(Icons.refresh, color: palette.textSecondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _Filters(
+              search: _search,
+              current: query,
+              onChanged: (q) =>
+                  ref.read(crashesQueryProvider.notifier).state = q,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            GlassCard(
+              padding: EdgeInsets.zero,
+              child: pageAsync.when(
+                loading: () => Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xl),
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < 6; i++) ...[
+                        const LoadingShimmer(height: 36),
+                        const SizedBox(height: AppSpacing.sm),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              error: (e, _) => Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: ErrorBanner(
-                  message: 'Failed to load crashes: $e',
-                  onRetry: () => ref.invalidate(crashesProvider),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: ErrorBanner(
+                    message: 'Failed to load crashes: $e',
+                    onRetry: () => ref.invalidate(crashesProvider),
+                  ),
                 ),
-              ),
-              data: (page) {
-                if (page.items.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxxl),
-                    child: const EmptyState(
-                      icon: Icons.bug_report_outlined,
-                      title: 'No crashes match these filters',
-                      subtitle: 'Adjust filters or run the pipeline to ingest more crashes.',
-                    ),
-                  );
-                }
-                final filtered = _filterClient(page.items, _search.text);
-                return Column(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: palette.surface1,
-                        border: Border(
-                          bottom: BorderSide(color: palette.border),
+                data: (page) {
+                  if (page.items.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxxl),
+                      child: const EmptyState(
+                        icon: Icons.bug_report_outlined,
+                        title: 'No crashes match these filters',
+                        subtitle: 'Adjust filters or run the pipeline to ingest more crashes.',
+                      ),
+                    );
+                  }
+                  final filtered = _filterClient(page.items, _search.text);
+                  return Column(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: palette.surface1,
+                          border: Border(
+                            bottom: BorderSide(color: palette.border),
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                          vertical: AppSpacing.md,
+                        ),
+                        child: Row(
+                          children: [
+                            _HeaderCell(label: 'Crash ID', flex: 4),
+                            _HeaderCell(label: 'Status', flex: 2),
+                            _HeaderCell(label: 'Pipeline', flex: 3),
+                            _HeaderCell(label: 'Platform', flex: 2),
+                            _HeaderCell(label: 'Updated', flex: 2),
+                            _HeaderCell(label: '', flex: 1),
+                          ],
                         ),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.lg,
-                        vertical: AppSpacing.md,
+                      ...filtered.map(_buildRow),
+                      Padding(
+                        padding: const EdgeInsets.all(AppSpacing.lg),
+                        child: _Pager(query: query, ref: ref, count: page.count),
                       ),
-                      child: Row(
-                        children: [
-                          _HeaderCell(label: 'Crash ID', flex: 4),
-                          _HeaderCell(label: 'Status', flex: 2),
-                          _HeaderCell(label: 'Pipeline', flex: 3),
-                          _HeaderCell(label: 'Platform', flex: 2),
-                          _HeaderCell(label: 'Updated', flex: 2),
-                          _HeaderCell(label: '', flex: 1),
-                        ],
-                      ),
-                    ),
-                    ...filtered.map(_buildRow),
-                    Padding(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      child: _Pager(query: query, ref: ref, count: page.count),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

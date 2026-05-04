@@ -14,7 +14,7 @@ class AppTopbar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
-    final settings = ref.watch(appSettingsProvider);
+    final settings = ref.watch(appSettingsProvider).requireValue;
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -260,7 +260,7 @@ class _ThemeToggle extends ConsumerWidget {
   const _ThemeToggle();
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(appSettingsProvider).themeMode;
+    final mode = ref.watch(appSettingsProvider).requireValue.themeMode;
     final isDark = mode == ThemeMode.dark;
     return IconButton(
       tooltip: isDark ? 'Switch to light' : 'Switch to dark',

@@ -1,21 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/providers/analytics_provider.dart';
+import '../../core/providers/crashes_provider.dart';
 import 'sidebar.dart';
 import 'topbar.dart';
 
 /// Layout chrome shared by all top-level routes. Sidebar collapses on small
 /// screens; topbar carries health pill, theme toggle, and base URL popover.
-class AppShell extends StatefulWidget {
+///
+/// When the user switches to `/` or `/crashes`, the corresponding data
+/// providers are invalidated so lists and KPIs refetch without a manual retry.
+class AppShell extends ConsumerStatefulWidget {
   final Widget child;
   final String currentPath;
   const AppShell({super.key, required this.child, required this.currentPath});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   bool _userCollapsed = false;
+
+  @override
+  void didUpdateWidget(AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentPath == widget.currentPath) return;
+    if (widget.currentPath == '/') {
+      ref.read(analyticsProvider.notifier).refresh();
+    } else if (widget.currentPath == '/crashes') {
+      ref.invalidate(crashesProvider);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

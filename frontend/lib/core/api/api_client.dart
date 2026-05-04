@@ -18,9 +18,14 @@ class ApiClient {
 
   static http.Client _defaultClient() {
     if (kIsWeb) {
-      // streamRequests: true ensures POST body is sent and the response body
-      // is exposed as a real Stream<List<int>>.
-      return FetchClient(mode: RequestMode.cors, streamRequests: true);
+      // IMPORTANT: `streamRequests: true` uses a duplex fetch body, which
+      // Chromium only allows over HTTP/2 or HTTP/3. Uvicorn (and most local
+      // dev servers) speak HTTP/1.1, so the browser throws
+      // `TypeError: Failed to fetch` on POST /api/runs.
+      //
+      // `streamRequests: false` still buffers only the *request* body (tiny
+      // JSON here); the *response* is still read as a stream, so NDJSON works.
+      return FetchClient(mode: RequestMode.cors, streamRequests: false);
     }
     return http.Client();
   }

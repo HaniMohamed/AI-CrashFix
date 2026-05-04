@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+@immutable
 class AppSettings {
   final String apiBaseUrl;
   final ThemeMode themeMode;
+
   const AppSettings({required this.apiBaseUrl, required this.themeMode});
 
   AppSettings copyWith({String? apiBaseUrl, ThemeMode? themeMode}) =>
@@ -13,45 +15,29 @@ class AppSettings {
         apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
         themeMode: themeMode ?? this.themeMode,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AppSettings &&
+          apiBaseUrl == other.apiBaseUrl &&
+          themeMode == other.themeMode;
+
+  @override
+  int get hashCode => Object.hash(apiBaseUrl, themeMode);
 }
 
-class AppSettingsNotifier extends Notifier<AppSettings> {
+/// Loads persisted settings **before** emitting [AsyncData], so dependents
+/// like [apiClientProvider] are not built then torn down when prefs finish
+/// loading (which used to dispose the first [ApiClient] mid-request).
+class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
   static const _kBaseUrl = 'app.api_base_url';
   static const _kThemeMode = 'app.theme_mode';
 
-  String get _defaultBaseUrl {
+  static String defaultBaseUrl() {
     const fromDefine = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (fromDefine.isNotEmpty) return fromDefine;
     return 'http://localhost:8000';
-  }
-
-  @override
-  AppSettings build() {
-    Future.microtask(_load);
-    return AppSettings(apiBaseUrl: _defaultBaseUrl, themeMode: ThemeMode.dark);
-  }
-
-  Future<void> _load() async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      final url = p.getString(_kBaseUrl) ?? _defaultBaseUrl;
-      final mode = _parseMode(p.getString(_kThemeMode));
-      state = AppSettings(apiBaseUrl: url, themeMode: mode);
-    } catch (e) {
-      if (kDebugMode) debugPrint('AppSettings load error: $e');
-    }
-  }
-
-  Future<void> setBaseUrl(String url) async {
-    state = state.copyWith(apiBaseUrl: url);
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_kBaseUrl, url);
-  }
-
-  Future<void> setThemeMode(ThemeMode mode) async {
-    state = state.copyWith(themeMode: mode);
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_kThemeMode, mode.name);
   }
 
   ThemeMode _parseMode(String? raw) {
@@ -61,11 +47,59 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       case 'dark':
         return ThemeMode.dark;
       case 'system':
+        return ThemeMode.system;
       default:
         return ThemeMode.dark;
     }
   }
+
+  @override
+  Future<AppSettings> build() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final raw = p.getString(_kBaseUrl);
+      final url = (raw == null || raw.trim().isEmpty)
+          ? defaultBaseUrl()
+          : raw.trim();
+      final mode = _parseMode(p.getString(_kThemeMode));
+      return AppSettings(apiBaseUrl: url, themeMode: mode);
+    } catch (e) {
+      if (kDebugMode) debugPrint('AppSettings load error: $e');
+      return AppSettings(
+        apiBaseUrl: defaultBaseUrl(),
+        themeMode: ThemeMode.dark,
+      );
+    }
+  }
+
+  Future<void> setBaseUrl(String url) async {
+    final trimmed = url.trim();
+    final normalized = trimmed.isEmpty ? defaultBaseUrl() : trimmed;
+    final prev = state.valueOrNull;
+    if (prev == null) return;
+    final next = prev.copyWith(apiBaseUrl: normalized);
+    if (next == prev) {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_kBaseUrl, normalized);
+      return;
+    }
+    state = AsyncData(next);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kBaseUrl, normalized);
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    final prev = state.valueOrNull;
+    if (prev == null) return;
+    final next = prev.copyWith(themeMode: mode);
+    if (next == prev) return;
+    state = AsyncData(next);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kThemeMode, mode.name);
+  }
 }
 
 final appSettingsProvider =
-    NotifierProvider<AppSettingsNotifier, AppSettings>(AppSettingsNotifier.new);
+    AsyncNotifierProvider<AppSettingsNotifier, AppSettings>(
+  AppSettingsNotifier.new,
+);

@@ -201,7 +201,8 @@ class RunSessionNotifier extends Notifier<RunSession> {
             latestState: initialState,
           );
           if (!s.crashOrder.contains(crashId)) {
-            s = s.copyWith(crashOrder: [...s.crashOrder, crashId]);
+            // Newest crash cards at the top (batch processes multiple in parallel).
+            s = s.copyWith(crashOrder: [crashId, ...s.crashOrder]);
           }
         case StateSnapshotEvent(:final state):
           existing = existing.copyWith(latestState: state);

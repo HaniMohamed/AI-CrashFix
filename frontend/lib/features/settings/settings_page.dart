@@ -19,7 +19,7 @@ class SettingsPage extends ConsumerWidget {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
     final config = ref.watch(configProvider);
-    final settings = ref.watch(appSettingsProvider);
+    final settings = ref.watch(appSettingsProvider).requireValue;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(

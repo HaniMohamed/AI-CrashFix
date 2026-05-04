@@ -27,6 +27,7 @@ class DashboardPage extends ConsumerWidget {
       backgroundColor: palette.surface2,
       onRefresh: () => ref.read(analyticsProvider.notifier).refresh(),
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.xxl,
           AppSpacing.xl,
@@ -36,6 +37,14 @@ class DashboardPage extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: 'Refresh dashboard',
+                onPressed: () => ref.read(analyticsProvider.notifier).refresh(),
+                icon: Icon(Icons.refresh, color: palette.textSecondary),
+              ),
+            ),
             const HeroHeader(),
             const SizedBox(height: AppSpacing.xl),
             async.when(

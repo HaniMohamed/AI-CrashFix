@@ -19,17 +19,32 @@ _PIPELINE_FLAG_COLUMNS = (
 
 
 class CrashStore:
-    """SQLite-backed progress for each crash through the fix pipeline."""
+    """SQLite-backed progress for each crash through the fix pipeline.
+
+    Connections are **not** kept open on ``self``: every operation uses a
+    short-lived ``sqlite3.connect(self.db_path)`` in the **calling thread**.
+    That keeps the store safe when the LangGraph pipeline runs on a worker
+    thread (e.g. ``POST /api/runs``) while HTTP handlers or imports created
+    ``CrashStore()`` on another thread.
+    """
 
     def __init__(self, db_path=f"db/{BQ_PROJECT_ID}_crash_store.db"):
-        Path(db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
-        self.db_path = str(db_path)
-        self.conn = sqlite3.connect(db_path)
-        self._create_table()
-        self._migrate_columns()
+        path = Path(db_path).expanduser().resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = str(path)
+        self._ensure_schema()
 
-    def _create_table(self):
-        self.conn.execute(
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.db_path, timeout=30.0)
+
+    def _ensure_schema(self) -> None:
+        with self._connect() as conn:
+            self._create_table(conn)
+            self._migrate_columns(conn)
+            conn.commit()
+
+    def _create_table(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
             """
         CREATE TABLE IF NOT EXISTS crashes (
             crash_id TEXT PRIMARY KEY,
@@ -50,39 +65,39 @@ class CrashStore:
         )
         """
         )
-        self.conn.commit()
 
-    def _migrate_columns(self):
-        cur = self.conn.execute("PRAGMA table_info(crashes)")
+    def _migrate_columns(self, conn: sqlite3.Connection) -> None:
+        cur = conn.execute("PRAGMA table_info(crashes)")
         existing = {row[1] for row in cur.fetchall()}
         for name in _PIPELINE_FLAG_COLUMNS:
             if name not in existing:
-                self.conn.execute(
+                conn.execute(
                     f"ALTER TABLE crashes ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0"
                 )
-        self.conn.commit()
 
     def insert_crash(self, crash_id: str):
         """Ensure a row exists for this crash without clobbering existing progress."""
         now = datetime.utcnow().isoformat()
-        self.conn.execute(
-            """
+        with self._connect() as conn:
+            conn.execute(
+                """
         INSERT OR IGNORE INTO crashes (crash_id, created_at, updated_at, status)
         VALUES (?, ?, ?, 'pending')
         """,
-            (crash_id, now, now),
-        )
-        self.conn.commit()
+                (crash_id, now, now),
+            )
+            conn.commit()
 
     def update_result(self, crash_id: str, result: dict):
         now = datetime.utcnow().isoformat()
-        self.conn.execute(
-            """
+        with self._connect() as conn:
+            conn.execute(
+                """
         UPDATE crashes SET result = ?, updated_at = ? WHERE crash_id = ?
         """,
-            (json.dumps(result), now, crash_id),
-        )
-        self.conn.commit()
+                (json.dumps(result), now, crash_id),
+            )
+            conn.commit()
 
     def set_pipeline_flags(
         self,
@@ -124,24 +139,27 @@ class CrashStore:
             vals.append(pr_url)
 
         now = datetime.utcnow().isoformat()
-        if sets:
-            sets.append("updated_at = ?")
-            vals.append(now)
-            vals.append(crash_id)
-            self.conn.execute(
-                f"UPDATE crashes SET {', '.join(sets)} WHERE crash_id = ?",
-                vals,
-            )
-        self._recompute_pipeline_complete(crash_id, now)
-        self.conn.commit()
+        with self._connect() as conn:
+            if sets:
+                sets.append("updated_at = ?")
+                vals.append(now)
+                vals.append(crash_id)
+                conn.execute(
+                    f"UPDATE crashes SET {', '.join(sets)} WHERE crash_id = ?",
+                    vals,
+                )
+            self._recompute_pipeline_complete(conn, crash_id, now)
+            conn.commit()
 
-    def _recompute_pipeline_complete(self, crash_id: str, now_iso: str | None = None) -> None:
+    def _recompute_pipeline_complete(
+        self, conn: sqlite3.Connection, crash_id: str, now_iso: str | None = None
+    ) -> None:
         """
         pipeline_complete when all required steps succeeded (Jira is optional).
         Required: analysis, fix generated, fix validated, diff applied, branch, MR.
         """
         now_iso = now_iso or datetime.utcnow().isoformat()
-        row = self.conn.execute(
+        row = conn.execute(
             f"""
             SELECT {", ".join(c for c in _PIPELINE_FLAG_COLUMNS if c != "pipeline_complete")}
             FROM crashes WHERE crash_id = ?
@@ -168,7 +186,7 @@ class CrashStore:
             and bool(mr_created)
         )
         status = "completed" if complete else "in_progress"
-        self.conn.execute(
+        conn.execute(
             """
             UPDATE crashes
             SET pipeline_complete = ?, status = ?, updated_at = ?
@@ -179,16 +197,16 @@ class CrashStore:
 
     def is_processed(self, crash_id: str) -> bool:
         """True when the full required pipeline finished (Jira not required)."""
-        cursor = self.conn.execute(
-            "SELECT pipeline_complete FROM crashes WHERE crash_id = ?",
-            (crash_id,),
-        )
-        row = cursor.fetchone()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "SELECT pipeline_complete FROM crashes WHERE crash_id = ?",
+                (crash_id,),
+            )
+            row = cursor.fetchone()
         return bool(row and row[0])
 
     # ---- Read-only helpers (used by the API layer) -----------------------------
-    # These open a short-lived connection so they're safe to call from any thread,
-    # without affecting the long-lived `self.conn` used by the write path.
+    # These open a short-lived connection so they're safe to call from any thread.
 
     _ALL_COLUMNS = (
         "crash_id",
@@ -236,7 +254,7 @@ class CrashStore:
         sql += " ORDER BY datetime(updated_at) DESC LIMIT ? OFFSET ?"
         params.extend([int(limit), int(offset)])
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_dict(r, include_result=include_result) for r in rows]
@@ -244,7 +262,7 @@ class CrashStore:
     def get_crash(self, crash_id: str, *, include_result: bool = True) -> dict | None:
         """Return a single crash row (with parsed `result`), or None if missing."""
         cols = ", ".join(self._ALL_COLUMNS) + (", result" if include_result else "")
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 f"SELECT {cols} FROM crashes WHERE crash_id = ?",
@@ -261,7 +279,7 @@ class CrashStore:
         even when the store grows.
         """
         cols = ", ".join(self._ALL_COLUMNS) + ", result"
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(f"SELECT {cols} FROM crashes")
             for row in cursor:
