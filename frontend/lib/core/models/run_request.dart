@@ -6,7 +6,8 @@ class RunRequest {
   final bool mock;
   final bool skipJiraCreation;
   final List<String>? crashIds;
-  final Map<String, dynamic>? crash;
+  /// Single mode: Crashlytics issue id; the API fetches the crash then runs the graph.
+  final String? crashId;
 
   const RunRequest({
     this.mode = RunMode.batch,
@@ -14,7 +15,7 @@ class RunRequest {
     this.mock = false,
     this.skipJiraCreation = false,
     this.crashIds,
-    this.crash,
+    this.crashId,
   });
 
   RunRequest copyWith({
@@ -23,7 +24,7 @@ class RunRequest {
     bool? mock,
     bool? skipJiraCreation,
     List<String>? crashIds,
-    Map<String, dynamic>? crash,
+    String? crashId,
   }) =>
       RunRequest(
         mode: mode ?? this.mode,
@@ -31,7 +32,7 @@ class RunRequest {
         mock: mock ?? this.mock,
         skipJiraCreation: skipJiraCreation ?? this.skipJiraCreation,
         crashIds: crashIds ?? this.crashIds,
-        crash: crash ?? this.crash,
+        crashId: crashId ?? this.crashId,
       );
 
   Map<String, dynamic> toJson() => {
@@ -40,6 +41,7 @@ class RunRequest {
         'mock': mock,
         'skip_jira_creation': skipJiraCreation,
         if (crashIds != null && crashIds!.isNotEmpty) 'crash_ids': crashIds,
-        if (mode == RunMode.single && crash != null) 'crash': crash,
+        if (mode == RunMode.single && (crashId != null && crashId!.trim().isNotEmpty))
+          'crash_id': crashId!.trim(),
       };
 }

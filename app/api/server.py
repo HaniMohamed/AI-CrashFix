@@ -3,7 +3,7 @@
 Endpoints
 ---------
 - ``GET /api/health``                 simple liveness probe
-- ``POST /api/runs``                  run the pipeline (batch or single crash)
+- ``POST /api/runs``                  run the pipeline (batch or single crash by id)
                                       and stream NDJSON events back
 - ``GET /api/crashes``                paged list from the SQLite crash store
 - ``GET /api/crashes/{crash_id}``     full row + parsed result JSON
@@ -62,8 +62,8 @@ class RunRequest(BaseModel):
 
     `mode="batch"`  - mirrors `scripts/run_batch.py`: fetches up to `limit`
                       recent crashes (or mocked) and runs each through the graph.
-    `mode="single"` - runs the graph once for the crash payload provided in
-                      `crash` (used by a UI to re-run / inspect a single crash).
+    `mode="single"` - runs the graph once: loads the crash by ``crash_id`` from
+                      Crashlytics (or falls back to the last persisted ``result`` in SQLite).
     """
 
     mode: str = Field("batch", description="'batch' or 'single'")
@@ -77,12 +77,9 @@ class RunRequest(BaseModel):
             "fetched batch) are processed."
         ),
     )
-    crash: Optional[Dict[str, Any]] = Field(
+    crash_id: Optional[str] = Field(
         None,
-        description=(
-            "Single mode: the crash payload to run "
-            "(crash_id, exception, stacktrace, app_version, device, platform)."
-        ),
+        description="Single mode: Crashlytics issue id to fetch, then run the pipeline.",
     )
 
 
@@ -98,10 +95,10 @@ async def health() -> Dict[str, Any]:
 async def post_runs(req: RunRequest) -> StreamingResponse:
     if req.mode not in ("batch", "single"):
         raise HTTPException(status_code=400, detail=f"unknown mode={req.mode!r}")
-    if req.mode == "single" and not req.crash:
+    if req.mode == "single" and not (req.crash_id or "").strip():
         raise HTTPException(
             status_code=400,
-            detail="mode='single' requires a 'crash' payload in the request body",
+            detail="mode='single' requires a non-empty 'crash_id' in the request body",
         )
 
     return StreamingResponse(
@@ -219,7 +216,7 @@ async def _ndjson_stream(req: RunRequest) -> AsyncIterator[bytes]:
                 mock=req.mock,
                 skip_jira_creation=req.skip_jira_creation,
                 crash_ids=req.crash_ids,
-                crash=req.crash,
+                crash_id=(req.crash_id or "").strip() or None,
             ):
                 fut = asyncio.run_coroutine_threadsafe(queue.put(ev), loop)
                 fut.result()  # propagate back-pressure / cancellation

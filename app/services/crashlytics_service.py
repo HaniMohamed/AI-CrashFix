@@ -82,6 +82,26 @@ class CrashlyticsService:
             return self._fetch_recent_crashes_cloud_logging(limit=limit)
         return self._fetch_recent_crashes_bigquery(limit=limit)
 
+    def fetch_crash_by_id(self, crash_id: str, *, mock: bool = False) -> dict | None:
+        """
+        Return one crash in the same mapped shape as ``fetch_recent_crashes`` items.
+
+        With ``mock=True``, searches generated mock rows (up to 500) for a matching ``issue_id``.
+        Otherwise uses ``CRASHLYTICS_FETCH_BACKEND`` (BigQuery or Cloud Logging).
+        """
+        cid = (crash_id or "").strip()
+        if not cid:
+            return None
+        if mock:
+            for r in self.fetch_recent_crashes_mock_rows(limit=500):
+                rid = r.get("issue_id") or r.get("issueId")
+                if rid is not None and str(rid).strip() == cid:
+                    return self._map_row(r)
+            return None
+        if self._backend == "cloud_logging":
+            return self.fetch_crash_by_id_cloud_logging(cid)
+        return self.fetch_crash_by_id_bigquery(cid)
+
     def fetch_crash_by_id_bigquery(self, crash_id: str) -> dict | None:
         """
         Load the latest fatal Crashlytics event for ``issue_id == crash_id`` from the

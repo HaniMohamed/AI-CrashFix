@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,26 +26,22 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
   bool _mock = false;
   bool _skipJira = true;
   final _crashIdsCtrl = TextEditingController();
-  final _crashJsonCtrl = TextEditingController();
-  String? _jsonError;
+  final _singleCrashIdCtrl = TextEditingController();
+  String? _singleRunError;
 
   @override
   void initState() {
     super.initState();
     if (widget.prefillCrashId != null) {
       _mode = RunMode.single;
-      _crashJsonCtrl.text = const JsonEncoder.withIndent('  ').convert({
-        'crash_id': widget.prefillCrashId,
-        'exception': '',
-        'stacktrace': [],
-      });
+      _singleCrashIdCtrl.text = widget.prefillCrashId!;
     }
   }
 
   @override
   void dispose() {
     _crashIdsCtrl.dispose();
-    _crashJsonCtrl.dispose();
+    _singleCrashIdCtrl.dispose();
     super.dispose();
   }
 
@@ -144,8 +138,8 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
                       onChanged: (v) => setState(() => _skipJira = v),
                     ),
                     const SizedBox(height: AppSpacing.xl),
-                    if (_jsonError != null) ...[
-                      ErrorBanner(message: _jsonError!),
+                    if (_singleRunError != null) ...[
+                      ErrorBanner(message: _singleRunError!),
                       const SizedBox(height: AppSpacing.md),
                     ],
                     Row(
@@ -156,12 +150,12 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
                             ref.read(runSessionProvider.notifier).reset();
                             setState(() {
                               _crashIdsCtrl.clear();
-                              _crashJsonCtrl.clear();
+                              _singleCrashIdCtrl.clear();
                               _mock = false;
                               _skipJira = true;
                               _limit = 10;
                               _mode = RunMode.batch;
-                              _jsonError = null;
+                              _singleRunError = null;
                             });
                           },
                           icon: const Icon(Icons.refresh, size: 16),
@@ -216,55 +210,33 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
 
   List<Widget> _buildSingleFields(AppPalette palette, TextTheme theme) {
     return [
-      Text('Crash payload (JSON)', style: theme.titleMedium),
+      Text('Crashlytics issue id', style: theme.titleMedium),
       const SizedBox(height: AppSpacing.xs),
       Text(
-        'Object containing crash_id, exception, stacktrace, and optional metadata.',
+        'The server loads this issue from Crashlytics (BigQuery or Cloud Logging), '
+        'or reuses the last saved pipeline state from the local store if the issue is not in export.',
         style: theme.bodySmall?.copyWith(color: palette.textSecondary),
       ),
       const SizedBox(height: AppSpacing.sm),
-      Container(
-        decoration: BoxDecoration(
-          color: palette.surface1,
-          borderRadius: AppRadii.all(AppRadii.md),
-          border: Border.all(color: palette.border),
-        ),
-        child: TextField(
-          controller: _crashJsonCtrl,
-          minLines: 12,
-          maxLines: 24,
-          style: AppTypography.mono(color: palette.text),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            contentPadding: EdgeInsets.all(AppSpacing.lg),
-            hintText: '{\n  "crash_id": "...",\n  "exception": "..."\n}',
-          ),
+      TextField(
+        controller: _singleCrashIdCtrl,
+        style: AppTypography.mono(color: palette.text, size: 14),
+        decoration: const InputDecoration(
+          hintText: 'e.g. issue_mock_0001 or your Crashlytics issue id',
         ),
       ),
     ];
   }
 
   void _start() {
-    setState(() => _jsonError = null);
-    Map<String, dynamic>? crash;
+    setState(() => _singleRunError = null);
+    String? singleCrashId;
     List<String>? crashIds;
 
     if (_mode == RunMode.single) {
-      try {
-        final parsed = jsonDecode(_crashJsonCtrl.text.isEmpty ? '{}' : _crashJsonCtrl.text);
-        if (parsed is! Map) {
-          setState(() => _jsonError = 'Crash payload must be a JSON object.');
-          return;
-        }
-        crash = parsed.cast<String, dynamic>();
-        if (crash['crash_id'] is! String || (crash['crash_id'] as String).trim().isEmpty) {
-          setState(() => _jsonError = 'Crash payload requires a non-empty crash_id.');
-          return;
-        }
-      } catch (e) {
-        setState(() => _jsonError = 'Invalid JSON: $e');
+      singleCrashId = _singleCrashIdCtrl.text.trim();
+      if (singleCrashId.isEmpty) {
+        setState(() => _singleRunError = 'Enter a non-empty crash id.');
         return;
       }
     } else {
@@ -284,7 +256,7 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
       mock: _mock,
       skipJiraCreation: _skipJira,
       crashIds: crashIds,
-      crash: crash,
+      crashId: singleCrashId,
     );
 
     ref.read(runSessionProvider.notifier).start(req);

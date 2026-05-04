@@ -81,6 +81,41 @@ def _initial_state_for_crash(
     }
 
 
+def _crash_dict_from_persisted_result(result: Dict[str, Any], crash_id: str) -> Dict[str, Any]:
+    """Rebuild the minimal crash payload the graph expects from a stored ``result`` JSON."""
+    cid = (str(result.get("crash_id") or crash_id or "")).strip()
+    return {
+        "crash_id": cid,
+        "exception": result.get("exception") or "",
+        "stacktrace": result.get("stacktrace") or [],
+        "app_version": result.get("app_version"),
+        "device": result.get("device"),
+        "platform": result.get("platform"),
+        "app_identifier": result.get("app_identifier"),
+        "crashlytics_console_app_id": result.get("crashlytics_console_app_id"),
+    }
+
+
+def _resolve_single_crash_payload(
+    *,
+    crash_store: CrashStore,
+    service: CrashlyticsService,
+    crash_id: str,
+    mock: bool,
+) -> Dict[str, Any] | None:
+    """Load one crash from Crashlytics (or mock), else from SQLite ``result``."""
+    cid = (crash_id or "").strip()
+    if not cid:
+        return None
+    row = service.fetch_crash_by_id(cid, mock=mock)
+    if row is not None:
+        return row
+    st = crash_store.get_crash(cid, include_result=True)
+    if st and isinstance(st.get("result"), dict):
+        return _crash_dict_from_persisted_result(st["result"], cid)
+    return None
+
+
 def stream_run(
     *,
     mode: Literal["batch", "single"],
@@ -88,19 +123,19 @@ def stream_run(
     mock: bool = False,
     skip_jira_creation: bool = False,
     crash_ids: Optional[List[str]] = None,
-    crash: Optional[Dict[str, Any]] = None,
+    crash_id: Optional[str] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Yield NDJSON-ready event dicts for a batch or single-crash run.
 
     Args:
         mode: "batch" runs the same flow as `scripts/run_batch.py`. "single"
-              runs the graph for one crash payload supplied by the caller.
+              fetches one crash by ``crash_id`` then runs the graph.
         limit: max crashes to fetch (batch mode only).
         mock: use the mocked crash list instead of BigQuery / Cloud Logging.
         skip_jira_creation: forwarded to the graph state.
         crash_ids: optional whitelist applied AFTER fetching (batch mode); only
                    crashes whose id appears in this list are processed.
-        crash: required when `mode="single"`; the crash payload to run.
+        crash_id: required when ``mode="single"``; Crashlytics issue id to load.
     """
     graph = build_graph()
     crash_store = CrashStore()
@@ -142,21 +177,50 @@ def stream_run(
                 pending=pending,
             )
         elif mode == "single":
-            if not crash:
+            cid = (crash_id or "").strip()
+            if not cid:
                 yield {
                     "type": ERROR,
                     "run_id": run_id,
                     "error": {
                         "type": "ValueError",
-                        "message": "mode='single' requires a 'crash' payload",
+                        "message": "mode='single' requires crash_id",
                     },
                 }
                 return
+            service = CrashlyticsService()
+            resolved = _resolve_single_crash_payload(
+                crash_store=crash_store,
+                service=service,
+                crash_id=cid,
+                mock=mock,
+            )
+            if not resolved:
+                yield {
+                    "type": ERROR,
+                    "run_id": run_id,
+                    "error": {
+                        "type": "LookupError",
+                        "message": (
+                            f"crash_id={cid!r} not found in Crashlytics"
+                            + (" (mock)" if mock else "")
+                            + " and no persisted result in the local store"
+                        ),
+                    },
+                }
+                return
+            yield from _drain(pending)
+            yield {
+                "type": CRASH_FETCHED,
+                "run_id": run_id,
+                "count": 1,
+                "crash_ids": [cid],
+            }
             yield from _run_single(
                 graph=graph,
                 crash_store=crash_store,
                 run_id=run_id,
-                crash=crash,
+                crash=resolved,
                 mock=mock,
                 skip_jira_creation=skip_jira_creation,
                 pending=pending,
