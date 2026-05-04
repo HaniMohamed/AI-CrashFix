@@ -1,3 +1,6 @@
+import base64
+import binascii
+
 from app.graph.state import CrashState
 
 from app.prompts.fix_generation_prompts import SYSTEM_PROMPT, USER_PROMPT
@@ -6,6 +9,25 @@ from app.services.crash_store import CrashStore
 from app.utils.llm_helpers import parse_json
 
 crash_store = CrashStore()
+
+
+def _decode_fix_field(raw: str | None) -> str | None:
+    """Decode Base64-wrapped fix from JSON, or pass through legacy plain diff / insufficient evidence."""
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    if stripped.lower() == "insufficient evidence":
+        return stripped
+    try:
+        decoded = base64.b64decode(stripped, validate=True)
+    except (binascii.Error, ValueError):
+        return raw
+    try:
+        return decoded.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw
 
 
 def _normalize_unified_diff_fix(fix: str | None) -> str | None:
@@ -50,10 +72,13 @@ def generate_fix_node(state: CrashState):
     llm = LLMService()
     response = llm.call(
         system_prompt=SYSTEM_PROMPT(),
-        user_prompt=USER_PROMPT(state)
+        user_prompt=USER_PROMPT(state),
+        json_mode=True,
     )
     parsed = parse_json(response)
     raw_fix = parsed.get("fix")
+    if isinstance(raw_fix, str):
+        raw_fix = _decode_fix_field(raw_fix)
     normalized = _normalize_unified_diff_fix(raw_fix) if isinstance(raw_fix, str) else None
     state["generated_fix"] = normalized
 
