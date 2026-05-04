@@ -3,10 +3,8 @@ from app.services.llm_providers.base import LLMProvider
 
 try:
     from google import genai  # type: ignore
-    from google.genai import types as genai_types  # type: ignore
 except Exception:  # pragma: no cover
     genai = None
-    genai_types = None
 
 
 class GeminiProvider(LLMProvider):
@@ -17,14 +15,8 @@ class GeminiProvider(LLMProvider):
         # Client uses GEMINI_API_KEY / GOOGLE_API_KEY from env by default.
         self.client = genai.Client(api_key=GOOGLE_API_KEY) if GOOGLE_API_KEY else genai.Client()
 
-    def call(self, system_prompt: str, user_prompt: str, *, json_mode: bool = False) -> str:
+    def call(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-        if json_mode and genai_types is not None:
-            config = genai_types.GenerateContentConfig(response_mime_type="application/json")
-            response = self.client.models.generate_content(
-                model=GEMINI_MODEL, contents=full_prompt, config=config
-            )
-        else:
-            response = self.client.models.generate_content(model=GEMINI_MODEL, contents=full_prompt)
+        response = self.client.models.generate_content(model=GEMINI_MODEL, contents=full_prompt)
         return response.text

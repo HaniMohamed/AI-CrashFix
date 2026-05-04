@@ -56,12 +56,10 @@ def USER_PROMPT(prompt_input):
 
     ---
 
-    ## Unified diff rules (encoded into the JSON "fix" string)
-    You are modifying an existing codebase. The unified diff itself must be ONLY the patch text: a valid unified diff, no prose inside the patch.
+    ## Unified diff rules (for the JSON "fix" string)
+    You are modifying an existing codebase. The "fix" value must be ONLY the patch text: a valid unified diff, no prose inside that string.
 
-    Encoding for JSON (required): the JSON "fix" value must be EITHER the exact phrase insufficient evidence OR the unified diff bytes UTF-8 encoded then Base64-encoded (RFC 4648, standard alphabet). Put the Base64 on one line inside the JSON string (no literal newlines inside the Base64). This avoids broken JSON when the patch contains double-quote characters or other special characters.
-
-    Rules for the patch (before Base64):
+    Rules:
     - Include file paths using git prefixes: lines starting with `--- a/<path>` and `+++ b/<path>` for each file (paths must exist in REPO CONTEXT).
     - Use correct unified diff format: `---`, `+++`, and `@@ -start,count +start,count @@` hunk headers with accurate line counts.
     - Only include changed lines (minimal diff); do not paste unchanged full files.
@@ -69,13 +67,17 @@ def USER_PROMPT(prompt_input):
     - Prefer also including a `diff --git a/<path> b/<path>` header per file when multiple files change (recommended for `git apply`).
     - Use LF newlines between every diff line (the string must contain real newline characters, not a single long line with spaces where newlines belong).
     - End the patch with a trailing newline.
-    - Do not wrap the patch in markdown code fences before encoding.
+    - Do not wrap the patch in markdown code fences inside the JSON string.
 
-    ### Example (patch content before you Base64 it — illustrative only)
+    ### Example shape of "fix" (string value only; escape as JSON requires)
     --- a/lib/services/api.dart
     +++ b/lib/services/api.dart
     @@ -10,7 +10,7 @@
-     ... unified diff lines with any characters including "quotes" ...
+       Future<String> fetchData() async {{
+    -    final timeout = Duration(seconds: 25);
+    +    final timeout = Duration(seconds: 120);
+         return await http.get(url).timeout(timeout);
+       }}
 
     ## What to produce (substance)
     Prefer the smallest change that:
@@ -91,7 +93,7 @@ def USER_PROMPT(prompt_input):
     Return JSON ONLY (no markdown fences around the whole response, no backticks, no explanations outside JSON).
 
     {{
-      "fix": "<Base64(UTF-8(unified diff)) as one line, OR exactly the phrase insufficient evidence>",
+      "fix": "<unified diff as above, OR exactly the phrase insufficient evidence>",
       "impacted_files": ["relative/path/from/repo_root.ext"],
       "rationale": "1-3 sentences, evidence-based.",
       "risk": "low|medium|high",

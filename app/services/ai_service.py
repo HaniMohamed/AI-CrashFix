@@ -18,9 +18,9 @@ class LLMService:
         else:
             raise ValueError(f"Unknown LLM provider: {LLM_PROVIDER}")
 
-    def call(self, system_prompt: str, user_prompt: str, *, json_mode: bool = False) -> str:
+    def call(self, system_prompt: str, user_prompt: str) -> str:
         try:
-            return self.provider.call(system_prompt, user_prompt, json_mode=json_mode)
+            return self.provider.call(system_prompt, user_prompt)
 
         except Exception as e:
             raise RuntimeError(f"LLM call failed: {str(e)}")
