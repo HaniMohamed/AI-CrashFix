@@ -27,11 +27,16 @@ class _AppShellState extends ConsumerState<AppShell> {
   void didUpdateWidget(AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentPath == widget.currentPath) return;
-    if (widget.currentPath == '/') {
-      ref.read(analyticsProvider.notifier).refresh();
-    } else if (widget.currentPath == '/crashes') {
-      ref.invalidate(crashesProvider);
-    }
+    final path = widget.currentPath;
+    // Must not mutate providers during build; didUpdateWidget runs in that phase.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.currentPath != path) return;
+      if (path == '/') {
+        ref.read(analyticsProvider.notifier).refresh();
+      } else if (path == '/crashes') {
+        ref.invalidate(crashesProvider);
+      }
+    });
   }
 
   @override
