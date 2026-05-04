@@ -5,6 +5,12 @@ from typing import Any, TypedDict
 
 class CrashState(TypedDict, total=False):
     graph_run_id: str
+    graph_run_start_time: str
+    graph_run_end_time: str
+
+    graph_error: str | None
+
+    
     mock: bool
     skip_jira_creation: bool
     crash_id: str
