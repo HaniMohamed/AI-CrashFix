@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.api.analytics import compute_analytics
 from app.api.events import ERROR, to_ndjson
 from app.api.runner import stream_run
 from app.services.crash_store import CrashStore
@@ -139,6 +140,63 @@ async def get_crash(crash_id: str) -> Dict[str, Any]:
     if row is None:
         raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
     return row
+
+
+@app.get("/api/analytics")
+async def get_analytics(
+    no_cache: bool = Query(False, description="Bypass the 5s in-process cache"),
+) -> Dict[str, Any]:
+    store = CrashStore()
+    return compute_analytics(store, use_cache=not no_cache)
+
+
+@app.get("/api/config")
+async def get_config() -> Dict[str, Any]:
+    """Read-only redacted snapshot of `app.config` (loaded from .env at startup).
+
+    Secrets are never returned; callers get a `has_*` boolean indicator instead.
+    """
+    from app import config as cfg
+
+    return {
+        "llm": {
+            "provider": cfg.LLM_PROVIDER,
+            "openai_model": cfg.OPENAI_MODEL,
+            "gemini_model": cfg.GEMINI_MODEL,
+            "openai_url": cfg.OPENAI_URL,
+            "has_openai_api_key": bool(cfg.OPENAI_API_KEY),
+            "has_google_api_key": bool(cfg.GOOGLE_API_KEY),
+        },
+        "repo": {
+            "repo_root": cfg.REPO_ROOT,
+            "main_branch": cfg.MAIN_BRANCH,
+        },
+        "crashlytics": {
+            "backend": cfg.CRASHLYTICS_FETCH_BACKEND,
+            "project_id": cfg.BQ_PROJECT_ID,
+            "dataset": cfg.BQ_DATASET,
+            "android_table": cfg.BQ_CRASHLYTICS_ANDROID_TABLE,
+            "ios_table": cfg.BQ_CRASHLYTICS_IOS_TABLE,
+            "has_credentials": bool(cfg.GOOGLE_APPLICATION_CREDENTIALS),
+        },
+        "jira": {
+            "server_url": cfg.JIRA_SERVER_URL,
+            "project_key": cfg.JIRA_PROJECT_KEY,
+            "verify_ssl": cfg.JIRA_VERIFY_SSL,
+            "has_token": bool(cfg.JIRA_TOKEN),
+        },
+        "gitlab": {
+            "server_url": cfg.GITLAB_SERVER_URL,
+            "project": cfg.GITLAB_PROJECT,
+            "verify_ssl": cfg.GITLAB_VERIFY_SSL,
+            "has_token": bool(cfg.GITLAB_TOKEN),
+            "ca_bundle_set": bool(cfg.GITLAB_SSL_CA_BUNDLE),
+        },
+        "logging": {
+            "level": cfg.AI_CRASH_FIX_GRAPH_LOG_LEVEL,
+            "style": cfg.AI_CRASH_FIX_GRAPH_LOG_STYLE,
+        },
+    }
 
 
 # ---- internals -------------------------------------------------------------

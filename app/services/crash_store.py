@@ -253,3 +253,24 @@ class CrashStore:
         if row is None:
             return None
         return self._row_to_dict(row, include_result=include_result)
+
+    def iter_all_results(self):
+        """Yield `(row_dict, parsed_result_or_none)` for every crash.
+
+        Used by the analytics aggregator. Streams rows so memory stays bounded
+        even when the store grows.
+        """
+        cols = ", ".join(self._ALL_COLUMNS) + ", result"
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(f"SELECT {cols} FROM crashes")
+            for row in cursor:
+                row_dict = self._row_to_dict(row, include_result=False)
+                raw = row["result"] if "result" in row.keys() else None
+                parsed: dict | None = None
+                if raw:
+                    try:
+                        parsed = json.loads(raw)
+                    except Exception:
+                        parsed = None
+                yield row_dict, parsed
