@@ -177,7 +177,20 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
               flex: 2,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: StatusPill(status: c.status, dense: true),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StatusPill(status: c.status, dense: true),
+                    if (c.status.toLowerCase() == 'failed' &&
+                        (c.graphError?.isNotEmpty ?? false)) ...[
+                      const SizedBox(width: 6),
+                      Tooltip(
+                        message: c.graphError!,
+                        child: Icon(Icons.error_outline, size: 16, color: palette.danger),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
             Expanded(flex: 3, child: PipelineStrip(crash: c)),
@@ -211,7 +224,13 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
   List<Crash> _filterClient(List<Crash> items, String query) {
     if (query.trim().isEmpty) return items;
     final q = query.trim().toLowerCase();
-    return items.where((c) => c.crashId.toLowerCase().contains(q)).toList();
+    return items
+        .where(
+          (c) =>
+              c.crashId.toLowerCase().contains(q) ||
+              (c.graphError?.toLowerCase().contains(q) ?? false),
+        )
+        .toList();
   }
 }
 

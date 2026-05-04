@@ -13,6 +13,7 @@ class PipelineStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final failed = crash.status.toLowerCase() == 'failed';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -25,7 +26,9 @@ class PipelineStrip extends StatelessWidget {
               decoration: BoxDecoration(
                 color: step.done ? palette.primary : Colors.transparent,
                 border: Border.all(
-                  color: step.done ? palette.primary : palette.border,
+                  color: step.done
+                      ? palette.primary
+                      : (failed ? palette.danger : palette.border),
                   width: 1.4,
                 ),
                 shape: BoxShape.circle,

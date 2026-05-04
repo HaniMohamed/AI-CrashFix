@@ -143,7 +143,7 @@ def compute_analytics(store: CrashStore, *, use_cache: bool = True) -> Dict[str,
     }
     avg_duration = (duration_sum / duration_n) if duration_n else 0.0
 
-    recent = store.list_crashes(limit=10, include_result=False)
+    recent = store.list_crashes(limit=10, include_result=True)
 
     payload: Dict[str, Any] = {
         "totals": {

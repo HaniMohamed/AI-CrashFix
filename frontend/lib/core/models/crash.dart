@@ -65,6 +65,41 @@ class Crash {
   String? get fixSuggestion => result?['fix_suggestion'] as String?;
   Object? get device => result?['device'];
 
+  /// Set when the LangGraph run errors; also reflected in row `status == failed`.
+  String? get graphError {
+    final v = result?['graph_error'];
+    if (v == null) return null;
+    if (v is String) return v.isEmpty ? null : v;
+    return v.toString();
+  }
+
+  String? get graphRunStartTime {
+    final v = result?['graph_run_start_time'];
+    if (v == null) return null;
+    return v.toString();
+  }
+
+  String? get graphRunEndTime {
+    final v = result?['graph_run_end_time'];
+    if (v == null) return null;
+    return v.toString();
+  }
+
+  /// Elapsed graph run when both timestamps parse; otherwise null.
+  double? get graphRunDurationSeconds {
+    final a = graphRunStartTime;
+    final b = graphRunEndTime;
+    if (a == null || b == null) return null;
+    try {
+      final start = DateTime.parse(a);
+      final end = DateTime.parse(b);
+      final sec = end.difference(start).inMilliseconds / 1000.0;
+      return sec >= 0 ? sec : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   String get deviceLabel {
     final d = device;
     if (d == null) return '';

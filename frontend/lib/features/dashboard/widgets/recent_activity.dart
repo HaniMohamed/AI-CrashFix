@@ -77,6 +77,13 @@ class _Row extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.md),
             StatusPill(status: c.status, dense: true),
+            if (c.status.toLowerCase() == 'failed' && (c.graphError?.isNotEmpty ?? false)) ...[
+              const SizedBox(width: AppSpacing.sm),
+              Tooltip(
+                message: c.graphError!,
+                child: Icon(Icons.error_outline, size: 16, color: palette.danger),
+              ),
+            ],
             const SizedBox(width: AppSpacing.md),
             PipelineStrip(crash: c),
             const Spacer(),

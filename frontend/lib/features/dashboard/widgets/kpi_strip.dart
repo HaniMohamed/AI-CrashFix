@@ -38,7 +38,8 @@ class KpiStrip extends StatelessWidget {
         value: a.totals.all,
         accent: palette.primary,
         icon: Icons.bug_report_outlined,
-        caption: '${a.totals.completed} completed \u00B7 ${a.totals.pending} pending',
+        caption:
+            '${a.totals.completed} completed \u00B7 ${a.totals.pending} pending \u00B7 ${a.totals.failed} failed',
       ),
       _Kpi(
         title: 'Pipeline completion',

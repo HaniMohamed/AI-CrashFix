@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
 import '../../app/theme/typography.dart';
 import '../../core/models/crash.dart';
@@ -81,6 +82,10 @@ class _BodyState extends State<_Body> with TickerProviderStateMixin {
           label: const Text('Back to crashes'),
         ),
         const SizedBox(height: AppSpacing.sm),
+        if (c.status.toLowerCase() == 'failed') ...[
+          _GraphFailureTile(crash: c),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         _Header(c: c),
         const SizedBox(height: AppSpacing.xl),
         Container(
@@ -116,6 +121,74 @@ class _BodyState extends State<_Body> with TickerProviderStateMixin {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Red rounded tile at the top of crash detail when the row failed; expands to show [Crash.graphError].
+class _GraphFailureTile extends StatelessWidget {
+  final Crash crash;
+  const _GraphFailureTile({required this.crash});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context).textTheme;
+    final palette = context.palette;
+    final rose = AppColors.rose;
+    final message = crash.graphError?.trim().isNotEmpty == true
+        ? crash.graphError!.trim()
+        : 'No error details were recorded.';
+
+    return Material(
+      color: Colors.transparent,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            0,
+            AppSpacing.lg,
+            AppSpacing.md,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadii.all(AppRadii.md),
+            side: BorderSide(color: rose.withValues(alpha: 0.55)),
+          ),
+          collapsedShape: RoundedRectangleBorder(
+            borderRadius: AppRadii.all(AppRadii.md),
+            side: BorderSide(color: rose.withValues(alpha: 0.55)),
+          ),
+          backgroundColor: rose.withValues(alpha: 0.12),
+          collapsedBackgroundColor: rose.withValues(alpha: 0.12),
+          iconColor: rose,
+          collapsedIconColor: rose,
+          title: Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: rose, size: 22),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Pipeline failed',
+                  style: theme.titleSmall?.copyWith(
+                    color: rose,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectableText(
+                message,
+                style: AppTypography.mono(color: palette.text, size: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -282,6 +355,36 @@ class _OverviewTab extends StatelessWidget {
     final state = c.result ?? const {};
     return ListView(
       children: [
+        if (c.graphRunStartTime != null ||
+            c.graphRunEndTime != null ||
+            c.graphRunDurationSeconds != null) ...[
+          GlassCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Graph run', style: theme.headlineSmall),
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.md,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    if (c.graphRunStartTime != null)
+                      _overviewKv(context, 'Started', c.graphRunStartTime!),
+                    if (c.graphRunEndTime != null)
+                      _overviewKv(context, 'Ended', c.graphRunEndTime!),
+                    if (c.graphRunDurationSeconds != null)
+                      _overviewKv(
+                        context,
+                        'Duration',
+                        Fmt.duration(c.graphRunDurationSeconds!),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         GlassCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,6 +448,30 @@ class _OverviewTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _overviewKv(BuildContext context, String label, String value) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: palette.surface1,
+        borderRadius: AppRadii.all(AppRadii.pill),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: theme.labelSmall?.copyWith(color: palette.textMuted, letterSpacing: 1),
+          ),
+          const SizedBox(width: 8),
+          SelectableText(value, style: theme.labelLarge?.copyWith(color: palette.text)),
+        ],
+      ),
     );
   }
 }
