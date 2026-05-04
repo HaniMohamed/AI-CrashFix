@@ -94,6 +94,20 @@ def record_graph_error(state: Dict[str, Any], where: str, exc: BaseException) ->
     state["graph_error"] = f"{where}: {type(exc).__name__}: {exc}"
 
 
+def stamp_graph_run_start(state: Dict[str, Any]) -> None:
+    """UTC ISO timestamp when the graph run begins (idempotent)."""
+    if state.get("graph_run_start_time"):
+        return
+    state["graph_run_start_time"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def stamp_graph_run_end(state: Dict[str, Any]) -> None:
+    """UTC ISO timestamp when the graph run finishes (success or failure; idempotent)."""
+    if state.get("graph_run_end_time"):
+        return
+    state["graph_run_end_time"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
 def _shape(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         if isinstance(value, str) and len(value) > 180:

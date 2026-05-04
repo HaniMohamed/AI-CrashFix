@@ -41,6 +41,8 @@ from app.graph.observability import (
     node_span,
     record_graph_error,
     register_event_sink,
+    stamp_graph_run_end,
+    stamp_graph_run_start,
     unregister_event_sink,
 )
 from app.services.crash_store import CrashStore
@@ -58,6 +60,7 @@ def _initial_state_for_crash(
 ) -> Dict[str, Any]:
     return {
         "graph_run_id": run_id,
+        "graph_error": None,
         "mock": bool(mock),
         "skip_jira_creation": bool(skip_jira_creation),
         "crash_id": crash.get("crash_id") or "",
@@ -346,6 +349,7 @@ def _stream_one_crash(
 
     try:
         with node_span(state, "batch.process_crash"):
+            stamp_graph_run_start(state)
             # `stream_mode="values"` yields the full CrashState after each top-level
             # node. Inner subgraph nodes still surface as node_started/node_completed
             # via the observability sink (no extra snapshot per inner node).
@@ -372,8 +376,16 @@ def _stream_one_crash(
         yield from _drain(pending)
     except Exception as e:
         yield from _drain(pending)
-        record_graph_error(state, "graph.stream", e)
+        # Shallow copy so we do not rely on LangGraph mutating the original dict.
+        outcome: Dict[str, Any] = dict(final_state) if isinstance(final_state, dict) else dict(state)
+        record_graph_error(outcome, "graph.stream", e)
+        stamp_graph_run_end(outcome)
         counters["failed"] += 1
+        if crash_id:
+            try:
+                crash_store.update_result(crash_id, outcome)
+            except Exception:
+                pass
         yield {
             "type": CRASH_FAILED,
             "run_id": run_id,
@@ -382,6 +394,7 @@ def _stream_one_crash(
         }
         return
 
+    stamp_graph_run_end(final_state)
     if crash_id:
         try:
             crash_store.update_result(crash_id, final_state)

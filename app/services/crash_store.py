@@ -89,14 +89,26 @@ class CrashStore:
             conn.commit()
 
     def update_result(self, crash_id: str, result: dict):
+        """Persist ``result`` JSON. If ``graph_error`` is set, row ``status`` becomes ``failed``."""
         now = datetime.utcnow().isoformat()
+        payload = json.dumps(result)
         with self._connect() as conn:
-            conn.execute(
-                """
-        UPDATE crashes SET result = ?, updated_at = ? WHERE crash_id = ?
-        """,
-                (json.dumps(result), now, crash_id),
-            )
+            if result.get("graph_error"):
+                conn.execute(
+                    """
+                    UPDATE crashes
+                    SET result = ?, updated_at = ?, status = 'failed'
+                    WHERE crash_id = ?
+                    """,
+                    (payload, now, crash_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE crashes SET result = ?, updated_at = ? WHERE crash_id = ?
+                    """,
+                    (payload, now, crash_id),
+                )
             conn.commit()
 
     def set_pipeline_flags(
