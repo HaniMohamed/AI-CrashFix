@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
+import '../../core/models/analytics.dart';
 import '../../core/providers/analytics_provider.dart';
 import '../../shared/widgets/error_banner.dart';
 import 'widgets/hero_header.dart';
@@ -64,7 +65,7 @@ class DashboardPage extends ConsumerWidget {
 }
 
 class _ChartsRow extends StatelessWidget {
-  final analytics;
+  final Analytics analytics;
   const _ChartsRow({required this.analytics});
 
   @override
