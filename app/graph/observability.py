@@ -4,13 +4,43 @@ import os
 import time
 import uuid
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from app.config import AI_CRASH_FIX_GRAPH_LOG_LEVEL, AI_CRASH_FIX_GRAPH_LOG_STYLE
 
 _LOG_LEVEL = AI_CRASH_FIX_GRAPH_LOG_LEVEL.upper()
 _LOG_STYLE = AI_CRASH_FIX_GRAPH_LOG_STYLE.lower()  # pretty|json
 _LOG_JSON = _LOG_STYLE == "json"
+
+# Optional fan-out of structured events to subscribers (e.g. the API layer).
+# This is purely additive; when no sink is registered (CLI / tests), behavior is
+# byte-for-byte identical to before. Sinks must be cheap and non-blocking.
+_event_sinks: List[Callable[[Dict[str, Any]], None]] = []
+
+
+def register_event_sink(fn: Callable[[Dict[str, Any]], None]) -> None:
+    """Subscribe to graph observability events. Safe to call multiple times."""
+    _event_sinks.append(fn)
+
+
+def unregister_event_sink(fn: Callable[[Dict[str, Any]], None]) -> None:
+    """Remove a previously-registered sink. No-op if not present."""
+    try:
+        _event_sinks.remove(fn)
+    except ValueError:
+        pass
+
+
+def _emit(event: Dict[str, Any]) -> None:
+    """Fan out an event to all registered sinks; never raises."""
+    if not _event_sinks:
+        return
+    for sink in list(_event_sinks):
+        try:
+            sink(event)
+        except Exception:
+            # Sinks must never break the pipeline.
+            pass
 
 
 def _logger() -> logging.Logger:
@@ -127,6 +157,16 @@ def node_span(state: Dict[str, Any], node: str, *, extra: Optional[Dict[str, Any
             headline += f"  {_c('crash', '90')}={_c(str(state.get('crash_id')), '33')}"
         log.info(headline)
 
+    _emit(
+        {
+            "type": "node_started",
+            "run_id": run_id,
+            "node": node,
+            "crash_id": state.get("crash_id"),
+            "extra": _safe_json(extra) if extra else None,
+        }
+    )
+
     try:
         yield
     except Exception as e:
@@ -146,6 +186,18 @@ def node_span(state: Dict[str, Any], node: str, *, extra: Optional[Dict[str, Any
                 f"{_c('✖', '31')} {_c(node, '1;37')}  {_c(str(dt_ms)+'ms', '90')}  "
                 f"{_c(type(e).__name__, '31')}: {str(e)}"
             )
+        _emit(
+            {
+                "type": "node_error",
+                "run_id": run_id,
+                "node": node,
+                "crash_id": state.get("crash_id"),
+                "duration_ms": dt_ms,
+                "delta": state_delta(before, state),
+                "error": {"type": type(e).__name__, "message": str(e)},
+                "extra": _safe_json(extra) if extra else None,
+            }
+        )
         raise
     else:
         dt_ms = int((time.perf_counter() - t0) * 1000)
@@ -175,6 +227,18 @@ def node_span(state: Dict[str, Any], node: str, *, extra: Optional[Dict[str, Any
             log.info(
                 f"{_c('✓', '32')} {_c(node, '1;37')}  {_c(str(dt_ms)+'ms', '90')}  {diff_chip}"
             )
+
+        _emit(
+            {
+                "type": "node_completed",
+                "run_id": run_id,
+                "node": node,
+                "crash_id": state.get("crash_id"),
+                "duration_ms": dt_ms,
+                "delta": delta,
+                "extra": _safe_json(extra) if extra else None,
+            }
+        )
 
 
 def instrument_node(node: str, fn: Callable[[Dict[str, Any]], Dict[str, Any]]) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
@@ -207,6 +271,17 @@ def instrument_router(name: str, router: Callable[[Dict[str, Any]], Any]) -> Cal
                 f"{_c('↪', '34')} {_c(name, '1;37')}  {_c(str(dt_ms)+'ms', '90')}  "
                 f"{_c('route', '90')}={_c(str(route), '36')}"
             )
+
+        _emit(
+            {
+                "type": "router",
+                "run_id": run_id,
+                "router": name,
+                "route": route,
+                "crash_id": state.get("crash_id"),
+                "duration_ms": dt_ms,
+            }
+        )
         return route
 
     _wrapped.__name__ = getattr(router, "__name__", "router")

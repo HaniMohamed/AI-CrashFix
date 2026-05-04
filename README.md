@@ -112,6 +112,96 @@ python scripts/run_batch.py --limit 10 --mock --skip-jira-creation
 python scripts/run_batch.py --limit 3 --mock --skip-jira-creation --print-results
 ```
 
+### HTTP API (for UIs)
+A thin FastAPI layer (`app/api/server.py`) wraps the same pipeline and streams
+per-step graph events as **NDJSON**, plus offers read-only access to the local
+crash store. The CLI (`scripts/run_batch.py`) is **not** changed and keeps
+working as before.
+
+#### Run the server
+
+```bash
+uvicorn app.api.server:app --reload --port 8000
+```
+
+OpenAPI docs are at `http://localhost:8000/docs`.
+
+#### Endpoints
+- **`GET /api/health`** → `{"ok": true}`
+- **`POST /api/runs`** → streams NDJSON events (one JSON object per line, `application/x-ndjson`).
+  Body shape:
+
+  ```jsonc
+  // Batch (same args as run_batch.py)
+  {
+    "mode": "batch",
+    "limit": 10,
+    "mock": true,
+    "skip_jira_creation": true,
+    "crash_ids": null            // optional whitelist applied after fetch
+  }
+
+  // Single crash (UI re-run / replay)
+  {
+    "mode": "single",
+    "skip_jira_creation": true,
+    "crash": {
+      "crash_id": "abc",
+      "exception": "NullPointerException: ...",
+      "stacktrace": [ /* mapped frames */ ],
+      "app_version": "1.2.3",
+      "device": "Pixel 7",
+      "platform": "android"
+    }
+  }
+  ```
+
+- **`GET /api/crashes?status=&limit=&offset=&include_result=0|1`** → paged list of crash store rows ordered by `updated_at` desc.
+- **`GET /api/crashes/{crash_id}`** → one crash row + parsed `result` JSON (404 if not found).
+
+#### Streamed event types
+Each NDJSON line is `{"type": "...", "run_id": "...", ...}`. Common types:
+
+| Type | When | Useful payload |
+| --- | --- | --- |
+| `run_started` | first line | `mode`, `limit`, `mock`, `crashlytics_backend` |
+| `crash_fetched` | batch only, after BQ/CL fetch | `count`, `crash_ids` |
+| `crash_skipped` | batch only | `crash_id`, `reason` |
+| `crash_started` | each crash, before the graph | `initial_state` (full `CrashState`) |
+| `node_started` | every node enter (incl. fix-subgraph nodes prefixed with `-------`) | `node`, `crash_id` |
+| `node_completed` | every node exit | `node`, `duration_ms`, `delta` |
+| `router` | every conditional edge | `router`, `route` |
+| `state_snapshot` | after each top-level node | `after_node`, `state` (full live `CrashState`) |
+| `crash_completed` | crash success | `final_state` |
+| `crash_failed` | crash error | `error` |
+| `run_summary` | last line | `fetched`, `processed`, `skipped`, `failed` |
+
+Inner fix-subgraph nodes show up as `node_started` / `node_completed` (no
+extra `state_snapshot` per inner node — the outer `state_snapshot` after
+`fix_generation` reflects the merged result).
+
+Secret-like fields (`*_api_key`, `*_token`, `authorization`) are redacted
+inside `state_snapshot.state` and `*_state` payloads before being sent.
+
+#### Quick test (NDJSON streaming)
+
+```bash
+curl -N -X POST http://localhost:8000/api/runs \
+  -H 'content-type: application/json' \
+  -d '{"mode":"batch","limit":1,"mock":true,"skip_jira_creation":true}'
+```
+
+#### Implementation notes
+- The synchronous LangGraph generator runs in a worker thread and forwards
+  events through an `asyncio.Queue` so the FastAPI event loop stays free
+  during LLM / BigQuery / git work.
+- Observability events (start/end/router) reuse the existing
+  `app/graph/observability.py` logging pipeline via a small additive
+  `register_event_sink` / `unregister_event_sink` hook; CLI runs are
+  unaffected because no sink is registered.
+- Concurrent `POST /api/runs` calls are demuxed by tagging every event with
+  the run's `run_id` and filtering at the sink boundary.
+
 ### Debug in Cursor / VS Code
 Use the included launch config in `.vscode/launch.json`:
 - **Debug run_batch**: runs `scripts/run_batch.py` from the workspace root.

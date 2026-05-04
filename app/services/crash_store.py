@@ -23,6 +23,7 @@ class CrashStore:
 
     def __init__(self, db_path=f"db/{BQ_PROJECT_ID}_crash_store.db"):
         Path(db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = str(db_path)
         self.conn = sqlite3.connect(db_path)
         self._create_table()
         self._migrate_columns()
@@ -184,3 +185,71 @@ class CrashStore:
         )
         row = cursor.fetchone()
         return bool(row and row[0])
+
+    # ---- Read-only helpers (used by the API layer) -----------------------------
+    # These open a short-lived connection so they're safe to call from any thread,
+    # without affecting the long-lived `self.conn` used by the write path.
+
+    _ALL_COLUMNS = (
+        "crash_id",
+        "jira_issue_id",
+        "pr_url",
+        "status",
+        "created_at",
+        "updated_at",
+        *_PIPELINE_FLAG_COLUMNS,
+    )
+
+    @classmethod
+    def _row_to_dict(cls, row: sqlite3.Row, *, include_result: bool) -> dict:
+        out = {k: row[k] for k in cls._ALL_COLUMNS if k in row.keys()}
+        # Coerce 0/1 ints to bool for the boolean flag columns.
+        for col in _PIPELINE_FLAG_COLUMNS:
+            if col in out:
+                out[col] = bool(out[col])
+        if include_result and "result" in row.keys():
+            raw = row["result"]
+            if raw:
+                try:
+                    out["result"] = json.loads(raw)
+                except Exception:
+                    out["result"] = raw
+            else:
+                out["result"] = None
+        return out
+
+    def list_crashes(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        include_result: bool = False,
+    ) -> list[dict]:
+        """Return crash rows ordered by `updated_at` desc. Read-only."""
+        cols = ", ".join(self._ALL_COLUMNS) + (", result" if include_result else "")
+        sql = f"SELECT {cols} FROM crashes"
+        params: list[object] = []
+        if status:
+            sql += " WHERE status = ?"
+            params.append(status)
+        sql += " ORDER BY datetime(updated_at) DESC LIMIT ? OFFSET ?"
+        params.extend([int(limit), int(offset)])
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_dict(r, include_result=include_result) for r in rows]
+
+    def get_crash(self, crash_id: str, *, include_result: bool = True) -> dict | None:
+        """Return a single crash row (with parsed `result`), or None if missing."""
+        cols = ", ".join(self._ALL_COLUMNS) + (", result" if include_result else "")
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                f"SELECT {cols} FROM crashes WHERE crash_id = ?",
+                (crash_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_dict(row, include_result=include_result)
