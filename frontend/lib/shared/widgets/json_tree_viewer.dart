@@ -229,7 +229,7 @@ class _JsonFieldRowState extends State<_JsonFieldRow> {
                 ),
                 if (_expanded)
                   Padding(
-                    padding: const EdgeInsets.only(left: 10, top: 2),
+                    padding: EdgeInsets.only(left: 12 + widget.depth * 8, top: 2),
                     child: _JsonChildren(
                       value: widget.value,
                       depth: widget.depth + 1,

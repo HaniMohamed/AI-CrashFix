@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -261,6 +264,7 @@ class _Timeline extends StatelessWidget {
 
   void _showState(BuildContext context, Map<String, dynamic> state) {
     final palette = context.palette;
+    final pretty = const JsonEncoder.withIndent('  ').convert(state);
     showDialog<void>(
       context: context,
       barrierColor: Colors.black54,
@@ -278,13 +282,17 @@ class _Timeline extends StatelessWidget {
                   children: [
                     Text('CrashState snapshot', style: Theme.of(ctx).textTheme.headlineSmall),
                     const Spacer(),
+                    IconButton(
+                      tooltip: 'Copy JSON',
+                      icon: const Icon(Icons.copy, size: 18),
+                      onPressed: () => Clipboard.setData(ClipboardData(text: pretty)),
+                    ),
                     IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close)),
                   ],
                 ),
                 const Divider(),
                 Expanded(
                   child: Scrollbar(
-                    thumbVisibility: true,
                     child: SingleChildScrollView(
                       child: JsonTreeView(value: state, expandToDepth: 2),
                     ),
