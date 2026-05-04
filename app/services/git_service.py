@@ -524,6 +524,7 @@ class GitService:
                 "target_branch": target_branch,
                 "title": normalized_title,
                 "description": (body or "").strip(),
+                "labels": "AI_CrashFix",
             },
         )
 
