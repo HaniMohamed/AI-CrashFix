@@ -71,7 +71,6 @@ class _BodyState extends State<_Body> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final c = widget.crash;
-    final theme = Theme.of(context).textTheme;
     final palette = context.palette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

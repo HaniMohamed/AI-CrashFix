@@ -258,7 +258,7 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
           setState(() => _jsonError = 'Crash payload must be a JSON object.');
           return;
         }
-        crash = (parsed as Map).cast<String, dynamic>();
+        crash = parsed.cast<String, dynamic>();
         if (crash['crash_id'] is! String || (crash['crash_id'] as String).trim().isEmpty) {
           setState(() => _jsonError = 'Crash payload requires a non-empty crash_id.');
           return;

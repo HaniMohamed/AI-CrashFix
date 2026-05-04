@@ -6,7 +6,6 @@ import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
 import '../../../core/models/run_event.dart';
 import '../../../core/providers/run_session_provider.dart';
-import '../../../core/utils/format.dart';
 import '../../../shared/widgets/glass_card.dart';
 
 class CrashRunCard extends StatefulWidget {

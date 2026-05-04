@@ -18,7 +18,6 @@ class RecentActivity extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context).textTheme;
-    final palette = context.palette;
     return GlassCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(

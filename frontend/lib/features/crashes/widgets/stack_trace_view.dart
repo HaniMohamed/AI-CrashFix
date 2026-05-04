@@ -13,7 +13,6 @@ class StackTraceView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context).textTheme;
-    final palette = context.palette;
 
     if (stacktrace.isEmpty) {
       return const Center(

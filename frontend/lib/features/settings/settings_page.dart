@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
-import '../../core/models/config_view.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/config_provider.dart';
 import '../../core/providers/health_provider.dart';
