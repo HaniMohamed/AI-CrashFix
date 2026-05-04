@@ -45,6 +45,7 @@ from app.graph.observability import (
     stamp_graph_run_start,
     unregister_event_sink,
 )
+from app.graph.fix_generation_graph.nodes.fallback import FIX_VALIDATION_EXHAUSTED_PREFIX
 from app.services.crash_store import CrashStore
 from app.services.crashlytics_service import CrashlyticsService
 
@@ -467,6 +468,23 @@ def _stream_one_crash(
         except Exception:
             # Persistence failure must not break the stream.
             pass
+
+    err_msg = final_state.get("graph_error") if isinstance(final_state, dict) else None
+    if err_msg:
+        counters["failed"] += 1
+        msg = str(err_msg)
+        err_type = (
+            "FixValidationExhausted"
+            if msg.startswith(FIX_VALIDATION_EXHAUSTED_PREFIX)
+            else "GraphPipelineError"
+        )
+        yield {
+            "type": CRASH_FAILED,
+            "run_id": run_id,
+            "crash_id": crash_id,
+            "error": {"type": err_type, "message": msg},
+        }
+        return
 
     counters["processed"] += 1
     yield {

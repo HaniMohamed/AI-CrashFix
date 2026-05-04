@@ -133,7 +133,6 @@ def main() -> int:
             # node_span already logged the error; keep moving to next crash.
             continue
 
-        processed += 1
         stamp_graph_run_end(result)
 
         if args.print_results:
@@ -143,6 +142,11 @@ def main() -> int:
             crash_store.update_result(crash_id, result)
         except Exception:
             pass
+
+        if result.get("graph_error"):
+            failed += 1
+        else:
+            processed += 1
 
     with node_span(
         batch_state,
