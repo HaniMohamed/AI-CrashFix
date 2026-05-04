@@ -17,6 +17,11 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 BQ_PROJECT_ID = os.getenv("BQ_PROJECT_ID")
+# Firebase Console deep links (defaults to the same GCP project as BigQuery).
+FIREBASE_CONSOLE_PROJECT_ID = (os.getenv("FIREBASE_CONSOLE_PROJECT_ID") or "").strip() or BQ_PROJECT_ID
+# Fallback bundle / package when the Crashlytics export row has no application identifier.
+CRASHLYTICS_ANDROID_PACKAGE_DEFAULT = (os.getenv("CRASHLYTICS_ANDROID_PACKAGE") or "").strip() or None
+CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT = (os.getenv("CRASHLYTICS_IOS_BUNDLE_ID") or "").strip() or None
 # Crashlytics crash source: "bigquery" (exported tables) or "cloud_logging" (Crashlytics log router).
 CRASHLYTICS_FETCH_BACKEND = os.getenv("CRASHLYTICS_FETCH_BACKEND", "bigquery").strip().lower()
 BQ_DATASET = os.getenv("BQ_DATASET", "firebase_crashlytics")

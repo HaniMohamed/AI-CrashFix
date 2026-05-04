@@ -85,6 +85,22 @@ class Crash {
     return v.toString();
   }
 
+  /// Package name (Android) or bundle id (iOS) from Crashlytics export.
+  String? get appIdentifier {
+    final v = result?['app_identifier'];
+    if (v == null) return null;
+    final s = v.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  /// Firebase Console app segment, e.g. `android:com.example.app`.
+  String? get crashlyticsConsoleAppId {
+    final v = result?['crashlytics_console_app_id'];
+    if (v == null) return null;
+    final s = v.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
   /// Elapsed graph run when both timestamps parse; otherwise null.
   double? get graphRunDurationSeconds {
     final a = graphRunStartTime;

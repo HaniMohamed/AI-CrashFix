@@ -69,6 +69,8 @@ def _initial_state_for_crash(
         "app_version": crash.get("app_version"),
         "device": crash.get("device"),
         "platform": crash.get("platform"),
+        "app_identifier": crash.get("app_identifier"),
+        "crashlytics_console_app_id": crash.get("crashlytics_console_app_id"),
         "mapped_frames": [],
         "repo_context": {},
         "root_cause": "",

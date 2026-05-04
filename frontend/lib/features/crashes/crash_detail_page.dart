@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
 import '../../app/theme/typography.dart';
 import '../../core/models/crash.dart';
+import '../../core/providers/config_provider.dart';
 import '../../core/providers/crashes_provider.dart';
+import '../../core/utils/crashlytics_console_url.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/copyable_text.dart';
 import '../../shared/widgets/error_banner.dart';
@@ -193,14 +196,20 @@ class _GraphFailureTile extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
+class _Header extends ConsumerWidget {
   final Crash c;
   const _Header({required this.c});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context).textTheme;
     final palette = context.palette;
+    final configAsync = ref.watch(configProvider);
+    final crashlyticsUri = configAsync.when(
+      data: (cfg) => crashlyticsIssueUri(c, cfg.section('crashlytics')),
+      loading: () => null,
+      error: (_, _) => null,
+    );
     return GlassCard(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -232,7 +241,43 @@ class _Header extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.md),
-                CopyableText(text: c.crashId, size: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CopyableText(text: c.crashId, size: 16),
+                    const SizedBox(width: 2),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      tooltip: crashlyticsUri != null
+                          ? 'Open issue in Firebase Crashlytics'
+                          : configAsync.isLoading
+                              ? 'Loading configuration…'
+                              : 'Cannot build link: set Firebase project id and Android package / iOS bundle '
+                                  '(from Crashlytics export or CRASHLYTICS_ANDROID_PACKAGE / CRASHLYTICS_IOS_BUNDLE_ID in .env).',
+                      onPressed: crashlyticsUri == null
+                          ? null
+                          : () async {
+                              final ok = await launchUrl(
+                                crashlyticsUri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                              if (!context.mounted || ok) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Could not open Crashlytics link'),
+                                ),
+                              );
+                            },
+                      icon: Icon(
+                        Icons.open_in_new,
+                        size: 18,
+                        color: crashlyticsUri != null ? palette.primary : palette.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: AppSpacing.md),
                 Wrap(
                   spacing: AppSpacing.md,

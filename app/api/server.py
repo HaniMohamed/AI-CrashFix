@@ -174,6 +174,9 @@ async def get_config() -> Dict[str, Any]:
         "crashlytics": {
             "backend": cfg.CRASHLYTICS_FETCH_BACKEND,
             "project_id": cfg.BQ_PROJECT_ID,
+            "firebase_console_project_id": cfg.FIREBASE_CONSOLE_PROJECT_ID,
+            "android_package_default": cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT,
+            "ios_bundle_id_default": cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT,
             "dataset": cfg.BQ_DATASET,
             "android_table": cfg.BQ_CRASHLYTICS_ANDROID_TABLE,
             "ios_table": cfg.BQ_CRASHLYTICS_IOS_TABLE,

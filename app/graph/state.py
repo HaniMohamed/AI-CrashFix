@@ -20,6 +20,10 @@ class CrashState(TypedDict, total=False):
     app_version: str | None
     device: str | None
     platform: str | None
+    # Bundle id / package from Crashlytics export; used for Firebase Console links.
+    app_identifier: str | None
+    # e.g. ``android:com.example.app`` or ``ios:com.example.app``
+    crashlytics_console_app_id: str | None
 
     mapped_frames: list[dict[str, Any]]
     repo_context: dict[str, Any]
