@@ -17,11 +17,11 @@ final GoRouter appRouter = GoRouter(
       routes: [
         GoRoute(
           path: '/',
-          pageBuilder: (_, __) => const NoTransitionPage(child: DashboardPage()),
+          pageBuilder: (_, _) => const NoTransitionPage(child: DashboardPage()),
         ),
         GoRoute(
           path: '/crashes',
-          pageBuilder: (_, __) =>
+          pageBuilder: (_, _) =>
               const NoTransitionPage(child: CrashesListPage()),
         ),
         GoRoute(
@@ -38,11 +38,11 @@ final GoRouter appRouter = GoRouter(
         ),
         GoRoute(
           path: '/runs/live',
-          pageBuilder: (_, __) => const NoTransitionPage(child: RunLivePage()),
+          pageBuilder: (_, _) => const NoTransitionPage(child: RunLivePage()),
         ),
         GoRoute(
           path: '/settings',
-          pageBuilder: (_, __) => const NoTransitionPage(child: SettingsPage()),
+          pageBuilder: (_, _) => const NoTransitionPage(child: SettingsPage()),
         ),
       ],
     ),

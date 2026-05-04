@@ -79,7 +79,7 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
               const SizedBox(height: AppSpacing.xl),
               config.when(
                 loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
                 data: (cfg) {
                   final llm = cfg.section('llm');
                   final cl = cfg.section('crashlytics');

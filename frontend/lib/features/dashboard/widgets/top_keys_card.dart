@@ -86,7 +86,7 @@ class _TopKeysCardState extends State<TopKeysCard> {
                   )
                 : ListView.separated(
                     itemCount: list.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (_, i) {
                       final item = list[i];
                       final ratio = maxV == 0 ? 0.0 : item.count / maxV;

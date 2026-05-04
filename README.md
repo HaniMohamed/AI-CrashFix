@@ -158,6 +158,8 @@ OpenAPI docs are at `http://localhost:8000/docs`.
 
 - **`GET /api/crashes?status=&limit=&offset=&include_result=0|1`** → paged list of crash store rows ordered by `updated_at` desc.
 - **`GET /api/crashes/{crash_id}`** → one crash row + parsed `result` JSON (404 if not found).
+- **`GET /api/analytics?no_cache=0|1`** → pre-computed dashboard aggregates (totals, pipeline funnel, completion rate, avg duration, daily timeseries, top platforms / app versions / devices, recent items). Cached in-process for 5 seconds.
+- **`GET /api/config`** → read-only redacted snapshot of `app/config.py` (LLM, repo, Crashlytics, Jira, GitLab, logging). Secrets are returned as `has_*` booleans only.
 
 #### Streamed event types
 Each NDJSON line is `{"type": "...", "run_id": "...", ...}`. Common types:
@@ -201,6 +203,44 @@ curl -N -X POST http://localhost:8000/api/runs \
   unaffected because no sink is registered.
 - Concurrent `POST /api/runs` calls are demuxed by tagging every event with
   the run's `run_id` and filtering at the sink boundary.
+
+### Frontend (Flutter web)
+
+A polished Flutter web app lives in [`frontend/`](frontend/). It talks to the
+HTTP API above (no backend imports), and exposes a dashboard, crash explorer,
+run trigger with full flag form, live NDJSON stream view, and a read-only
+settings page.
+
+#### Prerequisites
+- Flutter SDK 3.24+ (Dart 3.10+) and Chrome.
+
+#### Run the dev server (against a local backend)
+
+```bash
+# 1) Start the API (in another shell):
+uvicorn app.api.server:app --reload --port 8000
+
+# 2) Start the Flutter web app:
+cd frontend
+flutter pub get
+flutter run -d chrome --web-port 5173 \
+  --dart-define=API_BASE_URL=http://localhost:8000
+```
+
+The base URL is also editable from the topbar popover and persisted to
+`localStorage`, so `--dart-define` is optional.
+
+#### Production bundle
+
+```bash
+cd frontend
+flutter build web --release
+# Output: frontend/build/web/  (serve with any static server)
+```
+
+The frontend assumes the backend's permissive CORS (already enabled in
+`app/api/server.py`). See [`frontend/README.md`](frontend/README.md) for the
+project structure and design tokens.
 
 ### Debug in Cursor / VS Code
 Use the included launch config in `.vscode/launch.json`:
