@@ -299,12 +299,29 @@ class _Timeline extends StatelessWidget {
 
   String _pretty(Map<String, dynamic> state) {
     final keys = state.keys.toList()..sort();
-    final buf = StringBuffer();
-    for (final k in keys) {
-      final v = state[k];
-      buf.writeln('$k:');
-      buf.writeln('  ${_compact(v)}');
+    if (keys.isEmpty) {
+      return '(empty state)';
     }
+
+    final keyCol = keys.map((k) => k.length).fold<int>(0, (a, b) => a > b ? a : b).clamp(4, 36);
+    final values = keys.map((k) => _compact(state[k])).toList(growable: false);
+    final rawValWidth = values.map((s) => s.length).fold<int>(12, (a, b) => a > b ? a : b);
+    final valCol = rawValWidth.clamp(12, 72);
+
+    final buf = StringBuffer();
+    final keyLabel = keys.length == 1 ? 'key' : 'keys';
+    buf.writeln('State snapshot · ${keys.length} $keyLabel');
+    buf.writeln('┌${'─' * (keyCol + 2)}┬${'─' * (valCol + 2)}┐');
+
+    for (var i = 0; i < keys.length; i++) {
+      final k = keys[i];
+      final truncated = k.length > keyCol ? '${k.substring(0, keyCol - 1)}…' : k;
+      final rowKey = truncated.padRight(keyCol);
+      final v = values[i];
+      final cell = v.length <= valCol ? v.padRight(valCol) : '${v.substring(0, valCol - 1)}…';
+      buf.writeln('│ $rowKey │ $cell │');
+    }
+    buf.write('└${'─' * (keyCol + 2)}┴${'─' * (valCol + 2)}┘');
     return buf.toString();
   }
 
