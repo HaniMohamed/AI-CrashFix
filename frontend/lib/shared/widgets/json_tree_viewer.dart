@@ -52,8 +52,9 @@ class _JsonRootBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    if (value is Map) {
-      final m = _asStringKeyedMap(value);
+    final root = value;
+    if (root is Map) {
+      final m = _asStringKeyedMap(root);
       if (m.isEmpty) {
         return Text(
           '{ }',
@@ -74,8 +75,8 @@ class _JsonRootBody extends StatelessWidget {
         ],
       );
     }
-    if (value is List) {
-      final list = List<Object?>.from(value);
+    if (root is List) {
+      final list = List<Object?>.from(root);
       if (list.isEmpty) {
         return Text(
           '[ ]',
@@ -96,7 +97,7 @@ class _JsonRootBody extends StatelessWidget {
         ],
       );
     }
-    return _JsonLeaf(value: value, palette: palette);
+    return _JsonLeaf(value: root, palette: palette);
   }
 }
 
@@ -171,7 +172,7 @@ class _JsonFieldRowState extends State<_JsonFieldRow> {
                 TextSpan(
                   style: mono,
                   children: [
-                    TextSpan(text: widget.quoteLabel ? widget.label : widget.label, style: labelStyle),
+                    TextSpan(text: widget.label, style: labelStyle),
                     colon,
                     ..._leafTextSpans(widget.value, palette),
                   ],
@@ -215,7 +216,7 @@ class _JsonFieldRowState extends State<_JsonFieldRow> {
                   child: Text.rich(
                     TextSpan(
                       children: [
-                        TextSpan(text: widget.quoteLabel ? widget.label : widget.label, style: labelStyle),
+                        TextSpan(text: widget.label, style: labelStyle),
                         colon,
                         if (!_expanded)
                           TextSpan(

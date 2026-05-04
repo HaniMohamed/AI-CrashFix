@@ -7,9 +7,9 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
 import '../../../shared/widgets/glass_card.dart';
+import '../../../shared/widgets/json_tree_viewer.dart';
 
-/// Pretty-print a JSON value with collapsible objects/arrays. Lightweight; no
-/// codegen, no syntax-highlight package required.
+/// JSON value with expandable maps/lists ([JsonTreeView]) and a raw JSON copy action.
 class JsonViewer extends StatelessWidget {
   final Object? value;
   const JsonViewer({super.key, required this.value});
@@ -45,10 +45,7 @@ class JsonViewer extends StatelessWidget {
             constraints: const BoxConstraints(maxHeight: 600),
             child: Scrollbar(
               child: SingleChildScrollView(
-                child: SelectableText(
-                  pretty,
-                  style: AppTypography.mono(color: palette.text, size: 12),
-                ),
+                child: JsonTreeView(value: value, expandToDepth: 2),
               ),
             ),
           ),

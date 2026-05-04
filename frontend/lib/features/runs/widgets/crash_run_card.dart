@@ -7,6 +7,7 @@ import '../../../app/theme/typography.dart';
 import '../../../core/models/run_event.dart';
 import '../../../core/providers/run_session_provider.dart';
 import '../../../shared/widgets/glass_card.dart';
+import '../../../shared/widgets/json_tree_viewer.dart';
 
 class CrashRunCard extends StatefulWidget {
   final CrashRunState state;
@@ -282,10 +283,10 @@ class _Timeline extends StatelessWidget {
                 ),
                 const Divider(),
                 Expanded(
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      _pretty(state),
-                      style: AppTypography.mono(color: palette.text, size: 12),
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      child: JsonTreeView(value: state, expandToDepth: 2),
                     ),
                   ),
                 ),
@@ -297,42 +298,4 @@ class _Timeline extends StatelessWidget {
     );
   }
 
-  String _pretty(Map<String, dynamic> state) {
-    final keys = state.keys.toList()..sort();
-    if (keys.isEmpty) {
-      return '(empty state)';
-    }
-
-    final keyCol = keys.map((k) => k.length).fold<int>(0, (a, b) => a > b ? a : b).clamp(4, 36);
-    final values = keys.map((k) => _compact(state[k])).toList(growable: false);
-    final rawValWidth = values.map((s) => s.length).fold<int>(12, (a, b) => a > b ? a : b);
-    final valCol = rawValWidth.clamp(12, 72);
-
-    final buf = StringBuffer();
-    final keyLabel = keys.length == 1 ? 'key' : 'keys';
-    buf.writeln('State snapshot · ${keys.length} $keyLabel');
-    buf.writeln('┌${'─' * (keyCol + 2)}┬${'─' * (valCol + 2)}┐');
-
-    for (var i = 0; i < keys.length; i++) {
-      final k = keys[i];
-      final truncated = k.length > keyCol ? '${k.substring(0, keyCol - 1)}…' : k;
-      final rowKey = truncated.padRight(keyCol);
-      final v = values[i];
-      final cell = v.length <= valCol ? v.padRight(valCol) : '${v.substring(0, valCol - 1)}…';
-      buf.writeln('│ $rowKey │ $cell │');
-    }
-    buf.write('└${'─' * (keyCol + 2)}┴${'─' * (valCol + 2)}┘');
-    return buf.toString();
-  }
-
-  String _compact(Object? v) {
-    if (v == null) return 'null';
-    if (v is String) {
-      return v.length > 200 ? '"${v.substring(0, 200)}…"' : '"$v"';
-    }
-    if (v is num || v is bool) return '$v';
-    if (v is List) return '[${v.length} items]';
-    if (v is Map) return '{${v.length} keys}';
-    return v.toString();
-  }
 }
