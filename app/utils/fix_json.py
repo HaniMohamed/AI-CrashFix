@@ -1,4 +1,3 @@
-import json
 import re
 
 def fix_corrupted_json(raw_json_string):
