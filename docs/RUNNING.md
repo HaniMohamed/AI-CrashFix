@@ -34,7 +34,7 @@ On first launch:
 
 The backend stores the crash database in:
 
-- `~/Library/Application Support/AI Crash Fix/<project>_crash_store.db`
+- If sandboxed (default):\n  `~/Library/Containers/com.example.aiCrashFixUi/Data/Library/Application Support/AI Crash Fix/<project>_crash_store.db`\n+- If sandbox is disabled:\n  `~/Library/Application Support/AI Crash Fix/<project>_crash_store.db`
 
 (where `<project>` is your configured Crashlytics BigQuery project id.)
 
@@ -44,7 +44,7 @@ The backend stores the crash database in:
 
 Create this file on the recipient machine:
 
-- `~/Library/Application Support/AI Crash Fix/.env`
+- If sandboxed (default):\n  `~/Library/Containers/com.example.aiCrashFixUi/Data/Library/Application Support/AI Crash Fix/.env`\n+- If sandbox is disabled:\n  `~/Library/Application Support/AI Crash Fix/.env`
 
 Then put your normal backend config inside it (same keys as the repo `.env`), e.g.:
 
@@ -77,5 +77,5 @@ open /path/to/ai_crash_fix_ui.app
 
 ## Troubleshooting
 
-- **Stuck on “starting backend”**: the embedded backend binary is missing from the bundle.\n  It must exist at `ai_crash_fix_ui.app/Contents/Resources/backend/ai_crash_fix_backend`.\n- **Port errors**: quit the app and reopen; it picks another free port.\n- **Backend disabled**: ensure `AI_CRASH_FIX_USE_EMBEDDED_BACKEND` is not set to `0`.\n
+- **Stuck on “starting backend”**: the embedded backend bundle is missing from the `.app`.\n  It must exist at:\n  `ai_crash_fix_ui.app/Contents/Resources/backend/ai_crash_fix_backend/` (folder)\n  and include:\n  - `ai_crash_fix_backend` (executable)\n  - `_internal/` (PyInstaller runtime)\n+- **Port errors**: quit the app and reopen; it picks another free port.\n+- **Backend disabled**: ensure `AI_CRASH_FIX_USE_EMBEDDED_BACKEND` is not set to `0`.\n+- **Config not picked up**: double-check you placed `.env` in the sandbox container path above.\n 
 

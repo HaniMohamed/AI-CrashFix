@@ -23,7 +23,8 @@ pip install -r requirements.txt
 ```
 
 Output:
-- `dist/ai_crash_fix_backend/ai_crash_fix_backend`
+- PyInstaller dist folder: `dist/ai_crash_fix_backend/`
+- Backend executable: `dist/ai_crash_fix_backend/ai_crash_fix_backend`
 
 ## 2) Build the Flutter macOS app
 
@@ -46,8 +47,12 @@ This makes the app self-contained:
 ./scripts/stage_backend_into_built_macos_app.sh
 ```
 
-This stages to:
-- `.../ai_crash_fix_ui.app/Contents/Resources/backend/ai_crash_fix_backend`
+This copies the **entire PyInstaller dist folder** into the app bundle (required so
+the `_internal/` Python runtime is present) and stages to:
+
+- `.../ai_crash_fix_ui.app/Contents/Resources/backend/ai_crash_fix_backend/`
+  - executable: `ai_crash_fix_backend`
+  - runtime: `_internal/`
 
 If you have multiple builds, pass the app path explicitly:
 
@@ -66,4 +71,7 @@ ditto -c -k --sequesterRsrc --keepParent \
 ```
 
 Send `ai_crash_fix_ui-macos.zip` to the recipient.
+
+## Notes
+- The macOS app is sandboxed by default. Ensure networking entitlements exist:\n  `com.apple.security.network.client` and `com.apple.security.network.server`.\n  (These are configured in `frontend/macos/Runner/*.entitlements` in this repo.)
 

@@ -50,7 +50,7 @@ Quick summary:
 - **Backend binary**: built via PyInstaller from `backend_main.py`
 - **App**: built via `flutter build macos`
 - **Bundling**: stage the backend into the built `.app` under
-  `Contents/Resources/backend/ai_crash_fix_backend`
+  `Contents/Resources/backend/ai_crash_fix_backend/` (folder, includes `_internal/`)
 
 See:
 - [`docs/BUNDLING.md`](docs/BUNDLING.md) — build + bundle for sharing
