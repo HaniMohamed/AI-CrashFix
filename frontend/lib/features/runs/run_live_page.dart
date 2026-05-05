@@ -13,11 +13,20 @@ import '../../shared/widgets/status_pill.dart';
 import 'widgets/crash_run_card.dart';
 import 'widgets/live_summary_strip.dart';
 
-class RunLivePage extends ConsumerWidget {
+class RunLivePage extends ConsumerStatefulWidget {
   const RunLivePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RunLivePage> createState() => _RunLivePageState();
+}
+
+class _RunLivePageState extends ConsumerState<RunLivePage> {
+  /// Crash cards we've already shown at least once in this screen lifecycle.
+  /// Used to avoid replaying the "new card" animation when scrolling.
+  final Set<String> _seenCrashIds = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(runSessionProvider);
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
@@ -126,10 +135,15 @@ class RunLivePage extends ConsumerWidget {
               final crashId = session.crashOrder[i];
               final crashState = session.perCrash[crashId];
               if (crashState == null) return const SizedBox.shrink();
-              return Padding(
+              final firstTime = _seenCrashIds.add(crashId);
+              final card = Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                child: CrashRunCard(state: crashState),
-              ).animate().fade(duration: 250.ms).slideY(begin: 0.1);
+                child: CrashRunCard(key: ValueKey(crashId), state: crashState),
+              );
+              // Animate only truly newly-added cards (not rebuild/scroll).
+              return firstTime
+                  ? card.animate().fade(duration: 250.ms).slideY(begin: 0.1)
+                  : card;
             },
           ),
         ),

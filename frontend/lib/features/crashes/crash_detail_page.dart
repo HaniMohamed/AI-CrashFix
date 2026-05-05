@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -311,7 +310,18 @@ class _Header extends ConsumerWidget {
                 _ExternalChip(
                   icon: Icons.merge_outlined,
                   label: 'Open MR',
-                  onTap: () => Clipboard.setData(ClipboardData(text: c.prUrl!)),
+                  onTap: () async {
+                    final uri = Uri.tryParse(c.prUrl!);
+                    if (uri == null) return;
+                    final ok = await launchUrl(
+                      uri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    if (!context.mounted || ok) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Could not open MR link')),
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
               ],
