@@ -382,6 +382,7 @@ class _Header extends ConsumerWidget {
               ],
               if (c.prUrl != null) ...[
                 _ExternalChip(
+                  withCopy: false,
                   icon: Icons.merge_outlined,
                   label: 'Open MR',
                   onTap: () async {
@@ -451,7 +452,8 @@ class _ExternalChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  const _ExternalChip({required this.icon, required this.label, this.onTap});
+  final bool withCopy;
+  const _ExternalChip({required this.icon, required this.label, this.onTap, this.withCopy = true});
 
   @override
   Widget build(BuildContext context) {
@@ -475,8 +477,10 @@ class _ExternalChip extends StatelessWidget {
               label,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(color: palette.text),
             ),
-            const SizedBox(width: 6),
-            Icon(Icons.copy, size: 13, color: palette.textMuted),
+            if (withCopy) ...[
+              const SizedBox(width: 6),
+              Icon(Icons.copy, size: 13, color: palette.textMuted),
+            ],
           ],
         ),
       ),
