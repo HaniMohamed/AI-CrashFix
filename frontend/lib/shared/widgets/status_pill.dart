@@ -51,6 +51,8 @@ class StatusPill extends StatelessWidget {
         return 'COMPLETED';
       case 'in_progress':
         return 'RUNNING';
+      case 'skipped':
+        return 'SKIPPED';
       case 'failed':
         return 'FAILED';
       default:

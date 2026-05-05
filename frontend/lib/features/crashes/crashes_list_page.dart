@@ -294,7 +294,7 @@ class _Filters extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final statuses = const [null, 'completed', 'in_progress', 'failed'];
+    final statuses = const [null, 'completed', 'in_progress', 'skipped', 'failed'];
     return GlassCard(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Wrap(

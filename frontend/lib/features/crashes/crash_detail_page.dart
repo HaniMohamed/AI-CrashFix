@@ -86,6 +86,10 @@ class _BodyState extends State<_Body> with TickerProviderStateMixin {
           label: const Text('Back to crashes'),
         ),
         const SizedBox(height: AppSpacing.sm),
+        if (c.status.toLowerCase() == 'skipped') ...[
+          _PipelineSkippedTile(crash: c),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         if (c.status.toLowerCase() == 'failed') ...[
           _GraphFailureTile(crash: c),
           const SizedBox(height: AppSpacing.lg),
@@ -125,6 +129,76 @@ class _BodyState extends State<_Body> with TickerProviderStateMixin {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PipelineSkippedTile extends StatelessWidget {
+  final Crash crash;
+  const _PipelineSkippedTile({required this.crash});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context).textTheme;
+    final palette = context.palette;
+    final note = (crash.result?['pipeline_note'] ?? '').toString().trim();
+    final message = note.isNotEmpty
+        ? note
+        : 'This crash ended early and was not processed.';
+
+    return Material(
+      color: Colors.transparent,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.xs,
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            0,
+            AppSpacing.lg,
+            AppSpacing.md,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadii.all(AppRadii.md),
+            side: BorderSide(color: palette.border),
+          ),
+          collapsedShape: RoundedRectangleBorder(
+            borderRadius: AppRadii.all(AppRadii.md),
+            side: BorderSide(color: palette.border),
+          ),
+          backgroundColor: palette.surface2,
+          collapsedBackgroundColor: palette.surface2,
+          iconColor: palette.textSecondary,
+          collapsedIconColor: palette.textSecondary,
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: palette.textSecondary, size: 22),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Pipeline skipped',
+                  style: theme.titleSmall?.copyWith(
+                    color: palette.text,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectableText(
+                message,
+                style: AppTypography.mono(color: palette.text, size: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

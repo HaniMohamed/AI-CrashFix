@@ -38,6 +38,7 @@ class _LiveSummaryStripState extends State<LiveSummaryStrip> {
     final s = widget.session;
     final processed = s.summary?.processed ?? _countCompletedCrashes();
     final skipped = s.summary?.skipped ?? 0;
+    final deduped = s.summary?.deduped ?? 0;
     final failed = s.summary?.failed ?? _countFailedCrashes();
     final fetched = s.summary?.fetched ?? s.crashOrder.length;
 
@@ -49,7 +50,8 @@ class _LiveSummaryStripState extends State<LiveSummaryStrip> {
     final cards = <_SummaryCardData>[
       _SummaryCardData('Fetched', fetched, palette.primary),
       _SummaryCardData('Processed', processed, palette.success),
-      _SummaryCardData('Skipped', skipped, palette.textMuted),
+      _SummaryCardData('Deduped (already complete)', deduped, palette.textMuted),
+      _SummaryCardData('Skipped (ended early)', skipped, palette.textMuted),
       _SummaryCardData('Failed', failed, palette.danger),
     ];
 

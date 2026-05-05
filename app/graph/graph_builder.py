@@ -18,6 +18,17 @@ def build_graph():
     graph.add_node("git_regression", instrument_node("git_regression", git_regression))
     graph.add_node("llm_analysis", instrument_node("llm_analysis", llm_analysis))
     graph.add_node("jira_create", instrument_node("jira_create", jira_create))
+    graph.add_node(
+        "mark_skipped_no_mapped_frames",
+        instrument_node(
+            "mark_skipped_no_mapped_frames",
+            lambda state: {
+                **state,
+                "pipeline_status": "skipped",
+                "pipeline_note": "No mapped stack frames; cannot map crash to repository files.",
+            },
+        ),
+    )
 
     # Fix generation subgraph
     fix_subgraph = build_fix_subgraph()
@@ -31,7 +42,9 @@ def build_graph():
     graph.add_conditional_edges(
         "map_stacktrace",
         instrument_router("route_after_map_stacktrace",
-        lambda state: "repo_context" if state.get("mapped_frames") else END))
+        lambda state: "repo_context" if state.get("mapped_frames") else "mark_skipped_no_mapped_frames"))
+
+    graph.add_edge("mark_skipped_no_mapped_frames", END)
 
     graph.add_edge("repo_context", "git_regression")
     graph.add_edge("git_regression", "llm_analysis")

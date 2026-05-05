@@ -89,7 +89,7 @@ class CrashStore:
             conn.commit()
 
     def update_result(self, crash_id: str, result: dict):
-        """Persist ``result`` JSON. If ``graph_error`` is set, row ``status`` becomes ``failed``."""
+        """Persist ``result`` JSON and derive terminal status when possible."""
         now = datetime.utcnow().isoformat()
         payload = json.dumps(result)
         with self._connect() as conn:
@@ -98,6 +98,15 @@ class CrashStore:
                     """
                     UPDATE crashes
                     SET result = ?, updated_at = ?, status = 'failed'
+                    WHERE crash_id = ?
+                    """,
+                    (payload, now, crash_id),
+                )
+            elif str(result.get("pipeline_status") or "").lower() == "skipped":
+                conn.execute(
+                    """
+                    UPDATE crashes
+                    SET result = ?, updated_at = ?, status = 'skipped'
                     WHERE crash_id = ?
                     """,
                     (payload, now, crash_id),
@@ -200,8 +209,13 @@ class CrashStore:
             and bool(branch_created)
             and bool(mr_created)
         )
-        # Never overwrite a terminal failure back into in_progress while step flags change.
-        status = "completed" if complete else ("failed" if str(existing_status or "").lower() == "failed" else "in_progress")
+        # Never overwrite a terminal outcome back into in_progress while step flags change.
+        existing = str(existing_status or "").lower()
+        status = (
+            "completed"
+            if complete
+            else ("failed" if existing == "failed" else ("skipped" if existing == "skipped" else "in_progress"))
+        )
         conn.execute(
             """
             UPDATE crashes

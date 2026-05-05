@@ -304,11 +304,12 @@ def _run_batch(
             "fetched": 0,
             "processed": 0,
             "skipped": 0,
+            "deduped": 0,
             "failed": 0,
         }
         return
 
-    counters = {"processed": 0, "skipped": 0, "failed": 0}
+    counters = {"processed": 0, "skipped": 0, "deduped": 0, "failed": 0}
 
     for crash in crashes:
         crash_id = crash.get("crash_id")
@@ -316,7 +317,7 @@ def _run_batch(
             continue
 
         if crash_store.is_processed(crash_id):
-            counters["skipped"] += 1
+            counters["deduped"] += 1
             with node_span(
                 {"graph_run_id": run_id, "crash_id": crash_id},
                 "batch.skip",
@@ -351,6 +352,7 @@ def _run_batch(
         "fetched": len(crashes),
         "processed": counters["processed"],
         "skipped": counters["skipped"],
+        "deduped": counters["deduped"],
         "failed": counters["failed"],
     }
 
@@ -373,7 +375,7 @@ def _run_single(
         crash, run_id=run_id, skip_jira_creation=skip_jira_creation, mock=mock
     )
 
-    counters = {"processed": 0, "skipped": 0, "failed": 0}
+    counters = {"processed": 0, "skipped": 0, "deduped": 0, "failed": 0}
     yield from _stream_one_crash(
         graph=graph,
         crash_store=crash_store,
@@ -389,6 +391,7 @@ def _run_single(
         "fetched": 1,
         "processed": counters["processed"],
         "skipped": counters["skipped"],
+        "deduped": counters["deduped"],
         "failed": counters["failed"],
     }
 
@@ -468,6 +471,19 @@ def _stream_one_crash(
         except Exception:
             # Persistence failure must not break the stream.
             pass
+
+    # Non-error terminal outcome: graph decided to skip further processing.
+    if str(final_state.get("pipeline_status") or "").lower() == "skipped":
+        counters["skipped"] += 1
+        yield {
+            "type": CRASH_SKIPPED,
+            "run_id": run_id,
+            "crash_id": crash_id,
+            "reason": (final_state.get("pipeline_note") or "skipped").strip()
+            if isinstance(final_state.get("pipeline_note"), str)
+            else "skipped",
+        }
+        return
 
     err_msg = final_state.get("graph_error") if isinstance(final_state, dict) else None
     if err_msg:

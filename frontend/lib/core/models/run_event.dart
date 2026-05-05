@@ -103,6 +103,7 @@ sealed class RunEvent {
           fetched: (j['fetched'] as num?)?.toInt() ?? 0,
           processed: (j['processed'] as num?)?.toInt() ?? 0,
           skipped: (j['skipped'] as num?)?.toInt() ?? 0,
+          deduped: (j['deduped'] as num?)?.toInt() ?? 0,
           failed: (j['failed'] as num?)?.toInt() ?? 0,
         );
       case 'error':
@@ -251,12 +252,14 @@ class RunSummaryEvent extends RunEvent {
   final int fetched;
   final int processed;
   final int skipped;
+  final int deduped;
   final int failed;
   const RunSummaryEvent({
     required super.runId,
     required this.fetched,
     required this.processed,
     required this.skipped,
+    required this.deduped,
     required this.failed,
   }) : super(type: 'run_summary');
 }

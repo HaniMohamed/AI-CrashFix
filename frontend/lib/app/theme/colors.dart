@@ -58,6 +58,8 @@ class StatusColors {
         return AppColors.teal;
       case 'in_progress':
         return AppColors.indigo;
+      case 'skipped':
+        return AppColors.slate;
       case 'failed':
         return AppColors.rose;
       default:

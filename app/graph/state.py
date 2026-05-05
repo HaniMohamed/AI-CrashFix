@@ -10,6 +10,10 @@ class CrashState(TypedDict, total=False):
 
     graph_error: str | None
 
+    # Terminal pipeline classification that's not an error (e.g. "skipped").
+    pipeline_status: str | None
+    pipeline_note: str | None
+
     
     mock: bool
     skip_jira_creation: bool

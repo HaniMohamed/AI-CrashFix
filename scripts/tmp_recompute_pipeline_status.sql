@@ -4,6 +4,7 @@
 --   - in_progress: graph has not ended yet (or no end marker)
 --   - completed: required pipeline steps completed (ignoring Jira)
 --   - failed: graph ended without completing, or has graph_error, or fix validation failed
+--   - skipped: graph ended early because stacktrace couldn't be mapped to repo files
 --
 -- This script derives the "real" status from persisted columns + the stored `result` JSON.
 --
@@ -28,6 +29,7 @@ WITH derived AS (
     analysis_done, jira_created, fix_generated, fix_validated, diff_applied, branch_created, mr_created,
     CASE
       WHEN (analysis_done AND fix_generated AND fix_validated AND diff_applied AND branch_created AND mr_created) THEN 'completed'
+      WHEN COALESCE(NULLIF(json_extract(result, '$.pipeline_status'), ''), NULL) = 'skipped' THEN 'skipped'
       WHEN COALESCE(NULLIF(json_extract(result, '$.graph_error'), ''), NULL) IS NOT NULL THEN 'failed'
       WHEN COALESCE(json_extract(result, '$.fix_validation_result'), 1) = 0 THEN 'failed'
       -- If the run has an end timestamp but didn't reach completion, it ended unsuccessfully.
@@ -50,6 +52,7 @@ SET
   END,
   status = CASE
     WHEN (analysis_done AND fix_generated AND fix_validated AND diff_applied AND branch_created AND mr_created) THEN 'completed'
+    WHEN COALESCE(NULLIF(json_extract(result, '$.pipeline_status'), ''), NULL) = 'skipped' THEN 'skipped'
     WHEN COALESCE(NULLIF(json_extract(result, '$.graph_error'), ''), NULL) IS NOT NULL THEN 'failed'
     WHEN COALESCE(json_extract(result, '$.fix_validation_result'), 1) = 0 THEN 'failed'
     WHEN COALESCE(NULLIF(json_extract(result, '$.graph_run_end_time'), ''), NULL) IS NOT NULL THEN 'failed'
