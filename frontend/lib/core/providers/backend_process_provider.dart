@@ -26,6 +26,17 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
   StreamSubscription<String>? _out;
   StreamSubscription<String>? _err;
   http.Client? _client;
+  final List<String> _logTail = <String>[];
+
+  void _pushLog(String line) {
+    final s = line.trimRight();
+    if (s.isEmpty) return;
+    _logTail.add(s);
+    // Keep last ~80 lines.
+    if (_logTail.length > 80) {
+      _logTail.removeRange(0, _logTail.length - 80);
+    }
+  }
 
   @override
   Future<BackendBoot?> build() async {
@@ -80,11 +91,11 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
     _out = _proc!.stdout
         .transform(const SystemEncoding().decoder)
         .transform(const LineSplitter())
-        .listen((String _) {});
+        .listen(_pushLog);
     _err = _proc!.stderr
         .transform(const SystemEncoding().decoder)
         .transform(const LineSplitter())
-        .listen((String _) {});
+        .listen(_pushLog);
 
     // Wait until backend is ready.
     await _waitForHealth(baseUrl);
@@ -102,7 +113,8 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
     //   .../MyApp.app/Contents/Resources/
     final exe = Platform.resolvedExecutable;
     final contentsDir = Directory(exe).parent.parent.path; // .../Contents
-    final candidate = '$contentsDir/Resources/backend/ai_crash_fix_backend';
+    final candidate =
+        '$contentsDir/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend';
     if (File(candidate).existsSync()) return candidate;
 
     return null;
@@ -118,15 +130,21 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
   Future<void> _waitForHealth(String baseUrl) async {
     final deadline = DateTime.now().add(const Duration(seconds: 20));
     Object? lastErr;
+    var exitHooked = false;
     while (DateTime.now().isBefore(deadline)) {
       // If the process died, surface it.
       final p = _proc;
-      if (p != null) {
+      if (p != null && !exitHooked) {
+        exitHooked = true;
         final code = p.exitCode;
         // ignore: unawaited_futures
         code.then((c) {
           if (c != 0 && state.isLoading) {
-            state = AsyncError(StateError('Backend exited with code $c'), StackTrace.current);
+            final tail = _logTail.isEmpty ? '' : '\n\n--- backend logs (tail) ---\n${_logTail.join('\n')}';
+            state = AsyncError(
+              StateError('Backend exited with code $c$tail'),
+              StackTrace.current,
+            );
           }
         });
       }

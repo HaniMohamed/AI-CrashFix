@@ -9,8 +9,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from app.config import AI_CRASH_FIX_GRAPH_LOG_LEVEL, AI_CRASH_FIX_GRAPH_LOG_STYLE
 
-_LOG_LEVEL = AI_CRASH_FIX_GRAPH_LOG_LEVEL.upper()
-_LOG_STYLE = AI_CRASH_FIX_GRAPH_LOG_STYLE.lower()  # pretty|json
+_LOG_LEVEL = (AI_CRASH_FIX_GRAPH_LOG_LEVEL or "info").upper()
+_LOG_STYLE = (AI_CRASH_FIX_GRAPH_LOG_STYLE or "pretty").lower()  # pretty|json
 _LOG_JSON = _LOG_STYLE == "json"
 
 # Optional fan-out of structured events to subscribers (e.g. the API layer).

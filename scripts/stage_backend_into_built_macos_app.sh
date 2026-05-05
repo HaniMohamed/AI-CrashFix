@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SRC="${ROOT}/dist/ai_crash_fix_backend/ai_crash_fix_backend"
-if [[ ! -f "${SRC}" ]]; then
-  echo "Backend binary not found at ${SRC}" >&2
+SRC_DIR="${ROOT}/dist/ai_crash_fix_backend"
+SRC_BIN="${SRC_DIR}/ai_crash_fix_backend"
+if [[ ! -f "${SRC_BIN}" ]]; then
+  echo "Backend binary not found at ${SRC_BIN}" >&2
   echo "Run: ./scripts/build_backend_macos.sh" >&2
   exit 1
 fi
@@ -38,13 +39,16 @@ if [[ -z "${APP_PATH}" || ! -d "${APP_PATH}" ]]; then
   exit 1
 fi
 
-DEST_DIR="${APP_PATH}/Contents/Resources/backend"
-DEST="${DEST_DIR}/ai_crash_fix_backend"
+DEST_DIR="${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
+DEST_BIN="${DEST_DIR}/ai_crash_fix_backend"
 
-mkdir -p "${DEST_DIR}"
-cp -f "${SRC}" "${DEST}"
-chmod +x "${DEST}"
+# Copy the whole PyInstaller dist folder so its `_internal/` is available.
+# Remove any previous staging first so this script is idempotent.
+rm -rf "${DEST_DIR}"
+mkdir -p "$(dirname "${DEST_DIR}")"
+cp -R "${SRC_DIR}" "${DEST_DIR}"
+chmod +x "${DEST_BIN}"
 
 echo "Staged backend into built app:"
-echo "  ${DEST}"
+echo "  ${DEST_BIN}"
 
