@@ -103,7 +103,7 @@ class AppSidebar extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Crashes \u2192 fix \u2192 PR, on autopilot.',
+                      'Crashes \u2192 fix \u2192 PR\non autopilot.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.white.withValues(alpha: 0.85),
                           ),

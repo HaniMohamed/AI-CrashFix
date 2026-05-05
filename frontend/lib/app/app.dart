@@ -13,6 +13,7 @@ class AiCrashFixApp extends ConsumerWidget {
     final async = ref.watch(appSettingsProvider);
     return async.when(
       loading: () => MaterialApp(
+        title: 'AI Crash Fix',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
         home: const Scaffold(
@@ -22,6 +23,7 @@ class AiCrashFixApp extends ConsumerWidget {
         ),
       ),
       error: (e, _) => MaterialApp(
+        title: 'AI Crash Fix',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
         home: Scaffold(
