@@ -1,7 +1,51 @@
 import os
+import sys
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=".env", override=False)
+
+def _load_env() -> None:
+    """
+    Load environment variables from a .env file.
+
+    Priority (first file found wins):
+    1) AI_CRASH_FIX_ENV_FILE (explicit path)
+    2) macOS desktop bundle: ~/Library/Application Support/AI Crash Fix/.env
+    3) macOS desktop bundle: <App>.app/Contents/Resources/.env
+    4) repo/dev: ./.env (workspace root / current working directory)
+    """
+    explicit = (os.getenv("AI_CRASH_FIX_ENV_FILE") or "").strip()
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit))
+
+    frozen = bool(getattr(sys, "frozen", False))
+    if sys.platform == "darwin" and frozen:
+        candidates.append(
+            Path.home() / "Library" / "Application Support" / "AI Crash Fix" / ".env"
+        )
+        # Platform.resolvedExecutable points to .../<App>.app/Contents/MacOS/<App>
+        # Resources are at .../<App>.app/Contents/Resources/
+        exe = Path(sys.executable).resolve()
+        contents = exe.parent.parent  # .../Contents
+        candidates.append(contents / "Resources" / ".env")
+
+    candidates.append(Path(".env"))
+
+    for p in candidates:
+        try:
+            if p.is_file():
+                load_dotenv(dotenv_path=str(p), override=False)
+                return
+        except Exception:
+            continue
+
+    # Nothing found; proceed with process env only.
+    return
+
+
+_load_env()
 
 REPO_ROOT = os.getenv("REPO_ROOT", os.getcwd())
 MAIN_BRANCH = os.getenv("MAIN_BRANCH", "main")

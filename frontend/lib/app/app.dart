@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_settings.dart';
 import 'router.dart';
+import '../core/providers/backend_process_provider.dart';
 import 'theme/app_theme.dart';
 
 class AiCrashFixApp extends ConsumerWidget {
@@ -11,6 +12,7 @@ class AiCrashFixApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(appSettingsProvider);
+    final backend = ref.watch(backendProcessProvider);
     return async.when(
       loading: () => MaterialApp(
         title: 'AI Crash Fix',
@@ -46,14 +48,53 @@ class AiCrashFixApp extends ConsumerWidget {
           ),
         ),
       ),
-      data: (settings) => MaterialApp.router(
-        title: 'AI Crash Fix',
-        debugShowCheckedModeBanner: false,
-        themeMode: settings.themeMode,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        routerConfig: appRouter,
-      ),
+      data: (settings) {
+        // Desktop: block initial UI until the embedded backend is ready
+        // (or show an actionable error). Web continues immediately.
+        if (backend.isLoading) {
+          return MaterialApp(
+            title: 'AI Crash Fix',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.dark(),
+            home: const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+        if (backend.hasError) {
+          return MaterialApp(
+            title: 'AI Crash Fix',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.dark(),
+            home: Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Could not start embedded backend: ${backend.error}'),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => ref.invalidate(backendProcessProvider),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        return MaterialApp.router(
+          title: 'AI Crash Fix',
+          debugShowCheckedModeBanner: false,
+          themeMode: settings.themeMode,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          routerConfig: appRouter,
+        );
+      },
     );
   }
 }

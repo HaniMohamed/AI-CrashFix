@@ -42,6 +42,20 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+### macOS desktop app (Flutter + embedded backend)
+This repo can be built as a **Flutter macOS desktop app** that starts a bundled
+FastAPI backend locally and talks to it over `http://127.0.0.1:<port>`.
+
+Quick summary:
+- **Backend binary**: built via PyInstaller from `backend_main.py`
+- **App**: built via `flutter build macos`
+- **Bundling**: stage the backend into the built `.app` under
+  `Contents/Resources/backend/ai_crash_fix_backend`
+
+See:
+- [`docs/BUNDLING.md`](docs/BUNDLING.md) — build + bundle for sharing
+- [`docs/RUNNING.md`](docs/RUNNING.md) — run the received bundle on another machine
+
 ### Configuration (.env)
 AI Crash Fix loads environment variables from `.env` (see `app/config.py`).
 
@@ -176,7 +190,7 @@ Each NDJSON line is `{"type": "...", "run_id": "...", ...}`. Common types:
 | `state_snapshot` | after each top-level node | `after_node`, `state` (full live `CrashState`) |
 | `crash_completed` | crash success | `final_state` |
 | `crash_failed` | crash error | `error` |
-| `run_summary` | last line | `fetched`, `processed`, `skipped`, `failed` |
+| `run_summary` | last line | `fetched`, `processed`, `skipped` (ended early), `deduped` (already complete), `failed` |
 
 Inner fix-subgraph nodes show up as `node_started` / `node_completed` (no
 extra `state_snapshot` per inner node — the outer `state_snapshot` after
@@ -241,6 +255,13 @@ flutter build web --release
 The frontend assumes the backend's permissive CORS (already enabled in
 `app/api/server.py`). See [`frontend/README.md`](frontend/README.md) for the
 project structure and design tokens.
+
+### Status model
+Crash rows in the local crash store (`crashes.status`) use these values:
+- `in_progress`: started but not ended
+- `completed`: finished successfully (Jira is ignored for completion)
+- `failed`: ended unsuccessfully (exception / graph_error / validation failure)
+- `skipped`: ended early without processing (e.g. no mapped stack frames); see `result.pipeline_note`
 
 ### Debug in Cursor / VS Code
 Use the included launch config in `.vscode/launch.json`:
