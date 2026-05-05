@@ -39,7 +39,7 @@ class Crash {
 
   factory Crash.fromJson(Map<String, dynamic> j) => Crash(
         crashId: (j['crash_id'] ?? '').toString(),
-        status: (j['status'] ?? 'pending').toString(),
+        status: (j['status'] ?? 'in_progress').toString(),
         jiraIssueId: j['jira_issue_id'] as String?,
         prUrl: j['pr_url'] as String?,
         createdAt: j['created_at'] as String?,

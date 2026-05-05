@@ -50,7 +50,7 @@ class CrashStore:
             crash_id TEXT PRIMARY KEY,
             jira_issue_id TEXT,
             pr_url TEXT,
-            status TEXT DEFAULT 'pending',
+            status TEXT DEFAULT 'in_progress',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             result TEXT DEFAULT NULL,
@@ -82,7 +82,7 @@ class CrashStore:
             conn.execute(
                 """
         INSERT OR IGNORE INTO crashes (crash_id, created_at, updated_at, status)
-        VALUES (?, ?, ?, 'pending')
+        VALUES (?, ?, ?, 'in_progress')
         """,
                 (crash_id, now, now),
             )
@@ -173,7 +173,9 @@ class CrashStore:
         now_iso = now_iso or datetime.utcnow().isoformat()
         row = conn.execute(
             f"""
-            SELECT {", ".join(c for c in _PIPELINE_FLAG_COLUMNS if c != "pipeline_complete")}
+            SELECT
+              {", ".join(c for c in _PIPELINE_FLAG_COLUMNS if c != "pipeline_complete")},
+              status
             FROM crashes WHERE crash_id = ?
             """,
             (crash_id,),
@@ -188,6 +190,7 @@ class CrashStore:
             diff_applied,
             branch_created,
             mr_created,
+            existing_status,
         ) = row
         complete = int(
             bool(analysis_done)
@@ -197,7 +200,8 @@ class CrashStore:
             and bool(branch_created)
             and bool(mr_created)
         )
-        status = "completed" if complete else "in_progress"
+        # Never overwrite a terminal failure back into in_progress while step flags change.
+        status = "completed" if complete else ("failed" if str(existing_status or "").lower() == "failed" else "in_progress")
         conn.execute(
             """
             UPDATE crashes

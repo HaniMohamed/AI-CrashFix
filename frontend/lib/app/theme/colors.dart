@@ -60,9 +60,8 @@ class StatusColors {
         return AppColors.indigo;
       case 'failed':
         return AppColors.rose;
-      case 'pending':
       default:
-        return AppColors.slate;
+        return AppColors.indigo;
     }
   }
 }

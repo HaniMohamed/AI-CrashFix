@@ -19,7 +19,6 @@ class StatusDonut extends StatelessWidget {
     final segments = <_Segment>[
       _Segment('Completed', totals.completed, palette.success),
       _Segment('Running', totals.inProgress, palette.primary),
-      _Segment('Pending', totals.pending, palette.textMuted),
       _Segment('Failed', totals.failed, palette.danger),
     ];
 

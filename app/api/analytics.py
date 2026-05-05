@@ -85,7 +85,8 @@ def compute_analytics(store: CrashStore, *, use_cache: bool = True) -> Dict[str,
     total = 0
     for row, parsed in store.iter_all_results():
         total += 1
-        status = (row.get("status") or "pending") or "pending"
+        # Status is normalized to: in_progress | completed | failed.
+        status = (row.get("status") or "in_progress") or "in_progress"
         status_counter[status] += 1
 
         if row.get("pipeline_complete"):
@@ -150,7 +151,6 @@ def compute_analytics(store: CrashStore, *, use_cache: bool = True) -> Dict[str,
             "all": total,
             "completed": status_counter.get("completed", 0),
             "in_progress": status_counter.get("in_progress", 0),
-            "pending": status_counter.get("pending", 0),
             "failed": status_counter.get("failed", 0),
             "with_jira": with_jira,
             "with_pr": with_pr,

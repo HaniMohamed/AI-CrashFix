@@ -4,7 +4,6 @@ class AnalyticsTotals {
   final int all;
   final int completed;
   final int inProgress;
-  final int pending;
   final int failed;
   final int withJira;
   final int withPr;
@@ -14,7 +13,6 @@ class AnalyticsTotals {
     required this.all,
     required this.completed,
     required this.inProgress,
-    required this.pending,
     required this.failed,
     required this.withJira,
     required this.withPr,
@@ -25,7 +23,6 @@ class AnalyticsTotals {
         all: (j['all'] ?? 0) as int,
         completed: (j['completed'] ?? 0) as int,
         inProgress: (j['in_progress'] ?? 0) as int,
-        pending: (j['pending'] ?? 0) as int,
         failed: (j['failed'] ?? 0) as int,
         withJira: (j['with_jira'] ?? 0) as int,
         withPr: (j['with_pr'] ?? 0) as int,

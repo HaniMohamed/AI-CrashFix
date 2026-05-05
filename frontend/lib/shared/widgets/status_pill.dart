@@ -53,9 +53,8 @@ class StatusPill extends StatelessWidget {
         return 'RUNNING';
       case 'failed':
         return 'FAILED';
-      case 'pending':
       default:
-        return 'PENDING';
+        return 'RUNNING';
     }
   }
 }
