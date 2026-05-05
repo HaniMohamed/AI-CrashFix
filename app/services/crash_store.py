@@ -1,5 +1,7 @@
 import json
+import os
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -28,7 +30,25 @@ class CrashStore:
     ``CrashStore()`` on another thread.
     """
 
-    def __init__(self, db_path=f"db/{BQ_PROJECT_ID}_crash_store.db"):
+    def __init__(self, db_path: str | None = None):
+        # Allow desktop builds to override the DB location (recommended on macOS).
+        # Priority:
+        # 1) Explicit arg
+        # 2) AI_CRASH_FIX_DB_PATH env var
+        # 3) Default per environment (repo-local for dev, Application Support for frozen desktop)
+        db_path = db_path or (os.environ.get("AI_CRASH_FIX_DB_PATH") or "").strip() or None
+        if not db_path:
+            if sys.platform == "darwin" and bool(getattr(sys, "frozen", False)):
+                db_path = str(
+                    Path.home()
+                    / "Library"
+                    / "Application Support"
+                    / "AI Crash Fix"
+                    / f"{BQ_PROJECT_ID}_crash_store.db"
+                )
+            else:
+                db_path = f"db/{BQ_PROJECT_ID}_crash_store.db"
+
         path = Path(db_path).expanduser().resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(path)
