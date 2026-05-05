@@ -11,6 +11,8 @@ import '../../app/theme/typography.dart';
 import '../../core/models/crash.dart';
 import '../../core/providers/config_provider.dart';
 import '../../core/providers/crashes_provider.dart';
+import '../../core/models/run_request.dart';
+import '../../core/providers/run_session_provider.dart';
 import '../../core/utils/crashlytics_console_url.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/copyable_text.dart';
@@ -316,9 +318,18 @@ class _Header extends ConsumerWidget {
               GradientButton(
                 label: 'Re-run this crash',
                 icon: Icons.refresh,
-                onPressed: () {
-                  context.go('/runs/new?prefill=${c.crashId}');
-                },
+                onPressed: c.status.toLowerCase() == 'failed'
+                    ? () {
+                        final req = RunRequest(
+                          mode: RunMode.single,
+                          crashId: c.crashId,
+                          mock: false,
+                          skipJiraCreation: true,
+                        );
+                        ref.read(runSessionProvider.notifier).start(req);
+                        context.go('/runs/live');
+                      }
+                    : null,
               ),
             ],
           ),

@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
 import '../../../core/models/crash.dart';
+import '../../../core/models/run_request.dart';
+import '../../../core/providers/run_session_provider.dart';
 import '../../../core/utils/format.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/pipeline_strip.dart';
 import '../../../shared/widgets/status_pill.dart';
 
-class RecentActivity extends StatelessWidget {
+class RecentActivity extends ConsumerWidget {
   final List<Crash> items;
   const RecentActivity({super.key, required this.items});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context).textTheme;
     return GlassCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -45,7 +48,7 @@ class RecentActivity extends StatelessWidget {
               ),
             )
           else
-            ...items.map((c) => _Row(c: c)),
+            ...items.map((c) => _Row(c: c, ref: ref)),
         ],
       ),
     );
@@ -54,7 +57,8 @@ class RecentActivity extends StatelessWidget {
 
 class _Row extends StatelessWidget {
   final Crash c;
-  const _Row({required this.c});
+  final WidgetRef ref;
+  const _Row({required this.c, required this.ref});
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +91,25 @@ class _Row extends StatelessWidget {
             const SizedBox(width: AppSpacing.md),
             PipelineStrip(crash: c),
             const Spacer(),
+            if (c.status.toLowerCase() == 'failed')
+              Tooltip(
+                message: 'Re-run pipeline for this crash',
+                child: IconButton(
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    final req = RunRequest(
+                      mode: RunMode.single,
+                      crashId: c.crashId,
+                      mock: false,
+                      skipJiraCreation: true,
+                    );
+                    ref.read(runSessionProvider.notifier).start(req);
+                    context.go('/runs/live');
+                  },
+                  icon: Icon(Icons.refresh, color: palette.primary),
+                ),
+              ),
             Text(
               Fmt.relative(c.updatedAt),
               style: theme.bodySmall?.copyWith(color: palette.textSecondary),

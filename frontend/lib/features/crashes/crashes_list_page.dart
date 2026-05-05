@@ -7,6 +7,8 @@ import '../../app/theme/spacing.dart';
 import '../../app/theme/typography.dart';
 import '../../core/models/crash.dart';
 import '../../core/providers/crashes_provider.dart';
+import '../../core/models/run_request.dart';
+import '../../core/providers/run_session_provider.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_banner.dart';
@@ -212,7 +214,32 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
               flex: 1,
               child: Align(
                 alignment: Alignment.centerRight,
-                child: Icon(Icons.chevron_right, color: palette.textMuted),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (c.status.toLowerCase() == 'failed')
+                      Tooltip(
+                        message: 'Re-run pipeline for this crash',
+                        child: IconButton(
+                          iconSize: 18,
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () {
+                            final req = RunRequest(
+                              mode: RunMode.single,
+                              crashId: c.crashId,
+                              // Keep defaults consistent with NewRunPage.
+                              mock: false,
+                              skipJiraCreation: true,
+                            );
+                            ref.read(runSessionProvider.notifier).start(req);
+                            context.go('/runs/live');
+                          },
+                          icon: Icon(Icons.refresh, color: palette.primary),
+                        ),
+                      ),
+                    Icon(Icons.chevron_right, color: palette.textMuted),
+                  ],
+                ),
               ),
             ),
           ],
