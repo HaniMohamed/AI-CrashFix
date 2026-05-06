@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,11 +8,10 @@ import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
 import '../../../core/models/crash.dart';
 import '../../../core/providers/config_provider.dart';
-import '../../../core/models/run_event.dart';
 import '../../../core/providers/run_session_provider.dart';
 import '../../../core/utils/crashlytics_console_url.dart';
 import '../../../shared/widgets/glass_card.dart';
-import '../../../shared/widgets/json_tree_viewer.dart';
+import 'pipeline_graph_view.dart';
 
 class CrashRunCard extends ConsumerStatefulWidget {
   final CrashRunState state;
@@ -171,7 +167,14 @@ class _CrashRunCardState extends ConsumerState<CrashRunCard> {
             Container(height: 1, color: palette.border),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              child: _Timeline(state: s),
+              child: SizedBox(
+                height: 520,
+                child: PipelineGraphView(
+                  events: s.events,
+                  completed: s.completed,
+                  failed: s.failure != null,
+                ),
+              ).animate().fadeIn(duration: 220.ms),
             ),
             if (s.failure != null) ...[
               Container(height: 1, color: palette.border),
@@ -197,6 +200,23 @@ class _CrashRunCardState extends ConsumerState<CrashRunCard> {
     );
   }
 }
+
+/*
+================================================================================
+Legacy timeline view (kept for later)
+================================================================================
+
+This was previously rendered under the graph as `_Timeline(state: s)`.
+We’re not calling it right now, but keeping the code here (commented) so it can
+be re-enabled quickly if you decide you want the textual event stream back.
+
+To re-enable:
+- Restore imports:
+  - `dart:convert`
+  - `package:flutter/services.dart`
+  - `../../../core/models/run_event.dart`
+  - `../../../shared/widgets/json_tree_viewer.dart`
+- Add back the widget call under `PipelineGraphView` in the expanded section.
 
 class _Timeline extends StatelessWidget {
   final CrashRunState state;
@@ -366,5 +386,5 @@ class _Timeline extends StatelessWidget {
       ),
     );
   }
-
 }
+*/
