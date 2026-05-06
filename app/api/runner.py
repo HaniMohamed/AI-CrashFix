@@ -19,6 +19,8 @@ sink filters out events whose `run_id` does not match the current run.
 from __future__ import annotations
 
 import collections
+import queue
+import threading
 import traceback
 from typing import Any, Deque, Dict, Iterator, List, Literal, Optional
 
@@ -144,13 +146,16 @@ def stream_run(
     batch_state: Dict[str, Any] = {}
     run_id = ensure_run_id(batch_state)
 
-    pending: Deque[Dict[str, Any]] = collections.deque()
+    # NOTE: Must be a thread-safe queue. Subgraph node events can be emitted while
+    # `graph.stream(...)` is blocked inside a long-running node; we still want to
+    # stream those events to the client in real time.
+    pending: queue.Queue[Dict[str, Any]] = queue.Queue()
 
     def _sink(ev: Dict[str, Any]) -> None:
         # Filter out events from other concurrent runs.
         if ev.get("run_id") and ev.get("run_id") != run_id:
             return
-        pending.append(ev)
+        pending.put(ev)
 
     register_event_sink(_sink)
 
@@ -245,16 +250,19 @@ def stream_run(
         raise
     finally:
         unregister_event_sink(_sink)
-        while pending:
-            yield pending.popleft()
+        yield from _drain(pending)
 
 
 # ---- internals -------------------------------------------------------------
 
 
 def _drain(pending: Deque[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
-    while pending:
-        yield pending.popleft()
+    # Drain a Queue without blocking.
+    while True:
+        try:
+            yield pending.get_nowait()
+        except Exception:
+            break
 
 
 def _run_batch(
@@ -266,7 +274,7 @@ def _run_batch(
     mock: bool,
     skip_jira_creation: bool,
     crash_ids: Optional[List[str]],
-    pending: Deque[Dict[str, Any]],
+    pending: queue.Queue[Dict[str, Any]],
 ) -> Iterator[Dict[str, Any]]:
     service = CrashlyticsService()
 
@@ -365,7 +373,7 @@ def _run_single(
     crash: Dict[str, Any],
     mock: bool,
     skip_jira_creation: bool,
-    pending: Deque[Dict[str, Any]],
+    pending: queue.Queue[Dict[str, Any]],
 ) -> Iterator[Dict[str, Any]]:
     crash_id = (crash.get("crash_id") or "").strip()
     if crash_id:
@@ -402,7 +410,7 @@ def _stream_one_crash(
     crash_store: CrashStore,
     run_id: str,
     state: Dict[str, Any],
-    pending: Deque[Dict[str, Any]],
+    pending: queue.Queue[Dict[str, Any]],
     counters: Dict[str, int],
 ) -> Iterator[Dict[str, Any]]:
     crash_id = state.get("crash_id") or ""
@@ -421,19 +429,50 @@ def _stream_one_crash(
         with node_span(state, "batch.process_crash"):
             stamp_graph_run_start(state)
             # `stream_mode="values"` yields the full CrashState after each top-level
-            # node. Inner subgraph nodes still surface as node_started/node_completed
-            # via the observability sink (no extra snapshot per inner node).
-            for chunk in graph.stream(state, stream_mode="values"):
-                # Flush any sink events accumulated since the last yield. The
-                # most recent `node_completed` event tells us which node
-                # produced this snapshot.
-                while pending:
-                    ev = pending.popleft()
+            # node. Subgraph nodes do NOT yield values, but they DO emit observability
+            # events via the sink. To stream those subgraph events in real time, we
+            # run `graph.stream(...)` in a background thread and continuously drain
+            # the sink queue while it executes.
+
+            snapshots: queue.Queue[Dict[str, Any]] = queue.Queue()
+            done = threading.Event()
+            stream_exc: list[BaseException] = []
+
+            def _run_stream() -> None:
+                try:
+                    for chunk in graph.stream(state, stream_mode="values"):
+                        if isinstance(chunk, dict):
+                            snapshots.put(chunk)
+                except BaseException as e:  # noqa: BLE001
+                    stream_exc.append(e)
+                finally:
+                    done.set()
+
+            t = threading.Thread(target=_run_stream, name="graph.stream", daemon=True)
+            t.start()
+
+            # Drain loop: prioritize node events; emit snapshots when available.
+            while True:
+                emitted = False
+
+                # 1) Drain all pending node/router events first.
+                while True:
+                    try:
+                        ev = pending.get_nowait()
+                    except Exception:
+                        break
+                    emitted = True
                     if ev.get("type") == "node_completed":
                         last_completed_node = ev.get("node")
                     yield ev
 
-                if isinstance(chunk, dict):
+                # 2) Emit any snapshots produced so far.
+                while True:
+                    try:
+                        chunk = snapshots.get_nowait()
+                    except Exception:
+                        break
+                    emitted = True
                     final_state = chunk
                     yield {
                         "type": STATE_SNAPSHOT,
@@ -442,6 +481,18 @@ def _stream_one_crash(
                         "after_node": last_completed_node,
                         "state": redact_state(chunk),
                     }
+
+                # 3) Exit when stream is done and queues are empty.
+                if done.is_set() and snapshots.empty():
+                    break
+
+                # 4) Avoid busy-spin; wake up frequently to keep events "live".
+                if not emitted:
+                    done.wait(0.05)
+
+            # If the graph thread failed, re-raise so the outer handler emits CRASH_FAILED.
+            if stream_exc:
+                raise stream_exc[0]
 
         yield from _drain(pending)
     except Exception as e:
