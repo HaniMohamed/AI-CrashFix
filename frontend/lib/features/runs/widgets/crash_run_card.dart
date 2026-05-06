@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -8,6 +9,7 @@ import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
 import '../../../core/models/crash.dart';
 import '../../../core/providers/config_provider.dart';
+import '../../../core/models/run_request.dart';
 import '../../../core/providers/run_session_provider.dart';
 import '../../../core/utils/crashlytics_console_url.dart';
 import '../../../shared/widgets/glass_card.dart';
@@ -107,12 +109,45 @@ class _CrashRunCardState extends ConsumerState<CrashRunCard> {
                       border: Border.all(color: statusColor.withValues(alpha: 0.4)),
                       borderRadius: AppRadii.all(AppRadii.pill),
                     ),
-                    child: Text(
-                      statusLabel,
-                      style: theme.labelSmall?.copyWith(
-                        color: statusColor,
-                        letterSpacing: 0.6,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          statusLabel,
+                          style: theme.labelSmall?.copyWith(
+                            color: statusColor,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        if (s.failure != null) ...[
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: 'Re-run pipeline for this crash',
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                final req = RunRequest(
+                                  mode: RunMode.single,
+                                  crashId: s.crashId,
+                                  // Keep defaults consistent with NewRunPage.
+                                  mock: false,
+                                  skipJiraCreation: true,
+                                );
+                                ref.read(runSessionProvider.notifier).start(req);
+                                context.go('/runs/live');
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                                child: Icon(
+                                  Icons.refresh,
+                                  size: 14,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   const SizedBox(width: 6),

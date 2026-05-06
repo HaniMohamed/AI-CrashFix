@@ -479,8 +479,14 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     final completedAt = <String, int>{}; // nodeId -> completion index
     final erroredAt = <String, int>{}; // nodeId -> error index
 
+    final entryEdgeForNode = <String, _GraphEdge>{};
+
+    String? lastCompletedNode;
+    int lastCompletedIdx = -1;
+
     String? lastRouter;
     String? lastRouteLabel;
+    int lastRouterIdx = -1;
 
     for (var i = 0; i < events.length; i++) {
       final ev = events[i];
@@ -489,20 +495,52 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
           var id = _normNodeId(node);
           if (id == 'fix_generation') id = 'generate_fix';
           startedAt[id] = i;
+
+          // Record the edge that led into this node for accurate "active edge"
+          // animation. Prefer the most recent router decision if it happened
+          // after the last completion (i.e., it actually routed into this node).
+          _GraphEdge? entry;
+          if (lastRouter != null &&
+              lastRouteLabel != null &&
+              lastRouterIdx > lastCompletedIdx) {
+            entry = edges.cast<_GraphEdge?>().firstWhere(
+              (e) =>
+                  e != null &&
+                  e.kind == _EdgeKind.conditional &&
+                  (e.routerId ?? e.from) == lastRouter &&
+                  // main routers: label == destination; validate router: label == "valid/retry/fail"
+                  ((e.label ?? '') == lastRouteLabel || e.to == id),
+              orElse: () => null,
+            );
+          }
+          if (entry == null && lastCompletedNode != null) {
+            entry = edges.cast<_GraphEdge?>().firstWhere(
+              (e) => e != null && e.from == lastCompletedNode && e.to == id,
+              orElse: () => null,
+            );
+          }
+          if (entry != null) {
+            entryEdgeForNode[id] = entry;
+          }
         case NodeCompletedEvent(:final node):
           var id = _normNodeId(node);
           if (id == 'fix_generation') id = 'generate_fix';
           completedAt[id] = i;
+          lastCompletedNode = id;
+          lastCompletedIdx = i;
         case NodeErrorEvent(:final node):
           var id = _normNodeId(node);
           if (id == 'fix_generation') id = 'generate_fix';
           erroredAt[id] = i;
+          lastCompletedNode = id;
+          lastCompletedIdx = i;
         case RouterEvent(:final router, :final route):
           lastRouter = _normRouterId(router);
           // Note: `route` is either the destination node id (main routers) OR a
           // label like "valid/retry/fail" (validate_fix router). We use it to
           // activate the matching conditional edge from the spec.
           lastRouteLabel = route.trim().isEmpty ? null : route.trim();
+          lastRouterIdx = i;
         default:
           break;
       }
@@ -541,17 +579,9 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     }
 
     _GraphEdge? activeEdge;
-    // Prefer activating the selected conditional edge from the last router.
-    if (hasInFlight && lastRouter != null && lastRouteLabel != null) {
-      activeEdge = edges.cast<_GraphEdge?>().firstWhere(
-        (e) =>
-            e != null &&
-            e.kind == _EdgeKind.conditional &&
-            (e.routerId ?? e.from) == lastRouter &&
-            // main routers: label == destination; validate router: label == "valid/retry/fail"
-            ((e.label ?? '') == lastRouteLabel || e.to == _normNodeId(lastRouteLabel!)),
-        orElse: () => null,
-      );
+    // Prefer the actual transition edge that led into the current in-flight node.
+    if (hasInFlight && current != null) {
+      activeEdge = entryEdgeForNode[current];
     }
     if (hasInFlight && activeEdge == null && current != null) {
       // Pick an incoming edge to the current node if any, otherwise an outgoing.
