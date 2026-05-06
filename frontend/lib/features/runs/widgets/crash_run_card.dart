@@ -179,6 +179,7 @@ class _Timeline extends StatelessWidget {
         ev is RouterEvent ||
         ev is StateSnapshotEvent ||
         ev is NodeErrorEvent ||
+        ev is CrashSkippedEvent ||
         ev is CrashFailedEvent ||
         ev is CrashCompletedEvent;
   }
@@ -222,6 +223,12 @@ class _Timeline extends StatelessWidget {
           palette.success,
           'crash_completed',
           'pipeline finished',
+        ),
+      CrashSkippedEvent(:final reason) => (
+          Icons.flag_circle_outlined,
+          palette.textMuted,
+          'crash_skipped',
+          (reason == null || reason.trim().isEmpty) ? 'skipped' : reason.trim(),
         ),
       CrashFailedEvent() => (
           Icons.flag_circle_outlined,

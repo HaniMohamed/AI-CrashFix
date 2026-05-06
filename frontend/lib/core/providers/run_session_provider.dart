@@ -206,6 +206,17 @@ class RunSessionNotifier extends Notifier<RunSession> {
           }
         case StateSnapshotEvent(:final state):
           existing = existing.copyWith(latestState: state);
+        case CrashSkippedEvent(:final reason):
+          final finalState = <String, dynamic>{
+            'pipeline_status': 'skipped',
+            if (reason != null && reason.trim().isNotEmpty)
+              'pipeline_note': reason.trim(),
+          };
+          existing = existing.copyWith(
+            finalState: finalState,
+            latestState: finalState,
+            completed: true,
+          );
         case CrashCompletedEvent(:final finalState):
           existing = existing.copyWith(
             finalState: finalState,
