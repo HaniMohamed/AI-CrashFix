@@ -89,6 +89,9 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
   final TransformationController _xform = TransformationController();
   Size? _lastViewport;
   bool _didInitTransform = false;
+  double _minScale = 0.5;
+  Matrix4? _fitMatrix;
+  bool _clamping = false;
 
   @override
   void initState() {
@@ -97,6 +100,7 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
       vsync: this,
       duration: 1400.ms,
     )..repeat();
+    _xform.addListener(_clampToFitMinScale);
   }
 
   @override
@@ -113,6 +117,7 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
   @override
   void dispose() {
     _flowCtrl.dispose();
+    _xform.removeListener(_clampToFitMinScale);
     _xform.dispose();
     super.dispose();
   }
@@ -198,20 +203,24 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
                     final sx = viewport.width / canvasW;
                     final sy = viewport.height / canvasH;
                     final s = math.min(1.0, math.max(0.35, math.min(sx, sy)));
+                    _minScale = s;
                     final dx = (viewport.width - canvasW * s) / 2;
                     final dy = (viewport.height - canvasH * s) / 2;
-                    _xform.value = Matrix4.identity()
+                    _fitMatrix = Matrix4.identity()
                       ..translateByDouble(dx, dy, 0, 1)
                       ..scaleByDouble(s, s, 1, 1);
+                    _xform.value = _fitMatrix!.clone();
                     _didInitTransform = true;
                   }
 
                   return InteractiveViewer(
                     transformationController: _xform,
-                    minScale: 0.35,
+                    minScale: _minScale,
                     maxScale: 3.2,
                     boundaryMargin: const EdgeInsets.all(480),
                     constrained: true,
+                    panEnabled: false,
+                    scaleEnabled: false,
                     child: Align(
                       alignment: Alignment.topLeft,
                       child: RepaintBoundary(
@@ -304,6 +313,18 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
       }
     }
     return null;
+  }
+
+  void _clampToFitMinScale() {
+    if (_clamping) return;
+    final fit = _fitMatrix;
+    if (fit == null) return;
+    final currentScale = _xform.value.getMaxScaleOnAxis();
+    if (currentScale + 1e-6 < _minScale) {
+      _clamping = true;
+      _xform.value = fit.clone();
+      _clamping = false;
+    }
   }
 
   void _showState(BuildContext context, Map<String, dynamic> state) {
