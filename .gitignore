@@ -69,15 +69,6 @@ frontend/.idea/
 frontend/*.iml
 frontend/.metadata
 
-## Flutter macOS (generated / local build artifacts)
-frontend/macos/
-frontend/macos/Pods/
-frontend/macos/Flutter/ephemeral/
-frontend/macos/Runner.xcworkspace/
-frontend/macos/Runner.xcodeproj/project.xcworkspace/
-frontend/macos/**/xcuserdata/
-frontend/macos/**/DerivedData/
-frontend/macos/Podfile.lock
 
 ## Staged backend binary inside macOS app bundle
 frontend/macos/Runner/Resources/backend/
