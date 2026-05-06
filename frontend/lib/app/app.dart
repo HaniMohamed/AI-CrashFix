@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'app_settings.dart';
-import 'router.dart';
 import '../core/providers/backend_process_provider.dart';
 import 'theme/app_theme.dart';
 
 class AiCrashFixApp extends ConsumerWidget {
-  const AiCrashFixApp({super.key});
+  final GoRouter router;
+  const AiCrashFixApp({super.key, required this.router});
+  const AiCrashFixApp.withRouter({super.key, required this.router});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -92,7 +94,7 @@ class AiCrashFixApp extends ConsumerWidget {
           themeMode: settings.themeMode,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
-          routerConfig: appRouter,
+          routerConfig: router,
         );
       },
     );

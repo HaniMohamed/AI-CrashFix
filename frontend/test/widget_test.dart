@@ -10,10 +10,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_crash_fix_ui/app/app.dart';
+import 'package:ai_crash_fix_ui/app/router.dart';
 
 void main() {
   testWidgets('App boots', (WidgetTester tester) async {
-    await tester.pumpWidget(const ProviderScope(child: AiCrashFixApp()));
+    await tester.pumpWidget(
+      ProviderScope(child: AiCrashFixApp(router: createAppRouter())),
+    );
     await tester.pump();
 
     // The app should at least mount without throwing.
