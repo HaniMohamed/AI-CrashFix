@@ -55,9 +55,20 @@ MAIN_BRANCH=main
 LLM_PROVIDER=gemini
 GOOGLE_API_KEY=...
 GEMINI_MODEL=gemini-2.5-flash
+
+# If using BigQuery / Crashlytics export:
+# IMPORTANT (sandboxed app): the backend cannot read arbitrary files outside the container.
+# Put the service account JSON inside the same Application Support folder and point to it.
+GOOGLE_APPLICATION_CREDENTIALS=/Users/<you>/Library/Containers/com.example.aiCrashFixUi/Data/Library/Application Support/AI Crash Fix/service-account.json
+BQ_PROJECT_ID=...
 ```
 
 Now you can launch the app normally (Finder / Dock) and it will pick up the config.
+
+### Service account JSON (BigQuery)
+If you use Crashlytics export via BigQuery, the backend needs to read the service account JSON.
+
+- **Sandboxed app**: place the JSON inside the same Application Support folder as `.env`, e.g.\n  `~/Library/Containers/com.example.aiCrashFixUi/Data/Library/Application Support/AI Crash Fix/service-account.json`\n  and set `GOOGLE_APPLICATION_CREDENTIALS` to that path.\n- **Non-sandboxed**: you can reference any path, but we still recommend keeping credentials under Application Support.\n
 
 ### Advanced: environment variables (Terminal launch)
 
