@@ -3,24 +3,29 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
+import '../../../core/models/crash.dart';
+import '../../../core/providers/config_provider.dart';
 import '../../../core/models/run_event.dart';
 import '../../../core/providers/run_session_provider.dart';
+import '../../../core/utils/crashlytics_console_url.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/json_tree_viewer.dart';
 
-class CrashRunCard extends StatefulWidget {
+class CrashRunCard extends ConsumerStatefulWidget {
   final CrashRunState state;
   const CrashRunCard({super.key, required this.state});
 
   @override
-  State<CrashRunCard> createState() => _CrashRunCardState();
+  ConsumerState<CrashRunCard> createState() => _CrashRunCardState();
 }
 
-class _CrashRunCardState extends State<CrashRunCard> {
+class _CrashRunCardState extends ConsumerState<CrashRunCard> {
   bool _expanded = true;
 
   @override
@@ -29,6 +34,21 @@ class _CrashRunCardState extends State<CrashRunCard> {
     final theme = Theme.of(context).textTheme;
     final s = widget.state;
     final running = !s.completed && s.failure == null;
+    final configAsync = ref.watch(configProvider);
+    final crashlyticsCfg = configAsync.when(
+      data: (cfg) => cfg.section('crashlytics'),
+      loading: () => null,
+      error: (_, _) => null,
+    );
+    final configLoading = configAsync.isLoading;
+    final stateMap = (s.latestState ?? s.initialState);
+    final crashForLink = Crash(
+      crashId: s.crashId,
+      status: running ? 'in_progress' : (s.failure != null ? 'failed' : 'completed'),
+      result: stateMap == null ? null : Map<String, dynamic>.from(stateMap),
+    );
+    final crashlyticsUri =
+        crashlyticsCfg == null ? null : crashlyticsIssueUri(crashForLink, crashlyticsCfg);
 
     Color statusColor;
     String statusLabel;
@@ -96,6 +116,40 @@ class _CrashRunCardState extends State<CrashRunCard> {
                       style: theme.labelSmall?.copyWith(
                         color: statusColor,
                         letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: crashlyticsUri != null
+                        ? 'Open issue in Firebase Crashlytics'
+                        : configLoading
+                            ? 'Loading configuration…'
+                            : 'Cannot build link: set Firebase project id and Android package / iOS bundle '
+                                '(from Crashlytics export or CRASHLYTICS_ANDROID_PACKAGE / CRASHLYTICS_IOS_BUNDLE_ID in .env).',
+                    child: IconButton(
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: crashlyticsUri == null
+                          ? null
+                          : () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final ok = await launchUrl(
+                                crashlyticsUri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                              if (!context.mounted || ok) return;
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text('Could not open Crashlytics link'),
+                                ),
+                              );
+                            },
+                      icon: Icon(
+                        Icons.open_in_new,
+                        color: crashlyticsUri != null
+                            ? palette.primary
+                            : palette.textMuted,
                       ),
                     ),
                   ),

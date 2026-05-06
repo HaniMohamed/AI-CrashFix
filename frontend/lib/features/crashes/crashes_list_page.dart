@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../app/theme/typography.dart';
 import '../../core/models/crash.dart';
+import '../../core/providers/config_provider.dart';
 import '../../core/providers/crashes_provider.dart';
 import '../../core/models/run_request.dart';
 import '../../core/providers/run_session_provider.dart';
+import '../../core/utils/crashlytics_console_url.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_banner.dart';
@@ -38,6 +41,13 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
     final palette = context.palette;
     final query = ref.watch(crashesQueryProvider);
     final pageAsync = ref.watch(crashesProvider);
+    final configAsync = ref.watch(configProvider);
+    final crashlyticsCfg = configAsync.when(
+      data: (cfg) => cfg.section('crashlytics'),
+      loading: () => null,
+      error: (_, _) => null,
+    );
+    final configLoading = configAsync.isLoading;
 
     return RefreshIndicator(
       color: palette.primary,
@@ -136,7 +146,11 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
                           ],
                         ),
                       ),
-                      ...filtered.map(_buildRow),
+                      ...filtered.map((c) => _buildRow(
+                            c,
+                            crashlyticsCfg: crashlyticsCfg,
+                            configLoading: configLoading,
+                          )),
                       Padding(
                         padding: const EdgeInsets.all(AppSpacing.lg),
                         child: _Pager(query: query, ref: ref, count: page.count),
@@ -152,9 +166,14 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
     );
   }
 
-  Widget _buildRow(Crash c) {
+  Widget _buildRow(
+    Crash c, {
+    required Map<String, dynamic>? crashlyticsCfg,
+    required bool configLoading,
+  }) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
+    final crashlyticsUri = crashlyticsCfg == null ? null : crashlyticsIssueUri(c, crashlyticsCfg);
     return InkWell(
       onTap: () => context.go('/crashes/${c.crashId}'),
       child: Container(
@@ -217,6 +236,37 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Tooltip(
+                      message: crashlyticsUri != null
+                          ? 'Open issue in Firebase Crashlytics'
+                          : configLoading
+                              ? 'Loading configuration…'
+                              : 'Cannot build link: set Firebase project id and Android package / iOS bundle '
+                                  '(from Crashlytics export or CRASHLYTICS_ANDROID_PACKAGE / CRASHLYTICS_IOS_BUNDLE_ID in .env).',
+                      child: IconButton(
+                        iconSize: 18,
+                        visualDensity: VisualDensity.compact,
+                        onPressed: crashlyticsUri == null
+                            ? null
+                            : () async {
+                                final messenger = ScaffoldMessenger.of(context);
+                                final ok = await launchUrl(
+                                  crashlyticsUri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                                if (!context.mounted || ok) return;
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Could not open Crashlytics link'),
+                                  ),
+                                );
+                              },
+                        icon: Icon(
+                          Icons.open_in_new,
+                          color: crashlyticsUri != null ? palette.primary : palette.textMuted,
+                        ),
+                      ),
+                    ),
                     if (c.status.toLowerCase() == 'failed')
                       Tooltip(
                         message: 'Re-run pipeline for this crash',

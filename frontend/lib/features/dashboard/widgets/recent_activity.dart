@@ -7,12 +7,15 @@ import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
 import '../../../core/models/crash.dart';
 import '../../../core/models/run_request.dart';
+import '../../../core/providers/config_provider.dart';
 import '../../../core/providers/run_session_provider.dart';
+import '../../../core/utils/crashlytics_console_url.dart';
 import '../../../core/utils/format.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/pipeline_strip.dart';
 import '../../../shared/widgets/status_pill.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class RecentActivity extends ConsumerWidget {
   final List<Crash> items;
@@ -21,6 +24,13 @@ class RecentActivity extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context).textTheme;
+    final configAsync = ref.watch(configProvider);
+    final crashlyticsCfg = configAsync.when(
+      data: (cfg) => cfg.section('crashlytics'),
+      loading: () => null,
+      error: (_, _) => null,
+    );
+    final configLoading = configAsync.isLoading;
     return GlassCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
@@ -48,7 +58,12 @@ class RecentActivity extends ConsumerWidget {
               ),
             )
           else
-            ...items.map((c) => _Row(c: c, ref: ref)),
+            ...items.map((c) => _Row(
+                  c: c,
+                  ref: ref,
+                  crashlyticsCfg: crashlyticsCfg,
+                  configLoading: configLoading,
+                )),
         ],
       ),
     );
@@ -58,12 +73,20 @@ class RecentActivity extends ConsumerWidget {
 class _Row extends StatelessWidget {
   final Crash c;
   final WidgetRef ref;
-  const _Row({required this.c, required this.ref});
+  final Map<String, dynamic>? crashlyticsCfg;
+  final bool configLoading;
+  const _Row({
+    required this.c,
+    required this.ref,
+    required this.crashlyticsCfg,
+    required this.configLoading,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context).textTheme;
     final palette = context.palette;
+    final crashlyticsUri = crashlyticsCfg == null ? null : crashlyticsIssueUri(c, crashlyticsCfg!);
     return InkWell(
       borderRadius: AppRadii.all(AppRadii.md),
       onTap: () => context.go('/crashes/${c.crashId}'),
@@ -91,6 +114,37 @@ class _Row extends StatelessWidget {
             const SizedBox(width: AppSpacing.md),
             PipelineStrip(crash: c),
             const Spacer(),
+            Tooltip(
+              message: crashlyticsUri != null
+                  ? 'Open issue in Firebase Crashlytics'
+                  : configLoading
+                      ? 'Loading configuration…'
+                      : 'Cannot build link: set Firebase project id and Android package / iOS bundle '
+                          '(from Crashlytics export or CRASHLYTICS_ANDROID_PACKAGE / CRASHLYTICS_IOS_BUNDLE_ID in .env).',
+              child: IconButton(
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                onPressed: crashlyticsUri == null
+                    ? null
+                    : () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final ok = await launchUrl(
+                          crashlyticsUri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                        if (!context.mounted || ok) return;
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not open Crashlytics link'),
+                          ),
+                        );
+                      },
+                icon: Icon(
+                  Icons.open_in_new,
+                  color: crashlyticsUri != null ? palette.primary : palette.textMuted,
+                ),
+              ),
+            ),
             if (c.status.toLowerCase() == 'failed')
               Tooltip(
                 message: 'Re-run pipeline for this crash',
