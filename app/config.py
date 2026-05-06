@@ -11,25 +11,12 @@ def _load_env() -> None:
 
     Priority (first file found wins):
     1) AI_CRASH_FIX_ENV_FILE (explicit path)
-    2) macOS desktop bundle: ~/Library/Application Support/AI Crash Fix/.env
-    3) macOS desktop bundle: <App>.app/Contents/Resources/.env
-    4) repo/dev: ./.env (workspace root / current working directory)
+    2) repo/dev: ./.env (workspace root / current working directory)
     """
     explicit = (os.getenv("AI_CRASH_FIX_ENV_FILE") or "").strip()
     candidates: list[Path] = []
     if explicit:
         candidates.append(Path(explicit))
-
-    frozen = bool(getattr(sys, "frozen", False))
-    if sys.platform == "darwin" and frozen:
-        candidates.append(
-            Path.home() / "Library" / "Application Support" / "AI Crash Fix" / ".env"
-        )
-        # Platform.resolvedExecutable points to .../<App>.app/Contents/MacOS/<App>
-        # Resources are at .../<App>.app/Contents/Resources/
-        exe = Path(sys.executable).resolve()
-        contents = exe.parent.parent  # .../Contents
-        candidates.append(contents / "Resources" / ".env")
 
     candidates.append(Path(".env"))
 

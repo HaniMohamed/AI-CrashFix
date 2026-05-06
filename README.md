@@ -26,10 +26,13 @@ Given recent Crashlytics crashes, AI Crash Fix:
 - **ripgrep (`rg`)**: used for code search during stacktrace mapping/context retrieval
 - **git**: required if you enable PR generation
 
-### Install ripgrep (macOS)
+### Install ripgrep
 
 ```bash
-brew install ripgrep
+# Install ripgrep:
+# - brew install ripgrep
+# - sudo apt-get install ripgrep
+# - choco install ripgrep
 rg --version
 ```
 
@@ -41,20 +44,6 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
-
-### macOS desktop app (Flutter + embedded backend)
-This repo can be built as a **Flutter macOS desktop app** that starts a bundled
-FastAPI backend locally and talks to it over `http://127.0.0.1:<port>`.
-
-Quick summary:
-- **Backend binary**: built via PyInstaller from `backend_main.py`
-- **App**: built via `flutter build macos`
-- **Bundling**: stage the backend into the built `.app` under
-  `Contents/Resources/backend/ai_crash_fix_backend/` (folder, includes `_internal/`)
-
-See:
-- [`docs/BUNDLING.md`](docs/BUNDLING.md) — build + bundle for sharing
-- [`docs/RUNNING.md`](docs/RUNNING.md) — run the received bundle on another machine
 
 ### Configuration (.env)
 AI Crash Fix loads environment variables from `.env` (see `app/config.py`).

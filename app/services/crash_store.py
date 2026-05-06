@@ -31,11 +31,10 @@ class CrashStore:
     """
 
     def __init__(self, db_path: str | None = None):
-        # Allow desktop builds to override the DB location (recommended on macOS).
         # Priority:
         # 1) Explicit arg
         # 2) AI_CRASH_FIX_DB_PATH env var
-        # 3) Default per environment (repo-local for dev, Application Support for frozen desktop)
+        # 3) Default per environment (repo-local for dev, Application Support for frozen apps)
         db_path = db_path or (os.environ.get("AI_CRASH_FIX_DB_PATH") or "").strip() or None
         if not db_path:
             if sys.platform == "darwin" and bool(getattr(sys, "frozen", False)):
