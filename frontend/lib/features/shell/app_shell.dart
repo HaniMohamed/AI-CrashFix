@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/providers/analytics_provider.dart';
 import '../../core/providers/crashes_provider.dart';
@@ -88,8 +89,9 @@ class _BottomNav extends StatelessWidget {
     return NavigationBar(
       selectedIndex: idx,
       onDestinationSelected: (i) {
-        Navigator.of(context).maybePop();
-        Navigator.of(context).pushReplacementNamed(sidebarItems[i].path);
+        // Use GoRouter navigation (Navigator.pushReplacementNamed doesn't apply
+        // when using MaterialApp.router).
+        context.go(sidebarItems[i].path);
       },
       backgroundColor: theme.scaffoldBackgroundColor,
       destinations: [

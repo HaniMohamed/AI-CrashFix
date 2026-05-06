@@ -28,17 +28,27 @@ GoRouter createAppRouter() => GoRouter(
       // will rewrite the URL back to `/`.
       initialLocation: _initialLocationFromUrl(),
       debugLogDiagnostics: kIsWeb,
-      redirect: (context, state) {
-        // If the app was opened with a hash deep link (/#/foo) but the platform
-        // location was reported as "/" (common when not using HashUrlStrategy),
-        // immediately redirect to the fragment path.
-        if (kIsWeb && state.uri.path == '/') {
-          final frag = Uri.base.fragment.trim();
-          if (frag.startsWith('/')) return frag;
-          if (frag.startsWith('#/')) return frag.substring(1);
-        }
-        return null;
-      },
+      redirect: (() {
+        // Only redirect once on web to support opening the app via a hash deep
+        // link (/#/foo) when the platform router reports "/". If we keep doing
+        // this on every navigation, clicking "Dashboard" ("/") can bounce back
+        // to the previous fragment before the URL updates.
+        final initialFrag = kIsWeb ? Uri.base.fragment.trim() : '';
+        var redirected = false;
+        return (context, state) {
+          if (!kIsWeb || redirected) return null;
+          if (state.uri.path != '/') return null;
+          if (initialFrag.startsWith('/')) {
+            redirected = true;
+            return initialFrag;
+          }
+          if (initialFrag.startsWith('#/')) {
+            redirected = true;
+            return initialFrag.substring(1);
+          }
+          return null;
+        };
+      })(),
       routes: [
         ShellRoute(
           builder: (context, state, child) =>
