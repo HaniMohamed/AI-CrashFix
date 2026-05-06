@@ -4,3 +4,6 @@ google-genai
 python-dotenv
 google-cloud-bigquery
 google-cloud-logging
+fastapi
+uvicorn[standard]
+pyinstaller

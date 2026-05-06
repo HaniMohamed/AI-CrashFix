@@ -26,10 +26,13 @@ Given recent Crashlytics crashes, AI Crash Fix:
 - **ripgrep (`rg`)**: used for code search during stacktrace mapping/context retrieval
 - **git**: required if you enable PR generation
 
-### Install ripgrep (macOS)
+### Install ripgrep
 
 ```bash
-brew install ripgrep
+# Install ripgrep:
+# - brew install ripgrep
+# - sudo apt-get install ripgrep
+# - choco install ripgrep
 rg --version
 ```
 
@@ -111,6 +114,143 @@ python scripts/run_batch.py --limit 10 --mock --skip-jira-creation
 ```bash
 python scripts/run_batch.py --limit 3 --mock --skip-jira-creation --print-results
 ```
+
+### HTTP API (for UIs)
+A thin FastAPI layer (`app/api/server.py`) wraps the same pipeline and streams
+per-step graph events as **NDJSON**, plus offers read-only access to the local
+crash store. The CLI (`scripts/run_batch.py`) is **not** changed and keeps
+working as before.
+
+#### Run the server
+
+```bash
+uvicorn app.api.server:app --reload --port 8000
+```
+
+OpenAPI docs are at `http://localhost:8000/docs`.
+
+#### Endpoints
+- **`GET /api/health`** → `{"ok": true}`
+- **`POST /api/runs`** → streams NDJSON events (one JSON object per line, `application/x-ndjson`).
+  Body shape:
+
+  ```jsonc
+  // Batch (same args as run_batch.py)
+  {
+    "mode": "batch",
+    "limit": 10,
+    "mock": true,
+    "skip_jira_creation": true,
+    "crash_ids": null            // optional whitelist applied after fetch
+  }
+
+  // Single crash (UI re-run / replay)
+  {
+    "mode": "single",
+    "skip_jira_creation": true,
+    "crash": {
+      "crash_id": "abc",
+      "exception": "NullPointerException: ...",
+      "stacktrace": [ /* mapped frames */ ],
+      "app_version": "1.2.3",
+      "device": "Pixel 7",
+      "platform": "android"
+    }
+  }
+  ```
+
+- **`GET /api/crashes?status=&limit=&offset=&include_result=0|1`** → paged list of crash store rows ordered by `updated_at` desc.
+- **`GET /api/crashes/{crash_id}`** → one crash row + parsed `result` JSON (404 if not found).
+- **`GET /api/analytics?no_cache=0|1`** → pre-computed dashboard aggregates (totals, pipeline funnel, completion rate, avg duration, daily timeseries, top platforms / app versions / devices, recent items). Cached in-process for 5 seconds.
+- **`GET /api/config`** → read-only redacted snapshot of `app/config.py` (LLM, repo, Crashlytics, Jira, GitLab, logging). Secrets are returned as `has_*` booleans only.
+
+#### Streamed event types
+Each NDJSON line is `{"type": "...", "run_id": "...", ...}`. Common types:
+
+| Type | When | Useful payload |
+| --- | --- | --- |
+| `run_started` | first line | `mode`, `limit`, `mock`, `crashlytics_backend` |
+| `crash_fetched` | batch only, after BQ/CL fetch | `count`, `crash_ids` |
+| `crash_skipped` | batch only | `crash_id`, `reason` |
+| `crash_started` | each crash, before the graph | `initial_state` (full `CrashState`) |
+| `node_started` | every node enter (incl. fix-subgraph nodes prefixed with `-------`) | `node`, `crash_id` |
+| `node_completed` | every node exit | `node`, `duration_ms`, `delta` |
+| `router` | every conditional edge | `router`, `route` |
+| `state_snapshot` | after each top-level node | `after_node`, `state` (full live `CrashState`) |
+| `crash_completed` | crash success | `final_state` |
+| `crash_failed` | crash error | `error` |
+| `run_summary` | last line | `fetched`, `processed`, `skipped` (ended early), `deduped` (already complete), `failed` |
+
+Inner fix-subgraph nodes show up as `node_started` / `node_completed` (no
+extra `state_snapshot` per inner node — the outer `state_snapshot` after
+`fix_generation` reflects the merged result).
+
+Secret-like fields (`*_api_key`, `*_token`, `authorization`) are redacted
+inside `state_snapshot.state` and `*_state` payloads before being sent.
+
+#### Quick test (NDJSON streaming)
+
+```bash
+curl -N -X POST http://localhost:8000/api/runs \
+  -H 'content-type: application/json' \
+  -d '{"mode":"batch","limit":1,"mock":true,"skip_jira_creation":true}'
+```
+
+#### Implementation notes
+- The synchronous LangGraph generator runs in a worker thread and forwards
+  events through an `asyncio.Queue` so the FastAPI event loop stays free
+  during LLM / BigQuery / git work.
+- Observability events (start/end/router) reuse the existing
+  `app/graph/observability.py` logging pipeline via a small additive
+  `register_event_sink` / `unregister_event_sink` hook; CLI runs are
+  unaffected because no sink is registered.
+- Concurrent `POST /api/runs` calls are demuxed by tagging every event with
+  the run's `run_id` and filtering at the sink boundary.
+
+### Frontend (Flutter web)
+
+A polished Flutter web app lives in [`frontend/`](frontend/). It talks to the
+HTTP API above (no backend imports), and exposes a dashboard, crash explorer,
+run trigger with full flag form, live NDJSON stream view, and a read-only
+settings page.
+
+#### Prerequisites
+- Flutter SDK 3.24+ (Dart 3.10+) and Chrome.
+
+#### Run the dev server (against a local backend)
+
+```bash
+# 1) Start the API (in another shell):
+uvicorn app.api.server:app --reload --port 8000
+
+# 2) Start the Flutter web app:
+cd frontend
+flutter pub get
+flutter run -d chrome --web-port 5173 \
+  --dart-define=API_BASE_URL=http://localhost:8000
+```
+
+The base URL is also editable from the topbar popover and persisted to
+`localStorage`, so `--dart-define` is optional.
+
+#### Production bundle
+
+```bash
+cd frontend
+flutter build web --release
+# Output: frontend/build/web/  (serve with any static server)
+```
+
+The frontend assumes the backend's permissive CORS (already enabled in
+`app/api/server.py`). See [`frontend/README.md`](frontend/README.md) for the
+project structure and design tokens.
+
+### Status model
+Crash rows in the local crash store (`crashes.status`) use these values:
+- `in_progress`: started but not ended
+- `completed`: finished successfully (Jira is ignored for completion)
+- `failed`: ended unsuccessfully (exception / graph_error / validation failure)
+- `skipped`: ended early without processing (e.g. no mapped stack frames); see `result.pipeline_note`
 
 ### Debug in Cursor / VS Code
 Use the included launch config in `.vscode/launch.json`:

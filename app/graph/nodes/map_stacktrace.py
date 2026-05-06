@@ -4,7 +4,7 @@ import glob
 import subprocess
 from typing import List, Dict
 
-from app.config import REPO_ROOT
+from app.config import LOCAL_PACKAGES_DIR, REPO_ROOT
 
 # ==============================
 # Regex Patterns
@@ -123,19 +123,52 @@ def _dart_file_declares_pascal_symbol(abs_path: str, head: str) -> bool:
     return False
 
 
-def resolve_dart_basename_under_lib(basename: str, method: str) -> str | None:
-    """Resolve a short stack filename to a path under lib/ only. Returns repo-relative posix path or None."""
-    lib_abs = os.path.join(REPO_ROOT, "lib")
-    if not os.path.isdir(lib_abs):
-        return None
-    pattern = os.path.join(lib_abs, "**", basename)
-    abs_hits = glob.glob(pattern, recursive=True)
+def _iter_dart_source_roots() -> List[str]:
+    """
+    Repo-relative roots to search for Dart files.
+    - Always includes "lib"
+    - Optionally includes "<LOCAL_PACKAGES_DIR>/*/lib" for monorepo packages (melos, etc)
+    """
+    roots = ["lib"]
+    if LOCAL_PACKAGES_DIR:
+        roots.append(os.path.join(LOCAL_PACKAGES_DIR, "*", "lib"))
+    return roots
+
+
+def resolve_dart_basename_in_repo_sources(basename: str, method: str) -> str | None:
+    """
+    Resolve a short stack filename to a repo-relative path.
+    Searches:
+      - lib/**/<basename>
+      - <LOCAL_PACKAGES_DIR>/*/lib/**/<basename>  (if configured)
+    Returns repo-relative posix path or None.
+    """
+    abs_hits: list[str] = []
+    for root in _iter_dart_source_roots():
+        root_abs = os.path.join(REPO_ROOT, root)
+        if "*" in root:
+            # e.g. packages/*/lib → ensure parent exists before globbing
+            parent = os.path.join(REPO_ROOT, LOCAL_PACKAGES_DIR) if LOCAL_PACKAGES_DIR else None
+            if not parent or not os.path.isdir(parent):
+                continue
+        else:
+            if not os.path.isdir(root_abs):
+                continue
+        pattern = os.path.join(root_abs, "**", basename)
+        abs_hits.extend(glob.glob(pattern, recursive=True))
+
     if not abs_hits:
         return None
+
     rels = [os.path.relpath(p, REPO_ROOT) for p in abs_hits]
-    rels = [r.replace(os.sep, "/") for r in rels if r.replace(os.sep, "/").startswith("lib/")]
+    rels = [r.replace(os.sep, "/") for r in rels]
+    allowed_prefixes = ["lib/"]
+    if LOCAL_PACKAGES_DIR:
+        allowed_prefixes.append(f"{LOCAL_PACKAGES_DIR.strip('/')}/")
+    rels = [r for r in rels if any(r.startswith(pref) for pref in allowed_prefixes)]
     if not rels:
         return None
+
     head = (method or "").strip().split(".")[0]
     if not head or not head[0].isupper():
         return None
@@ -145,7 +178,12 @@ def resolve_dart_basename_under_lib(basename: str, method: str) -> str | None:
         if _dart_file_declares_pascal_symbol(abs_p, head):
             matches.append(rel)
     if not matches:
-        return None
+        # Fallback: some frames reference functions/extensions where the file doesn't declare the class name.
+        # Prefer the single hit; otherwise pick the shortest path to avoid deep duplicates.
+        if len(rels) == 1:
+            return rels[0]
+        rels.sort(key=len)
+        return rels[0]
     if len(matches) == 1:
         return matches[0]
     matches.sort(key=len)
@@ -169,13 +207,32 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
         if match:
             # For AI Crash Fix repo mapping, package: frames are usually Flutter/Dart SDK noise.
             # Only map them if they can be resolved to an actual repo file without guessing.
+            package = match.group("package")
             path = match.group("path")
             line_no = match.group("line")
             method = match.group("method").strip()
 
+            # 1) Try root lib/ (some repos mirror package layout there)
             candidate = os.path.join("lib", path)
             if file_exists(candidate):
                 frames.append(normalize_frame("dart", candidate.replace(os.sep, "/"), line_no, method))
+                continue
+
+            # 2) Try local monorepo packages: <LOCAL_PACKAGES_DIR>/<package>/lib/<path>
+            if LOCAL_PACKAGES_DIR:
+                local_candidate = os.path.join(LOCAL_PACKAGES_DIR, package, "lib", path)
+                if file_exists(local_candidate):
+                    frames.append(
+                        normalize_frame("dart", local_candidate.replace(os.sep, "/"), line_no, method)
+                    )
+                    continue
+
+                # If package dir name doesn't match, fall back to scanning all child packages.
+                pattern = os.path.join(REPO_ROOT, LOCAL_PACKAGES_DIR, "*", "lib", path)
+                hits = glob.glob(pattern, recursive=False)
+                if hits:
+                    rel = os.path.relpath(hits[0], REPO_ROOT).replace(os.sep, "/")
+                    frames.append(normalize_frame("dart", rel, line_no, method))
             continue
 
         bare = BARE_DART_REGEX.search(line)
@@ -183,7 +240,7 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
             basename = bare.group("file")
             line_no = bare.group("line")
             method = bare.group("method").strip()
-            resolved = resolve_dart_basename_under_lib(basename, method)
+            resolved = resolve_dart_basename_in_repo_sources(basename, method)
             if resolved and file_exists(resolved):
                 frames.append(normalize_frame("dart", resolved, line_no, method))
 

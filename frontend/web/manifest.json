@@ -1,0 +1,35 @@
+{
+    "name": "AI Crash Fix",
+    "short_name": "AI Crash Fix",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0A0E1A",
+    "theme_color": "#6366F1",
+    "description": "Crash-to-fix automation dashboard for the AI Crash Fix pipeline.",
+    "orientation": "any",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

@@ -56,3 +56,17 @@ Thumbs.db
 
 ## AIDevMate
 .ai/aidevmate_file_cache.json
+
+.cursor/
+
+## Flutter / Dart (frontend/)
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/build/
+frontend/.idea/
+frontend/*.iml
+frontend/.metadata
+
+

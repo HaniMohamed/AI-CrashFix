@@ -5,6 +5,8 @@ from app.config import (
     BQ_CRASHLYTICS_IOS_TABLE,
     GOOGLE_APPLICATION_CREDENTIALS,
     CRASHLYTICS_FETCH_BACKEND,
+    CRASHLYTICS_ANDROID_PACKAGE_DEFAULT,
+    CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT,
 )
 
 try:
@@ -79,6 +81,134 @@ class CrashlyticsService:
         if self._backend == "cloud_logging":
             return self._fetch_recent_crashes_cloud_logging(limit=limit)
         return self._fetch_recent_crashes_bigquery(limit=limit)
+
+    def fetch_crash_by_id(self, crash_id: str, *, mock: bool = False) -> dict | None:
+        """
+        Return one crash in the same mapped shape as ``fetch_recent_crashes`` items.
+
+        With ``mock=True``, searches generated mock rows (up to 500) for a matching ``issue_id``.
+        Otherwise uses ``CRASHLYTICS_FETCH_BACKEND`` (BigQuery or Cloud Logging).
+        """
+        cid = (crash_id or "").strip()
+        if not cid:
+            return None
+        if mock:
+            for r in self.fetch_recent_crashes_mock_rows(limit=500):
+                rid = r.get("issue_id") or r.get("issueId")
+                if rid is not None and str(rid).strip() == cid:
+                    return self._map_row(r)
+            return None
+        if self._backend == "cloud_logging":
+            return self.fetch_crash_by_id_cloud_logging(cid)
+        return self.fetch_crash_by_id_bigquery(cid)
+
+    def fetch_crash_by_id_bigquery(self, crash_id: str) -> dict | None:
+        """
+        Load the latest fatal Crashlytics event for ``issue_id == crash_id`` from the
+        exported BigQuery tables (Android + iOS union).
+
+        Requires ``CRASHLYTICS_FETCH_BACKEND=bigquery`` so a BigQuery client is configured.
+        """
+        cid = (crash_id or "").strip()
+        if not cid:
+            raise ValueError("crash_id is required")
+        if self.client is None:
+            raise RuntimeError(
+                "BigQuery client is not configured. Set CRASHLYTICS_FETCH_BACKEND=bigquery."
+            )
+        if bigquery is None:
+            raise RuntimeError(
+                "Missing dependency for BigQuery. Install google-cloud-bigquery."
+            )
+
+        android_table = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
+        ios_table = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
+
+        query = f"""
+        WITH unioned AS (
+          SELECT
+            t.*,
+            "android" AS _source_platform
+          FROM {android_table} AS t
+          WHERE t.is_fatal IS TRUE
+            AND UPPER(TRIM(t.error_type)) = 'FATAL'
+            AND TRIM(CAST(t.issue_id AS STRING)) = @crash_id
+
+          UNION ALL
+
+          SELECT
+            t.*,
+            "ios" AS _source_platform
+          FROM {ios_table} AS t
+          WHERE t.is_fatal IS TRUE
+            AND UPPER(TRIM(t.error_type)) = 'FATAL'
+            AND TRIM(CAST(t.issue_id AS STRING)) = @crash_id
+        )
+        SELECT * FROM unioned
+        ORDER BY event_timestamp DESC
+        LIMIT 1
+        """
+
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("crash_id", "STRING", cid),
+            ]
+        )
+        query_job = self.client.query(query, job_config=job_config)
+        rows = list(query_job)
+        if not rows:
+            return None
+        return self._map_row(self._row_to_dict(rows[0]))
+
+    @staticmethod
+    def _escape_cloud_logging_filter_string(value: str) -> str:
+        """Escape a value for use inside double quotes in a Cloud Logging filter."""
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
+    def fetch_crash_by_id_cloud_logging(self, crash_id: str) -> dict | None:
+        """
+        Load the most recent fatal Crashlytics log entry whose issue id matches ``crash_id``.
+
+        Requires ``CRASHLYTICS_FETCH_BACKEND=cloud_logging`` so a Logging client is configured.
+        """
+        cid = (crash_id or "").strip()
+        if not cid:
+            raise ValueError("crash_id is required")
+        if self._logging_client is None:
+            raise RuntimeError(
+                "Cloud Logging client is not configured. Set CRASHLYTICS_FETCH_BACKEND=cloud_logging."
+            )
+
+        assert self._logging_client is not None
+        project_id = BQ_PROJECT_ID
+        fb = f'logName="projects/{project_id}/logs/firebasecrashlytics.googleapis.com%2Fevents"'
+        legacy = f'logName="projects/{project_id}/logs/crashlytics.googleapis.com%2Fcrash_events"'
+        fatal = '(jsonPayload.issue.errorType="FATAL" OR jsonPayload.errorType="FATAL")'
+        esc = self._escape_cloud_logging_filter_string(cid)
+        issue_match = (
+            f'(jsonPayload.issue.id="{esc}" OR jsonPayload.issueId="{esc}")'
+        )
+        filter_str = f"({fb} OR {legacy}) AND {fatal} AND {issue_match}"
+
+        entries = self._logging_client.list_entries(
+            filter_=filter_str,
+            max_results=200,
+            order_by="timestamp desc",
+        )
+
+        for entry in entries:
+            payload = self._logging_entry_payload_dict(entry)
+            if not self._logging_payload_is_fatal_crash(payload):
+                continue
+            row = self._logging_payload_to_row(payload)
+            if not row:
+                continue
+            rid = str(row.get("issue_id") or row.get("issueId") or "").strip()
+            if rid != cid:
+                continue
+            return self._map_row(row)
+
+        return None
 
     def _fetch_recent_crashes_bigquery(self, limit: int) -> list[dict]:
         # Crashlytics export is split by app/platform into concrete tables.
@@ -516,6 +646,36 @@ class CrashlyticsService:
         except Exception:
             return {}
 
+    @staticmethod
+    def _app_identifier_from_row(row: dict) -> str | None:
+        app = row.get("application")
+        if isinstance(app, dict):
+            for key in (
+                "bundle_identifier",
+                "bundleIdentifier",
+                "package_name",
+                "packageName",
+                "identifier",
+            ):
+                v = app.get(key)
+                if v is not None and str(v).strip():
+                    return str(v).strip()
+        for key in ("bundle_identifier", "package_name", "application_id"):
+            v = row.get(key)
+            if v is not None and str(v).strip():
+                return str(v).strip()
+        return None
+
+    @staticmethod
+    def _crashlytics_console_app_id(platform: str | None, bundle_pkg: str | None) -> str | None:
+        plat = (platform or "").strip().lower()
+        bid = (bundle_pkg or "").strip()
+        if not bid:
+            return None
+        if "ios" in plat or plat in ("apple", "ipados"):
+            return f"ios:{bid}"
+        return f"android:{bid}"
+
     def _map_row(self, row):
         platform = row.get("platform") or row.get("_source_platform")
         issue_id = row.get("issue_id") or row.get("issueId")
@@ -532,6 +692,16 @@ class CrashlyticsService:
         app = row.get("application") or {}
         device = row.get("device") or {}
         os = row.get("operating_system") or {}
+        app_identifier = self._app_identifier_from_row(row)
+        plat_lower = (platform or "").strip().lower()
+        if not app_identifier:
+            if "ios" in plat_lower or plat_lower in ("apple", "ipados"):
+                bid = (CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT or "").strip()
+                app_identifier = bid or None
+            else:
+                bid = (CRASHLYTICS_ANDROID_PACKAGE_DEFAULT or "").strip()
+                app_identifier = bid or None
+        console_app_id = self._crashlytics_console_app_id(platform, app_identifier)
         return {
             "crash_id": issue_id,
             "timestamp": str(row.get("event_timestamp")),
@@ -539,6 +709,8 @@ class CrashlyticsService:
             "app_version": app.get("display_version") or app.get("build_version"),
             "device": self._format_device(device=device, operating_system=os),
             "platform": platform,
+            "app_identifier": app_identifier,
+            "crashlytics_console_app_id": console_app_id,
             "stacktrace": self._frames_to_stacktrace(self._preferred_frames(row, exc))
         }
 

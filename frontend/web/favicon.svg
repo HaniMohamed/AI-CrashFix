@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AI Crash Fix">
+  <defs>
+    <linearGradient id="g" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="180" cy="150" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="120" fill="#0A0E1A"/>
+  <rect x="40" y="40" width="432" height="432" rx="108" fill="url(#g)"/>
+  <rect x="40" y="40" width="432" height="432" rx="108" fill="url(#glow)"/>
+
+  <!-- Bolt mark -->
+  <path
+    filter="url(#softShadow)"
+    fill="#0A0E1A"
+    d="M291 84c7 0 11 7 8 13l-42 92h78c8 0 12 8 8 14L222 428c-4 7-15 5-16-3l-8-137H132c-8 0-12-8-8-14L275 90c2-4 6-6 10-6h6z"
+  />
+
+  <!-- Inner highlight -->
+  <path
+    fill="#FFFFFF"
+    fill-opacity="0.18"
+    d="M290 112l-33 73h73L224 388l-5-91H148l142-185z"
+  />
+</svg>
+

@@ -17,7 +17,7 @@ def llm_analysis(state):
     }
 
     response = llm.call(
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT(),
         user_prompt=USER_PROMPT(prompt_input)
     )
 

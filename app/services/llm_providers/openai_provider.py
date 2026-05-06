@@ -1,5 +1,6 @@
-from app.config import OPENAI_API_KEY, OPENAI_URL
+from app.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_URL
 from app.services.llm_providers.base import LLMProvider
+import time
 
 try:
     from openai import OpenAI  # type: ignore
@@ -15,8 +16,9 @@ class OpenAIProvider(LLMProvider):
         self.client = OpenAI(api_key=OPENAI_API_KEY, base_url= OPENAI_URL)
 
     def call(self, system_prompt: str, user_prompt: str) -> str:
+        time.sleep(2) # add one second delay
         response = self.client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

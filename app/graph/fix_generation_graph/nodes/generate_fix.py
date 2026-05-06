@@ -3,6 +3,7 @@ from app.graph.state import CrashState
 from app.prompts.fix_generation_prompts import SYSTEM_PROMPT, USER_PROMPT
 from app.services.ai_service import LLMService
 from app.services.crash_store import CrashStore
+from app.utils.fix_json import fix_corrupted_json
 from app.utils.llm_helpers import parse_json
 
 crash_store = CrashStore()
@@ -52,7 +53,8 @@ def generate_fix_node(state: CrashState):
         system_prompt=SYSTEM_PROMPT(),
         user_prompt=USER_PROMPT(state)
     )
-    parsed = parse_json(response)
+    cleaned_response = fix_corrupted_json(response)
+    parsed = parse_json(cleaned_response)
     raw_fix = parsed.get("fix")
     normalized = _normalize_unified_diff_fix(raw_fix) if isinstance(raw_fix, str) else None
     state["generated_fix"] = normalized
