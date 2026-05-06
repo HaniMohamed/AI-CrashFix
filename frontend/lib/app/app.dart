@@ -49,8 +49,8 @@ class AiCrashFixApp extends ConsumerWidget {
         ),
       ),
       data: (settings) {
-        // Desktop: block initial UI until the embedded backend is ready
-        // (or show an actionable error). Web continues immediately.
+        // Kept for backward compatibility: on web, this provider should never
+        // block initial paint.
         if (backend.isLoading) {
           return MaterialApp(
             title: 'AI Crash Fix',
@@ -73,7 +73,7 @@ class AiCrashFixApp extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Could not start embedded backend: ${backend.error}'),
+                      Text('Backend bootstrap error: ${backend.error}'),
                       const SizedBox(height: 16),
                       FilledButton(
                         onPressed: () => ref.invalidate(backendProcessProvider),
