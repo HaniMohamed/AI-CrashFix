@@ -44,7 +44,7 @@ class JsonViewer extends StatelessWidget {
             constraints: const BoxConstraints(maxHeight: 600),
             child: Scrollbar(
               child: SingleChildScrollView(
-                child: JsonTreeView(value: value, expandToDepth: 2),
+                child: JsonTreeView(value: value, expandToDepth: 0),
               ),
             ),
           ),

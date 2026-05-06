@@ -37,6 +37,30 @@ _load_env()
 REPO_ROOT = os.getenv("REPO_ROOT", os.getcwd())
 MAIN_BRANCH = os.getenv("MAIN_BRANCH", "main")
 
+# Optional: monorepo packages directory.
+# This directory is expected to contain child package directories, each with its own `lib/`:
+#   <LOCAL_PACKAGES_DIR>/<packageName>/lib/...
+#
+# Prefer repo-relative values, e.g.:
+#   LOCAL_PACKAGES_DIR=packages
+#
+# Absolute paths are also accepted; if they live under REPO_ROOT, they will be normalized
+# back to a repo-relative path for consistent mapping output.
+_LOCAL_PACKAGES_DIR_RAW = (os.getenv("LOCAL_PACKAGES_DIR") or "").strip()
+if _LOCAL_PACKAGES_DIR_RAW:
+    _p = _LOCAL_PACKAGES_DIR_RAW.rstrip("/")
+    if os.path.isabs(_p):
+        try:
+            repo_abs = os.path.abspath(REPO_ROOT)
+            pkg_abs = os.path.abspath(_p)
+            if os.path.commonpath([repo_abs, pkg_abs]) == repo_abs:
+                _p = os.path.relpath(pkg_abs, repo_abs)
+        except Exception:
+            pass
+    LOCAL_PACKAGES_DIR = _p
+else:
+    LOCAL_PACKAGES_DIR = None
+
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # or "openai"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

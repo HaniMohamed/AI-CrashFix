@@ -355,7 +355,7 @@ class _Timeline extends StatelessWidget {
                 Expanded(
                   child: Scrollbar(
                     child: SingleChildScrollView(
-                      child: JsonTreeView(value: state, expandToDepth: 2),
+                      child: JsonTreeView(value: state, expandToDepth: 0),
                     ),
                   ),
                 ),
