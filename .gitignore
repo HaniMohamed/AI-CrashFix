@@ -70,3 +70,4 @@ frontend/*.iml
 frontend/.metadata
 
 
+frontend/pubspec.lock

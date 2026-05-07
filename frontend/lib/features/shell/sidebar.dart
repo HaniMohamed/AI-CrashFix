@@ -31,6 +31,12 @@ const sidebarItems = <SidebarItem>[
     path: '/crashes',
   ),
   SidebarItem(
+    label: 'Generated MRs',
+    icon: Icons.merge_outlined,
+    activeIcon: Icons.merge,
+    path: '/mrs',
+  ),
+  SidebarItem(
     label: 'New Run',
     icon: Icons.play_circle_outline,
     activeIcon: Icons.play_circle,

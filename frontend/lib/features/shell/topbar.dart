@@ -62,6 +62,7 @@ class _SearchOrTitle extends StatelessWidget {
       '/crashes' => 'Crashes',
       '/runs/new' => 'New run',
       '/runs/live' => 'Live run',
+      '/mrs' => 'Generated MRs',
       '/settings' => 'Settings',
       _ => '',
     };
