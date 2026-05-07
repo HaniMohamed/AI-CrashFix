@@ -65,6 +65,34 @@ class Crash {
   String? get fixSuggestion => result?['fix_suggestion'] as String?;
   Object? get device => result?['device'];
 
+  /// PR/MR fields from persisted `result` (CrashState).
+  String? get prTitle {
+    final v = result?['pr_title'];
+    final s = v?.toString().trim();
+    return (s == null || s.isEmpty) ? null : s;
+  }
+
+  String? get prBody {
+    final v = result?['pr_body'];
+    if (v == null) return null;
+    final s = v.toString();
+    return s.trim().isEmpty ? null : s;
+  }
+
+  String? get prBranch {
+    final v = result?['pr_branch'];
+    final s = v?.toString().trim();
+    return (s == null || s.isEmpty) ? null : s;
+  }
+
+  String? get prUrlFromResult {
+    final v = result?['pr_url'];
+    final s = v?.toString().trim();
+    return (s == null || s.isEmpty) ? null : s;
+  }
+
+  String? get effectivePrUrl => prUrl ?? prUrlFromResult;
+
   /// Set when the LangGraph run errors; also reflected in row `status == failed`.
   String? get graphError {
     final v = result?['graph_error'];

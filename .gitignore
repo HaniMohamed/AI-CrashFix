@@ -42,7 +42,6 @@ htmlcov/
 Thumbs.db
 
 ## IDEs / editors
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -70,3 +69,4 @@ frontend/*.iml
 frontend/.metadata
 
 
+frontend/pubspec.lock
