@@ -35,6 +35,46 @@ String shortCrashId(String id) {
   return '${t.substring(0, 8)}…${t.substring(t.length - 6)}';
 }
 
+/// Markdown defaults omit text color on `strong` / `em` / table headers, which reads as black on dark UI.
+MarkdownStyleSheet mrMarkdownStyleSheet(ThemeData theme, AppPalette palette) {
+  final body = theme.textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
+  final onSurface = palette.text;
+  final secondary = palette.textSecondary;
+  final base = MarkdownStyleSheet.fromTheme(theme);
+  return base.copyWith(
+    p: body.copyWith(color: onSurface, height: 1.5),
+    h1: base.h1?.copyWith(color: onSurface),
+    h2: base.h2?.copyWith(color: onSurface),
+    h3: base.h3?.copyWith(color: onSurface),
+    h4: base.h4?.copyWith(color: onSurface),
+    h5: base.h5?.copyWith(color: onSurface),
+    h6: base.h6?.copyWith(color: onSurface),
+    strong: TextStyle(fontWeight: FontWeight.w700, color: onSurface),
+    em: TextStyle(fontStyle: FontStyle.italic, color: onSurface),
+    del: TextStyle(
+      decoration: TextDecoration.lineThrough,
+      color: palette.textMuted,
+    ),
+    listBullet: body.copyWith(color: onSurface),
+    checkbox: body.copyWith(
+      color: palette.text,
+      fontSize: (body.fontSize ?? 14) * 1.35,
+    ),
+    tableHead: (base.tableHead ?? const TextStyle(fontWeight: FontWeight.w600))
+        .copyWith(color: onSurface),
+    tableBody: body.copyWith(color: onSurface),
+    blockquote: body.copyWith(color: secondary),
+    a: base.a?.copyWith(color: palette.primary) ??
+        TextStyle(color: palette.primary, decoration: TextDecoration.underline),
+    code: body.copyWith(
+      color: onSurface,
+      fontFamily: 'monospace',
+      backgroundColor: palette.surface2,
+    ),
+    img: base.img?.copyWith(color: onSurface),
+  );
+}
+
 final generatedMrsProvider = FutureProvider.autoDispose<List<Crash>>((ref) async {
   final api = ref.watch(apiClientProvider);
   final res = await api.getJson(Endpoints.crashes, query: {
@@ -273,7 +313,14 @@ class _MrCardState extends State<_MrCard> {
                               ),
                             ),
                           ],
-                        
+                          const SizedBox(height: AppSpacing.sm),
+                          SelectableText(
+                            c.crashId,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: palette.textMuted,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
                           const SizedBox(height: AppSpacing.md),
                           Wrap(
                             spacing: AppSpacing.sm,
@@ -291,7 +338,14 @@ class _MrCardState extends State<_MrCard> {
                                   tooltip: branch,
                                   maxLabelWidth: 260,
                                 ),
-                             
+                              if (c.status.isNotEmpty)
+                                _MetaChip(
+                                  label: c.status,
+                                  icon: statusDone
+                                      ? Icons.check_circle_outline_rounded
+                                      : Icons.info_outline_rounded,
+                                  emphasize: statusDone,
+                                ),
                             ],
                           ),
                         ],
@@ -328,17 +382,14 @@ class _MrCardState extends State<_MrCard> {
                     horizontal: AppSpacing.md,
                     vertical: AppSpacing.sm,
                   ),
-                  child: Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: AppSpacing.sm,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                  child: Row(
                     children: [
                       TextButton.icon(
                         onPressed: () => context.go('/crashes/${c.crashId}'),
                         icon: const Icon(Icons.visibility_outlined, size: 18),
                         label: const Text('Crash Details'),
                       ),
-                      Spacer(),
+                      const Spacer(),
                       FilledButton.tonalIcon(
                         onPressed: prUrl == null
                             ? null
@@ -379,21 +430,20 @@ class _MrCardState extends State<_MrCard> {
                             'No PR body was stored for this merge request.',
                             style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
                           )
-                        : MarkdownBody(
-                            data: body,
-                            selectable: true,
-                            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                              p: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
-                              h1: theme.textTheme.titleLarge,
-                              h2: theme.textTheme.titleMedium,
-                              code: theme.textTheme.bodyMedium?.copyWith(
-                                fontFamily: 'monospace',
-                                backgroundColor: palette.surface2,
-                              ),
-                              blockquoteDecoration: BoxDecoration(
-                                color: palette.surface2,
-                                borderRadius: AppRadii.all(AppRadii.sm),
-                                border: Border.all(color: palette.border),
+                        : DefaultTextStyle.merge(
+                            style: theme.textTheme.bodyMedium!.copyWith(
+                              color: palette.text,
+                              height: 1.5,
+                            ),
+                            child: MarkdownBody(
+                              data: body,
+                              selectable: true,
+                              styleSheet: mrMarkdownStyleSheet(theme, palette).copyWith(
+                                blockquoteDecoration: BoxDecoration(
+                                  color: palette.surface2,
+                                  borderRadius: AppRadii.all(AppRadii.sm),
+                                  border: Border.all(color: palette.border),
+                                ),
                               ),
                             ),
                           ),

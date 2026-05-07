@@ -1,0 +1,78 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FastAPI (uvicorn)",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.api.server:app", "--reload", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Flutter web (Chrome)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}/frontend",
+      "deviceId": "chrome"
+    },
+    {
+      "name": "Debug run_batch",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_batch.py",
+      "args": ["--limit", "10"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Debug run_batch no jira",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_batch.py",
+      "args": ["--limit", "10", "--skip-jira-creation"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Debug mock run_batch",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+
+    },
+    {
+      "name": "Debug cron_runner",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/cron_runner.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Flutter web + FastAPI",
+      "configurations": ["FastAPI (uvicorn)", "Flutter web (Chrome)"],
+      "stopAll": true
+    }
+  ]
+}

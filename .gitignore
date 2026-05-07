@@ -42,7 +42,6 @@ htmlcov/
 Thumbs.db
 
 ## IDEs / editors
-.vscode/
 .idea/
 *.swp
 *.swo
