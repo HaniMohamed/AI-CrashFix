@@ -21,6 +21,11 @@ class CrashState(TypedDict, total=False):
     exception: str
     stacktrace: list[dict[str, Any]]
 
+    # Target repository for this run (cloned from a user-provided remote URL).
+    repo_root: str | None
+    repo_url: str | None
+    repo_ref: str | None
+
     app_version: str | None
     device: str | None
     platform: str | None

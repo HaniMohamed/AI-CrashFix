@@ -1,14 +1,16 @@
 
 import os
 
-from app.config import REPO_ROOT
-
 class RepoService:
+    def __init__(self, repo_root: str) -> None:
+        if not repo_root or not str(repo_root).strip():
+            raise ValueError("repo_root is required")
+        self.repo_root = str(repo_root).strip()
 
     def _abs_path(self, path: str) -> str:
         if not path:
             return path
-        return path if os.path.isabs(path) else os.path.join(REPO_ROOT, path)
+        return path if os.path.isabs(path) else os.path.join(self.repo_root, path)
 
     def get_file_context(self, file, line, radius=20):
         file_path = self._abs_path(file)

@@ -36,6 +36,8 @@ _load_env()
 
 REPO_ROOT = os.getenv("REPO_ROOT", os.getcwd())
 MAIN_BRANCH = os.getenv("MAIN_BRANCH", "main")
+# Where user-provided remote repos are cloned for analysis runs.
+WORKSPACE_PROJECTS_DIR = os.getenv("WORKSPACE_PROJECTS_DIR", "workspace_projects").strip() or "workspace_projects"
 
 # Optional: monorepo packages directory.
 # This directory is expected to contain child package directories, each with its own `lib/`:

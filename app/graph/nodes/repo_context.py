@@ -4,11 +4,13 @@ from app.services.git_service import GitService
 from app.services.repo_service import RepoService
 from app.utils.analysis import detect_risk_signals
 
-git = GitService()
-repo = RepoService()
-
-
 def repo_context(state):
+    from app import config as cfg
+
+    repo_root = (state.get("repo_root") or cfg.REPO_ROOT or "").strip()
+    git = GitService(repo_root=repo_root)
+    repo = RepoService(repo_root=repo_root)
+
     enriched = []
     kept_frames = []
 

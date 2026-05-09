@@ -27,6 +27,8 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
   bool _skipJira = true;
   final _crashIdsCtrl = TextEditingController();
   final _singleCrashIdCtrl = TextEditingController();
+  final _repoUrlCtrl = TextEditingController();
+  final _repoRefCtrl = TextEditingController();
   String? _singleRunError;
 
   @override
@@ -42,6 +44,8 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
   void dispose() {
     _crashIdsCtrl.dispose();
     _singleCrashIdCtrl.dispose();
+    _repoUrlCtrl.dispose();
+    _repoRefCtrl.dispose();
     super.dispose();
   }
 
@@ -105,6 +109,32 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text('Target repository', style: theme.titleMedium),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'Provide a remote git repo URL to clone under the backend workspace for this run. '
+                      'If left blank, the backend falls back to its configured REPO_ROOT.',
+                      style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    TextField(
+                      controller: _repoUrlCtrl,
+                      style: AppTypography.mono(color: palette.text, size: 14),
+                      decoration: const InputDecoration(
+                        labelText: 'Remote repo URL (optional)',
+                        hintText: 'https://github.com/org/repo.git',
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    TextField(
+                      controller: _repoRefCtrl,
+                      style: AppTypography.mono(color: palette.text, size: 14),
+                      decoration: const InputDecoration(
+                        labelText: 'Git ref (optional)',
+                        hintText: 'main / develop / v1.2.3 / <commit sha>',
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
                     Text('Mode', style: theme.titleMedium),
                     const SizedBox(height: AppSpacing.sm),
                     SegmentedButton<RunMode>(
@@ -257,6 +287,8 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
       skipJiraCreation: _skipJira,
       crashIds: crashIds,
       crashId: singleCrashId,
+      repoUrl: _repoUrlCtrl.text.trim().isEmpty ? null : _repoUrlCtrl.text.trim(),
+      repoRef: _repoRefCtrl.text.trim().isEmpty ? null : _repoRefCtrl.text.trim(),
     );
 
     ref.read(runSessionProvider.notifier).start(req);

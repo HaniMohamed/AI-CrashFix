@@ -81,6 +81,14 @@ class RunRequest(BaseModel):
         None,
         description="Single mode: Crashlytics issue id to fetch, then run the pipeline.",
     )
+    repo_url: Optional[str] = Field(
+        None,
+        description="Optional: remote git repository URL to clone into the local workspace for this run.",
+    )
+    repo_ref: Optional[str] = Field(
+        None,
+        description="Optional: git ref to checkout after cloning (branch, tag, or commit).",
+    )
 
 
 # ---- Endpoints -------------------------------------------------------------
@@ -167,6 +175,7 @@ async def get_config() -> Dict[str, Any]:
         "repo": {
             "repo_root": cfg.REPO_ROOT,
             "main_branch": cfg.MAIN_BRANCH,
+            "workspace_projects_dir": cfg.WORKSPACE_PROJECTS_DIR,
         },
         "crashlytics": {
             "backend": cfg.CRASHLYTICS_FETCH_BACKEND,
@@ -217,6 +226,8 @@ async def _ndjson_stream(req: RunRequest) -> AsyncIterator[bytes]:
                 skip_jira_creation=req.skip_jira_creation,
                 crash_ids=req.crash_ids,
                 crash_id=(req.crash_id or "").strip() or None,
+                repo_url=(req.repo_url or "").strip() or None,
+                repo_ref=(req.repo_ref or "").strip() or None,
             ):
                 fut = asyncio.run_coroutine_threadsafe(queue.put(ev), loop)
                 fut.result()  # propagate back-pressure / cancellation

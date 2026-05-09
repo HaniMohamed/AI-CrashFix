@@ -60,12 +60,18 @@ def _initial_state_for_crash(
     run_id: str,
     skip_jira_creation: bool,
     mock: bool,
+    repo_root: str | None,
+    repo_url: str | None,
+    repo_ref: str | None,
 ) -> Dict[str, Any]:
     return {
         "graph_run_id": run_id,
         "graph_error": None,
         "mock": bool(mock),
         "skip_jira_creation": bool(skip_jira_creation),
+        "repo_root": repo_root,
+        "repo_url": repo_url,
+        "repo_ref": repo_ref,
         "crash_id": crash.get("crash_id") or "",
         "exception": crash.get("exception") or "",
         "stacktrace": crash.get("stacktrace") or [],
@@ -127,6 +133,8 @@ def stream_run(
     skip_jira_creation: bool = False,
     crash_ids: Optional[List[str]] = None,
     crash_id: Optional[str] = None,
+    repo_url: Optional[str] = None,
+    repo_ref: Optional[str] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Yield NDJSON-ready event dicts for a batch or single-crash run.
 
@@ -145,6 +153,21 @@ def stream_run(
 
     batch_state: Dict[str, Any] = {}
     run_id = ensure_run_id(batch_state)
+
+    # Resolve repo_root once per run; all crashes in the batch share it.
+    resolved_repo_root: str | None = None
+    resolved_repo_url: str | None = (repo_url or "").strip() or None
+    resolved_repo_ref: str | None = (repo_ref or "").strip() or None
+    if resolved_repo_url:
+        from app.services.project_service import ProjectService
+
+        proj = ProjectService().prepare_repo(repo_url=resolved_repo_url, repo_ref=resolved_repo_ref)
+        resolved_repo_root = proj.repo_root
+    else:
+        # Back-compat: allow env REPO_ROOT, but UI should prefer repo_url.
+        from app import config as cfg
+
+        resolved_repo_root = (cfg.REPO_ROOT or "").strip() or None
 
     # NOTE: Must be a thread-safe queue. Subgraph node events can be emitted while
     # `graph.stream(...)` is blocked inside a long-running node; we still want to
@@ -169,6 +192,11 @@ def stream_run(
             "skip_jira_creation": skip_jira_creation,
             "crash_ids_filter": list(crash_ids) if crash_ids else None,
             "crashlytics_backend": CRASHLYTICS_FETCH_BACKEND,
+            "repo": {
+                "repo_url": resolved_repo_url,
+                "repo_ref": resolved_repo_ref,
+                "repo_root": resolved_repo_root,
+            },
         }
 
         if mode == "batch":
@@ -343,7 +371,13 @@ def _run_batch(
 
         crash_store.insert_crash(crash_id)
         state = _initial_state_for_crash(
-            crash, run_id=run_id, skip_jira_creation=skip_jira_creation, mock=mock
+            crash,
+            run_id=run_id,
+            skip_jira_creation=skip_jira_creation,
+            mock=mock,
+            repo_root=resolved_repo_root,
+            repo_url=resolved_repo_url,
+            repo_ref=resolved_repo_ref,
         )
         yield from _stream_one_crash(
             graph=graph,
@@ -380,7 +414,13 @@ def _run_single(
         crash_store.insert_crash(crash_id)
 
     state = _initial_state_for_crash(
-        crash, run_id=run_id, skip_jira_creation=skip_jira_creation, mock=mock
+        crash,
+        run_id=run_id,
+        skip_jira_creation=skip_jira_creation,
+        mock=mock,
+        repo_root=resolved_repo_root,
+        repo_url=resolved_repo_url,
+        repo_ref=resolved_repo_ref,
     )
 
     counters = {"processed": 0, "skipped": 0, "deduped": 0, "failed": 0}

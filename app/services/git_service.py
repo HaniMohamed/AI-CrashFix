@@ -18,7 +18,6 @@ from app.config import (
     GITLAB_TOKEN,
     GITLAB_VERIFY_SSL,
     MAIN_BRANCH,
-    REPO_ROOT,
 )
 
 _RE_UNIFIED_HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@\s*$")
@@ -136,17 +135,28 @@ def _repair_unified_diff_hunk_counts(text: str) -> str:
 
 
 class GitService:
+    def __init__(self, repo_root: str) -> None:
+        if not repo_root or not str(repo_root).strip():
+            raise ValueError("repo_root is required")
+        self.repo_root = str(repo_root).strip()
+
     # -----------------------------
     # Low-level git helpers
     # -----------------------------
 
     def _run_git(self, args: list[str]) -> str:
         cmd = ["git", *args]
-        return subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
+        return subprocess.check_output(cmd, cwd=self.repo_root, text=True, stderr=subprocess.STDOUT)
 
     def _run_git_no_check(self, args: list[str]) -> tuple[int, str]:
         cmd = ["git", *args]
-        proc = subprocess.run(cmd, cwd=REPO_ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.run(
+            cmd,
+            cwd=self.repo_root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
         return proc.returncode, proc.stdout or ""
 
     # -----------------------------
@@ -274,14 +284,14 @@ class GitService:
     # -----------------------------
 
     def get_blame(self, file: str, line: int) -> str:
-        file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
+        file_path = file if os.path.isabs(file) else os.path.join(self.repo_root, file)
         cmd = ["git", "blame", "-L", f"{line},{line}", file_path]
-        return subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
+        return subprocess.check_output(cmd, cwd=self.repo_root, text=True, stderr=subprocess.STDOUT)
 
     def get_recent_commits(self, file: str, limit: int = 5) -> list[dict[str, str]]:
-        file_path = file if os.path.isabs(file) else os.path.join(REPO_ROOT, file)
+        file_path = file if os.path.isabs(file) else os.path.join(self.repo_root, file)
         cmd = ["git", "log", "-n", "5", "--pretty=format:%h|%an|%s|%ad", "--date=short", file_path]
-        output = subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
+        output = subprocess.check_output(cmd, cwd=self.repo_root, text=True, stderr=subprocess.STDOUT)
 
         commits: list[dict[str, str]] = []
         for row in output.split("\n"):
@@ -302,7 +312,7 @@ class GitService:
         if not relative_path or not relative_path.strip():
             raise ValueError("relative_path is required")
         path = relative_path.strip()
-        abs_path = path if os.path.isabs(path) else os.path.join(REPO_ROOT, path)
+        abs_path = path if os.path.isabs(path) else os.path.join(self.repo_root, path)
         with open(abs_path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -312,7 +322,7 @@ class GitService:
 
     def git_fetch(self):
         cmd = ["git", "fetch"]
-        subprocess.check_output(cmd, cwd=REPO_ROOT, text=True, stderr=subprocess.STDOUT)
+        subprocess.check_output(cmd, cwd=self.repo_root, text=True, stderr=subprocess.STDOUT)
 
     def create_branch_from_main(self, jira_ticket_id: str, title: str) -> dict[str, str]:
         if not jira_ticket_id or not jira_ticket_id.strip():
@@ -422,7 +432,7 @@ class GitService:
 
         tmp_path: str | None = None
         try:
-            with tempfile.NamedTemporaryFile("w", delete=False, dir=REPO_ROOT, suffix=".diff") as fp:
+            with tempfile.NamedTemporaryFile("w", delete=False, dir=self.repo_root, suffix=".diff") as fp:
                 fp.write(diff_text)
                 tmp_path = fp.name
 

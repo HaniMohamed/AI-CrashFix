@@ -49,7 +49,8 @@ pip install -r requirements.txt
 AI Crash Fix loads environment variables from `.env` (see `app/config.py`).
 
 #### Required: target repo
-- **REPO_ROOT**: absolute path to the **target repository** AI Crash Fix will read/apply patches to
+- **REPO_ROOT**: (legacy) absolute path to the **target repository** AI Crash Fix will read/apply patches to if you don't provide a `repo_url` per run
+- **WORKSPACE_PROJECTS_DIR**: where the backend clones user-provided remote repos (default: `workspace_projects`)
 - **MAIN_BRANCH**: base branch for feature branches (default: `main`)
 
 #### LLM provider
@@ -259,7 +260,7 @@ Use the included launch config in `.vscode/launch.json`:
 
 ### Troubleshooting
 - **`rg` not found**: install ripgrep (see above).
-- **“Missing …” errors**: verify `.env` values listed above (LLM provider keys, `REPO_ROOT`, BigQuery/Jira/GitLab as needed).
+- **“Missing …” errors**: verify `.env` values listed above (LLM provider keys, BigQuery/Jira/GitLab as needed). Repo selection can now be provided per run via `repo_url`.
 - **PR generation skipped**: `generate_pr` requires a non-empty `generated_fix` (unified diff, not `insufficient evidence`) and a `jira_issue_id`. If Jira creation is skipped, PR creation is skipped as well.
 - **“Failed to apply diff via git apply”**: the patch did not match the files under `REPO_ROOT` (wrong context or line anchors). Ensure the repo matches the branch the graph expects (`create_branch_from_main` fast-forwards `MAIN_BRANCH` first). Common LLM mistakes with wrong `@@` **line counts** are corrected automatically before apply; mismatched **context lines** still fail until the fix or repo is updated.
 - **No working tree changes after apply**: the diff applied but produced no net changes; the tool treats that as an error to avoid empty commits.

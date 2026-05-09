@@ -4,7 +4,7 @@ import glob
 import subprocess
 from typing import List, Dict
 
-from app.config import LOCAL_PACKAGES_DIR, REPO_ROOT
+from app.config import LOCAL_PACKAGES_DIR
 
 # ==============================
 # Regex Patterns
@@ -50,12 +50,12 @@ IOS_ROOT = "ios"
 # Helpers
 # ==============================
 
-def run_rg_search(query: str) -> str:
+def run_rg_search(query: str, *, repo_root: str) -> str:
     """Fallback search using ripgrep"""
     try:
         result = subprocess.check_output(
             ["rg", "--files-with-matches", query],
-            cwd=REPO_ROOT,
+            cwd=repo_root,
             text=True
         )
         return result.splitlines()[0] if result else None
@@ -63,10 +63,10 @@ def run_rg_search(query: str) -> str:
         return None
 
 
-def file_exists(path: str) -> bool:
+def file_exists(path: str, *, repo_root: str) -> bool:
     if not path:
         return False
-    candidate = path if os.path.isabs(path) else os.path.join(REPO_ROOT, path)
+    candidate = path if os.path.isabs(path) else os.path.join(repo_root, path)
     return os.path.exists(candidate)
 
 
@@ -135,7 +135,7 @@ def _iter_dart_source_roots() -> List[str]:
     return roots
 
 
-def resolve_dart_basename_in_repo_sources(basename: str, method: str) -> str | None:
+def resolve_dart_basename_in_repo_sources(basename: str, method: str, *, repo_root: str) -> str | None:
     """
     Resolve a short stack filename to a repo-relative path.
     Searches:
@@ -145,10 +145,10 @@ def resolve_dart_basename_in_repo_sources(basename: str, method: str) -> str | N
     """
     abs_hits: list[str] = []
     for root in _iter_dart_source_roots():
-        root_abs = os.path.join(REPO_ROOT, root)
+        root_abs = os.path.join(repo_root, root)
         if "*" in root:
             # e.g. packages/*/lib → ensure parent exists before globbing
-            parent = os.path.join(REPO_ROOT, LOCAL_PACKAGES_DIR) if LOCAL_PACKAGES_DIR else None
+            parent = os.path.join(repo_root, LOCAL_PACKAGES_DIR) if LOCAL_PACKAGES_DIR else None
             if not parent or not os.path.isdir(parent):
                 continue
         else:
@@ -160,7 +160,7 @@ def resolve_dart_basename_in_repo_sources(basename: str, method: str) -> str | N
     if not abs_hits:
         return None
 
-    rels = [os.path.relpath(p, REPO_ROOT) for p in abs_hits]
+    rels = [os.path.relpath(p, repo_root) for p in abs_hits]
     rels = [r.replace(os.sep, "/") for r in rels]
     allowed_prefixes = ["lib/"]
     if LOCAL_PACKAGES_DIR:
@@ -174,7 +174,7 @@ def resolve_dart_basename_in_repo_sources(basename: str, method: str) -> str | N
         return None
     matches = []
     for rel in rels:
-        abs_p = os.path.join(REPO_ROOT, rel)
+        abs_p = os.path.join(repo_root, rel)
         if _dart_file_declares_pascal_symbol(abs_p, head):
             matches.append(rel)
     if not matches:
@@ -190,7 +190,7 @@ def resolve_dart_basename_in_repo_sources(basename: str, method: str) -> str | N
     return matches[0]
 
 
-def parse_dart(stack_lines: List[str]) -> List[Dict]:
+def parse_dart(stack_lines: List[str], *, repo_root: str) -> List[Dict]:
     frames = []
 
     for line in stack_lines:
@@ -199,7 +199,7 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
             file_path = match.group("path")
             line_no = match.group("line")
             method = match.group("method").strip()
-            if file_exists(file_path):
+            if file_exists(file_path, repo_root=repo_root):
                 frames.append(normalize_frame("dart", file_path, line_no, method))
             continue
 
@@ -214,24 +214,24 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
 
             # 1) Try root lib/ (some repos mirror package layout there)
             candidate = os.path.join("lib", path)
-            if file_exists(candidate):
+            if file_exists(candidate, repo_root=repo_root):
                 frames.append(normalize_frame("dart", candidate.replace(os.sep, "/"), line_no, method))
                 continue
 
             # 2) Try local monorepo packages: <LOCAL_PACKAGES_DIR>/<package>/lib/<path>
             if LOCAL_PACKAGES_DIR:
                 local_candidate = os.path.join(LOCAL_PACKAGES_DIR, package, "lib", path)
-                if file_exists(local_candidate):
+                if file_exists(local_candidate, repo_root=repo_root):
                     frames.append(
                         normalize_frame("dart", local_candidate.replace(os.sep, "/"), line_no, method)
                     )
                     continue
 
                 # If package dir name doesn't match, fall back to scanning all child packages.
-                pattern = os.path.join(REPO_ROOT, LOCAL_PACKAGES_DIR, "*", "lib", path)
+                pattern = os.path.join(repo_root, LOCAL_PACKAGES_DIR, "*", "lib", path)
                 hits = glob.glob(pattern, recursive=False)
                 if hits:
-                    rel = os.path.relpath(hits[0], REPO_ROOT).replace(os.sep, "/")
+                    rel = os.path.relpath(hits[0], repo_root).replace(os.sep, "/")
                     frames.append(normalize_frame("dart", rel, line_no, method))
             continue
 
@@ -240,8 +240,8 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
             basename = bare.group("file")
             line_no = bare.group("line")
             method = bare.group("method").strip()
-            resolved = resolve_dart_basename_in_repo_sources(basename, method)
-            if resolved and file_exists(resolved):
+            resolved = resolve_dart_basename_in_repo_sources(basename, method, repo_root=repo_root)
+            if resolved and file_exists(resolved, repo_root=repo_root):
                 frames.append(normalize_frame("dart", resolved, line_no, method))
 
     return frames
@@ -251,21 +251,21 @@ def parse_dart(stack_lines: List[str]) -> List[Dict]:
 # Android Parser
 # ==============================
 
-def resolve_android_path(class_name: str, file_name: str) -> str:
+def resolve_android_path(class_name: str, file_name: str, *, repo_root: str) -> str:
     class_path = class_name.replace(".", "/")
 
     for base in ANDROID_SRC_PATHS:
         for ext in [".kt", ".java"]:
             full_path = os.path.join(base, class_path + ext)
-            if file_exists(full_path):
+            if file_exists(full_path, repo_root=repo_root):
                 return full_path
 
     # fallback search
-    found = run_rg_search(file_name)
+    found = run_rg_search(file_name, repo_root=repo_root)
     return found
 
 
-def parse_android(stack_lines: List[str]) -> List[Dict]:
+def parse_android(stack_lines: List[str], *, repo_root: str) -> List[Dict]:
     frames = []
 
     for line in stack_lines:
@@ -281,7 +281,7 @@ def parse_android(stack_lines: List[str]) -> List[Dict]:
         if is_noise_frame(class_name):
             continue
 
-        file_path = resolve_android_path(class_name, file_name)
+        file_path = resolve_android_path(class_name, file_name, repo_root=repo_root)
 
         if not file_path:
             continue
@@ -297,16 +297,16 @@ def parse_android(stack_lines: List[str]) -> List[Dict]:
 # iOS Parser
 # ==============================
 
-def resolve_ios_path(file_name: str) -> str:
-    for root, _, files in os.walk(IOS_ROOT):
+def resolve_ios_path(file_name: str, *, repo_root: str) -> str:
+    for root, _, files in os.walk(os.path.join(repo_root, IOS_ROOT)):
         if file_name in files:
             return os.path.join(root, file_name)
 
     # fallback search
-    return run_rg_search(file_name)
+    return run_rg_search(file_name, repo_root=repo_root)
 
 
-def parse_ios(stack_lines: List[str]) -> List[Dict]:
+def parse_ios(stack_lines: List[str], *, repo_root: str) -> List[Dict]:
     frames = []
 
     for line in stack_lines:
@@ -317,7 +317,7 @@ def parse_ios(stack_lines: List[str]) -> List[Dict]:
         file_name = match.group("file")
         line_no = match.group("line")
 
-        file_path = resolve_ios_path(file_name)
+        file_path = resolve_ios_path(file_name, repo_root=repo_root)
 
         if not file_path:
             continue
@@ -332,11 +332,14 @@ def parse_ios(stack_lines: List[str]) -> List[Dict]:
 # ==============================
 
 def map_stacktrace(state: Dict) -> Dict:
+    from app import config as cfg
+
+    repo_root = (state.get("repo_root") or cfg.REPO_ROOT or "").strip()
     stack_lines = state.get("stacktrace", [])
 
-    dart_frames = parse_dart(stack_lines)
-    android_frames = parse_android(stack_lines)
-    ios_frames = parse_ios(stack_lines)
+    dart_frames = parse_dart(stack_lines, repo_root=repo_root)
+    android_frames = parse_android(stack_lines, repo_root=repo_root)
+    ios_frames = parse_ios(stack_lines, repo_root=repo_root)
 
     all_frames = dart_frames + android_frames + ios_frames
 
