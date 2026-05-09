@@ -66,6 +66,7 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     required String name,
     required String repoUrl,
     String? repoRef,
+    String? firebaseProjectId,
     String? accessToken,
   }) async {
     final api = ref.read(apiClientProvider);
@@ -73,6 +74,8 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
       'name': name,
       'repo_url': repoUrl,
       if (repoRef != null && repoRef.trim().isNotEmpty) 'repo_ref': repoRef.trim(),
+      if (firebaseProjectId != null && firebaseProjectId.trim().isNotEmpty)
+        'firebase_project_id': firebaseProjectId.trim(),
       if (accessToken != null && accessToken.trim().isNotEmpty)
         'access_token': accessToken.trim(),
     });

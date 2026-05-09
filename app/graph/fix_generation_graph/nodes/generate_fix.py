@@ -71,6 +71,7 @@ def generate_fix_node(state: CrashState):
     cid = state.get("crash_id")
     if cid and normalized and str(normalized).lower() != "insufficient evidence":
         repo_key = (state.get("repo_key") or "").strip() or None
-        CrashStore(repo_key=repo_key).set_pipeline_flags(cid, fix_generated=True)
+        fpid = (state.get("firebase_project_id") or "").strip() or None
+        CrashStore(repo_key=repo_key, project_id=fpid).set_pipeline_flags(cid, fix_generated=True)
 
     return state

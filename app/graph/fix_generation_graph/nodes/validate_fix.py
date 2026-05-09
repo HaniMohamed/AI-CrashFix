@@ -10,5 +10,6 @@ def validate_fix_node(state: CrashState):
     cid = state.get("crash_id")
     if cid and state["fix_validation_result"]:
         repo_key = (state.get("repo_key") or "").strip() or None
-        CrashStore(repo_key=repo_key).set_pipeline_flags(cid, fix_validated=True)
+        fpid = (state.get("firebase_project_id") or "").strip() or None
+        CrashStore(repo_key=repo_key, project_id=fpid).set_pipeline_flags(cid, fix_validated=True)
     return state

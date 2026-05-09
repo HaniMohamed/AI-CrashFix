@@ -16,6 +16,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _urlCtrl;
   late final TextEditingController _refCtrl;
+  late final TextEditingController _firebaseProjectIdCtrl;
   late final TextEditingController _tokenCtrl;
 
   bool _saving = false;
@@ -27,6 +28,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _nameCtrl = TextEditingController();
     _urlCtrl = TextEditingController();
     _refCtrl = TextEditingController();
+    _firebaseProjectIdCtrl = TextEditingController();
     _tokenCtrl = TextEditingController();
   }
 
@@ -35,6 +37,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _nameCtrl.dispose();
     _urlCtrl.dispose();
     _refCtrl.dispose();
+    _firebaseProjectIdCtrl.dispose();
     _tokenCtrl.dispose();
     super.dispose();
   }
@@ -129,6 +132,15 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
               ),
               const SizedBox(height: 10),
               TextField(
+                controller: _firebaseProjectIdCtrl,
+                enabled: !_saving,
+                decoration: const InputDecoration(
+                  labelText: 'Firebase project ID',
+                  hintText: 'Used for Crashlytics/BigQuery',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
                 controller: _tokenCtrl,
                 enabled: !_saving,
                 obscureText: true,
@@ -169,6 +181,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                           name: _nameCtrl.text.trim(),
                           repoUrl: _urlCtrl.text.trim(),
                           repoRef: _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim(),
+                          firebaseProjectId: _firebaseProjectIdCtrl.text.trim().isEmpty
+                              ? null
+                              : _firebaseProjectIdCtrl.text.trim(),
                           accessToken:
                               _tokenCtrl.text.trim().isEmpty ? null : _tokenCtrl.text.trim(),
                         );

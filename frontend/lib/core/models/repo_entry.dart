@@ -3,6 +3,7 @@ class RepoEntry {
   final String name;
   final String repoUrl;
   final String? repoRef;
+  final String? firebaseProjectId;
   final bool hasToken;
 
   const RepoEntry({
@@ -10,6 +11,7 @@ class RepoEntry {
     required this.name,
     required this.repoUrl,
     this.repoRef,
+    this.firebaseProjectId,
     this.hasToken = false,
   });
 
@@ -20,6 +22,10 @@ class RepoEntry {
         repoRef: (j['repo_ref'] as String?)?.trim().isEmpty ?? true
             ? null
             : (j['repo_ref'] as String?),
+        firebaseProjectId:
+            (j['firebase_project_id'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (j['firebase_project_id'] as String?),
         hasToken: j['has_token'] == true,
       );
 }

@@ -64,6 +64,7 @@ def _initial_state_for_crash(
     repo_url: str | None,
     repo_ref: str | None,
     repo_key: str | None,
+    firebase_project_id: str | None,
 ) -> Dict[str, Any]:
     return {
         "graph_run_id": run_id,
@@ -74,6 +75,7 @@ def _initial_state_for_crash(
         "repo_url": repo_url,
         "repo_ref": repo_ref,
         "repo_key": repo_key,
+        "firebase_project_id": firebase_project_id,
         "crash_id": crash.get("crash_id") or "",
         "exception": crash.get("exception") or "",
         "stacktrace": crash.get("stacktrace") or [],
@@ -138,6 +140,7 @@ def stream_run(
     repo_url: Optional[str] = None,
     repo_ref: Optional[str] = None,
     access_token: Optional[str] = None,
+    firebase_project_id: Optional[str] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Yield NDJSON-ready event dicts for a batch or single-crash run.
 
@@ -160,6 +163,7 @@ def stream_run(
     resolved_repo_url: str | None = (repo_url or "").strip() or None
     resolved_repo_ref: str | None = (repo_ref or "").strip() or None
     resolved_repo_token: str | None = (access_token or "").strip() or None
+    resolved_firebase_project_id: str | None = (firebase_project_id or "").strip() or None
     resolved_repo_key: str | None = None
     if resolved_repo_url:
         from app.services.project_service import ProjectService
@@ -178,7 +182,11 @@ def stream_run(
         resolved_repo_root = (cfg.REPO_ROOT or "").strip() or None
         resolved_repo_key = None
 
-    crash_store = CrashStore(repo_key=resolved_repo_key) if resolved_repo_key else CrashStore()
+    crash_store = (
+        CrashStore(repo_key=resolved_repo_key, project_id=resolved_firebase_project_id)
+        if resolved_repo_key
+        else CrashStore(project_id=resolved_firebase_project_id)
+    )
 
     # NOTE: Must be a thread-safe queue. Subgraph node events can be emitted while
     # `graph.stream(...)` is blocked inside a long-running node; we still want to
@@ -225,6 +233,7 @@ def stream_run(
                 repo_url=resolved_repo_url,
                 repo_ref=resolved_repo_ref,
                 repo_key=resolved_repo_key,
+                firebase_project_id=resolved_firebase_project_id,
             )
         elif mode == "single":
             cid = (crash_id or "").strip()
@@ -238,7 +247,7 @@ def stream_run(
                     },
                 }
                 return
-            service = CrashlyticsService(mock=mock)
+            service = CrashlyticsService(mock=mock, project_id=resolved_firebase_project_id)
             resolved = _resolve_single_crash_payload(
                 crash_store=crash_store,
                 service=service,
@@ -278,6 +287,7 @@ def stream_run(
                 repo_url=resolved_repo_url,
                 repo_ref=resolved_repo_ref,
                 repo_key=resolved_repo_key,
+                firebase_project_id=resolved_firebase_project_id,
             )
         else:
             yield {
@@ -327,8 +337,11 @@ def _run_batch(
     repo_url: str | None,
     repo_ref: str | None,
     repo_key: str | None,
+    firebase_project_id: str | None,
 ) -> Iterator[Dict[str, Any]]:
-    service = CrashlyticsService(mock=mock)
+    # CrashlyticsService uses the repo's firebase/gcp project id when provided.
+    # It falls back to .env BQ_PROJECT_ID otherwise.
+    service = CrashlyticsService(mock=mock, project_id=crash_store.project_id)
 
     with node_span(
         {"graph_run_id": run_id},
@@ -403,6 +416,7 @@ def _run_batch(
             repo_url=repo_url,
             repo_ref=repo_ref,
             repo_key=repo_key,
+            firebase_project_id=firebase_project_id,
         )
         yield from _stream_one_crash(
             graph=graph,
@@ -437,6 +451,7 @@ def _run_single(
     repo_url: str | None,
     repo_ref: str | None,
     repo_key: str | None,
+    firebase_project_id: str | None,
 ) -> Iterator[Dict[str, Any]]:
     crash_id = (crash.get("crash_id") or "").strip()
     if crash_id:
@@ -451,6 +466,7 @@ def _run_single(
         repo_url=repo_url,
         repo_ref=repo_ref,
         repo_key=repo_key,
+        firebase_project_id=firebase_project_id,
     )
 
     counters = {"processed": 0, "skipped": 0, "deduped": 0, "failed": 0}

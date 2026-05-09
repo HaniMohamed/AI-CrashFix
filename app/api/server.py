@@ -104,6 +104,10 @@ class RepoUpsertRequest(BaseModel):
     name: str = Field(..., description="User-visible name for this repository.")
     repo_url: str = Field(..., description="Remote git repo URL.")
     repo_ref: Optional[str] = Field(None, description="Optional git ref (branch/tag/commit).")
+    firebase_project_id: Optional[str] = Field(
+        None,
+        description="Firebase/GCP project id to use for Crashlytics/BigQuery instead of .env BQ_PROJECT_ID.",
+    )
     access_token: Optional[str] = Field(
         None,
         description="Optional access token for cloning private repos. Stored server-side; never returned.",
@@ -157,7 +161,11 @@ async def list_crashes(
     repo_key: Optional[str] = Query(None, description="Scope crashes to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
     key = _resolve_repo_key(repo_key)
-    store = CrashStore(repo_key=key) if key else CrashStore()
+    project_id = None
+    if key:
+        entry = RepoRegistryStore().get_repo(key)
+        project_id = entry.firebase_project_id if entry else None
+    store = CrashStore(repo_key=key, project_id=project_id) if key else CrashStore(project_id=project_id)
     rows = store.list_crashes(
         status=status,
         limit=limit,
@@ -173,7 +181,11 @@ async def get_crash(
     repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
     key = _resolve_repo_key(repo_key)
-    store = CrashStore(repo_key=key) if key else CrashStore()
+    project_id = None
+    if key:
+        entry = RepoRegistryStore().get_repo(key)
+        project_id = entry.firebase_project_id if entry else None
+    store = CrashStore(repo_key=key, project_id=project_id) if key else CrashStore(project_id=project_id)
     row = store.get_crash(crash_id, include_result=True)
     if row is None:
         raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
@@ -186,7 +198,11 @@ async def get_analytics(
     repo_key: Optional[str] = Query(None, description="Scope analytics to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
     key = _resolve_repo_key(repo_key)
-    store = CrashStore(repo_key=key) if key else CrashStore()
+    project_id = None
+    if key:
+        entry = RepoRegistryStore().get_repo(key)
+        project_id = entry.firebase_project_id if entry else None
+    store = CrashStore(repo_key=key, project_id=project_id) if key else CrashStore(project_id=project_id)
     return compute_analytics(store, use_cache=not no_cache)
 
 
@@ -213,6 +229,7 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             name=req.name,
             repo_url=req.repo_url,
             repo_ref=req.repo_ref,
+            firebase_project_id=req.firebase_project_id,
             access_token=req.access_token,
         )
     except ValueError as e:
@@ -252,7 +269,7 @@ async def delete_repo(repo_key: str, req: RepoDeleteRequest) -> Dict[str, Any]:
 
     # Delete per-repo crash DB.
     try:
-        crash_db = CrashStore(repo_key=repo_key).db_path
+        crash_db = CrashStore(repo_key=repo_key, project_id=entry.firebase_project_id).db_path
         if crash_db and os.path.exists(crash_db):
             os.remove(crash_db)
     except Exception as e:
@@ -357,6 +374,7 @@ async def _ndjson_stream(req: RunRequest) -> AsyncIterator[bytes]:
                 repo_url=_run_repo_url(req),
                 repo_ref=_run_repo_ref(req),
                 access_token=_run_repo_token(req),
+                firebase_project_id=_run_firebase_project_id(req),
             ):
                 fut = asyncio.run_coroutine_threadsafe(queue.put(ev), loop)
                 fut.result()  # propagate back-pressure / cancellation
@@ -428,4 +446,12 @@ def _run_repo_token(req: RunRequest) -> str | None:
     # Only resolved from repo_key; we do not accept tokens in /api/runs payload.
     if (req.repo_key or "").strip():
         return RepoRegistryStore().get_access_token((req.repo_key or "").strip())
+    return None
+
+
+def _run_firebase_project_id(req: RunRequest) -> str | None:
+    if (req.repo_key or "").strip():
+        entry = RepoRegistryStore().get_repo((req.repo_key or "").strip())
+        if entry:
+            return entry.firebase_project_id
     return None

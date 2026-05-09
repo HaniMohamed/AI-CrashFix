@@ -38,9 +38,10 @@ def _resolve_crashlytics_backend(raw: str) -> str:
 
 class CrashlyticsService:
 
-    def __init__(self, *, mock: bool = False):
+    def __init__(self, *, mock: bool = False, project_id: str | None = None):
         self._mock = bool(mock)
         self._backend = _resolve_crashlytics_backend(CRASHLYTICS_FETCH_BACKEND)
+        self.project_id = (project_id or "").strip() or (BQ_PROJECT_ID or "").strip() or None
         self.client = None
         self._logging_client = None
 
@@ -55,21 +56,25 @@ class CrashlyticsService:
                 raise RuntimeError(
                     "Missing dependency for BigQuery. Install google-cloud-bigquery to enable Crashlytics fetch."
                 )
-            if not BQ_PROJECT_ID:
-                raise RuntimeError("BQ_PROJECT_ID is required when CRASHLYTICS_FETCH_BACKEND=bigquery.")
+            if not self.project_id:
+                raise RuntimeError(
+                    "firebase_project_id is required when CRASHLYTICS_FETCH_BACKEND=bigquery "
+                    "(or set .env BQ_PROJECT_ID as a fallback)."
+                )
             # If credentials is None, BigQuery will use Application Default Credentials.
-            self.client = bigquery.Client(project=BQ_PROJECT_ID, credentials=credentials)
+            self.client = bigquery.Client(project=self.project_id, credentials=credentials)
             return
 
         if cloud_logging is None:
             raise RuntimeError(
                 "Missing dependency for Cloud Logging. Install google-cloud-logging to enable Crashlytics fetch."
             )
-        if not BQ_PROJECT_ID:
+        if not self.project_id:
             raise RuntimeError(
-                "BQ_PROJECT_ID (GCP project id) is required when CRASHLYTICS_FETCH_BACKEND=cloud_logging."
+                "firebase_project_id (GCP project id) is required when CRASHLYTICS_FETCH_BACKEND=cloud_logging "
+                "(or set .env BQ_PROJECT_ID as a fallback)."
             )
-        self._logging_client = cloud_logging.Client(project=BQ_PROJECT_ID, credentials=credentials)
+        self._logging_client = cloud_logging.Client(project=self.project_id, credentials=credentials)
 
     @staticmethod
     def _load_credentials(*, mock: bool = False):
@@ -131,8 +136,9 @@ class CrashlyticsService:
                 "Missing dependency for BigQuery. Install google-cloud-bigquery."
             )
 
-        android_table = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
-        ios_table = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
+        assert self.project_id is not None
+        android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
+        ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
 
         query = f"""
         WITH unioned AS (
@@ -190,7 +196,9 @@ class CrashlyticsService:
             )
 
         assert self._logging_client is not None
-        project_id = BQ_PROJECT_ID
+        project_id = self.project_id
+        if not project_id:
+            raise RuntimeError("firebase_project_id is required for cloud_logging Crashlytics fetch.")
         fb = f'logName="projects/{project_id}/logs/firebasecrashlytics.googleapis.com%2Fevents"'
         legacy = f'logName="projects/{project_id}/logs/crashlytics.googleapis.com%2Fcrash_events"'
         fatal = '(jsonPayload.issue.errorType="FATAL" OR jsonPayload.errorType="FATAL")'
@@ -223,8 +231,9 @@ class CrashlyticsService:
     def _fetch_recent_crashes_bigquery(self, limit: int) -> list[dict]:
         # Crashlytics export is split by app/platform into concrete tables.
         # We union Android + iOS into a single stream and then apply a global LIMIT.
-        android_table = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
-        ios_table = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
+        assert self.project_id is not None
+        android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
+        ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
 
         query = f"""
         WITH unioned AS (
@@ -260,7 +269,9 @@ class CrashlyticsService:
 
     def _fetch_recent_crashes_cloud_logging(self, limit: int) -> list[dict]:
         assert self._logging_client is not None
-        project_id = BQ_PROJECT_ID
+        project_id = self.project_id
+        if not project_id:
+            raise RuntimeError("firebase_project_id is required for cloud_logging Crashlytics fetch.")
         # Firebase Crashlytics → Cloud Logging uses firebasecrashlytics.googleapis.com/events;
         # older samples may use crashlytics.googleapis.com/crash_events.
         fb = f'logName="projects/{project_id}/logs/firebasecrashlytics.googleapis.com%2Fevents"'

@@ -30,22 +30,31 @@ class CrashStore:
     ``CrashStore()`` on another thread.
     """
 
-    def __init__(self, db_path: str | None = None, *, repo_key: str | None = None):
+    def __init__(
+        self,
+        db_path: str | None = None,
+        *,
+        repo_key: str | None = None,
+        project_id: str | None = None,
+    ):
         # Priority:
         # 1) Explicit arg
         # 2) AI_CRASH_FIX_DB_PATH env var
         # 3) Default per environment (repo-local for dev, Application Support for frozen apps)
         #
-        # If repo_key is provided, the default becomes db/<BQ_PROJECT_ID>_<repo_key>_crash_store.db
+        # If repo_key is provided, the default becomes db/<project_id>_<repo_key>_crash_store.db
         env_db = (os.environ.get("AI_CRASH_FIX_DB_PATH") or "").strip() or None
         repo_key = (repo_key or "").strip() or None
+        project_id = (project_id or "").strip() or None
+        resolved_project = project_id or (BQ_PROJECT_ID or "").strip() or "default"
+        self.project_id = resolved_project
 
         if db_path:
             resolved = db_path
         elif env_db:
             resolved = env_db
         elif repo_key:
-            resolved = f"db/{BQ_PROJECT_ID}_{repo_key}_crash_store.db"
+            resolved = f"db/{resolved_project}_{repo_key}_crash_store.db"
         else:
             resolved = None
         if not resolved:
@@ -55,10 +64,10 @@ class CrashStore:
                     / "Library"
                     / "Application Support"
                     / "AI Crash Fix"
-                    / f"{BQ_PROJECT_ID}_crash_store.db"
+                    / f"{resolved_project}_crash_store.db"
                 )
             else:
-                resolved = f"db/{BQ_PROJECT_ID}_crash_store.db"
+                resolved = f"db/{resolved_project}_crash_store.db"
 
         path = Path(resolved).expanduser().resolve()
         path.parent.mkdir(parents=True, exist_ok=True)

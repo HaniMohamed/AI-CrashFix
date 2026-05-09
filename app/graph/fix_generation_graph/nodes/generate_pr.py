@@ -46,7 +46,8 @@ def generate_pr_node(state: CrashState):
         repo_root = (state.get("repo_root") or cfg.REPO_ROOT or "").strip()
         git = GitService(repo_root=repo_root)
         repo_key = (state.get("repo_key") or "").strip() or None
-        crash_store = CrashStore(repo_key=repo_key)
+        fpid = (state.get("firebase_project_id") or "").strip() or None
+        crash_store = CrashStore(repo_key=repo_key, project_id=fpid)
 
         # --- Step 1: LLM proposes MR title, description, and git commit subject (title is used for branch slug). ---
         llm = LLMService()

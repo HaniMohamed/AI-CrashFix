@@ -27,6 +27,7 @@ class RepoEntry:
     name: str
     repo_url: str
     repo_ref: str | None
+    firebase_project_id: str | None
     has_token: bool
     created_at: str
     updated_at: str
@@ -61,6 +62,7 @@ class RepoRegistryStore:
                     name TEXT NOT NULL,
                     repo_url TEXT NOT NULL,
                     repo_ref TEXT,
+                    firebase_project_id TEXT,
                     access_token TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -73,6 +75,8 @@ class RepoRegistryStore:
             existing = {row[1] for row in cur.fetchall()}
             if "access_token" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN access_token TEXT")
+            if "firebase_project_id" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN firebase_project_id TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_state (
@@ -100,6 +104,7 @@ class RepoRegistryStore:
         name: str,
         repo_url: str,
         repo_ref: str | None,
+        firebase_project_id: str | None = None,
         access_token: str | None = None,
     ) -> RepoEntry:
         url = (repo_url or "").strip()
@@ -109,6 +114,7 @@ class RepoRegistryStore:
         if not nm:
             raise ValueError("name is required")
         ref = (repo_ref or "").strip() or None
+        fpid = (firebase_project_id or "").strip() or None
         tok = (access_token or "").strip() or None
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
@@ -117,16 +123,17 @@ class RepoRegistryStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO repos(repo_key, name, repo_url, repo_ref, access_token, created_at, updated_at, last_selected_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+                INSERT INTO repos(repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, created_at, updated_at, last_selected_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(repo_key) DO UPDATE SET
                   name = excluded.name,
                   repo_url = excluded.repo_url,
                   repo_ref = excluded.repo_ref,
+                  firebase_project_id = excluded.firebase_project_id,
                   access_token = COALESCE(excluded.access_token, repos.access_token),
                   updated_at = excluded.updated_at
                 """,
-                (repo_key, nm, url, ref, tok, now, now),
+                (repo_key, nm, url, ref, fpid, tok, now, now),
             )
             conn.commit()
 
@@ -223,6 +230,7 @@ class RepoRegistryStore:
             name=row["name"],
             repo_url=row["repo_url"],
             repo_ref=row["repo_ref"] if row["repo_ref"] else None,
+            firebase_project_id=row["firebase_project_id"] if row["firebase_project_id"] else None,
             has_token=bool(row["access_token"]) if "access_token" in row.keys() else False,
             created_at=row["created_at"],
             updated_at=row["updated_at"],

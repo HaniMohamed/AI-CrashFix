@@ -26,6 +26,8 @@ class CrashState(TypedDict, total=False):
     repo_url: str | None
     repo_ref: str | None
     repo_key: str | None
+    # Firebase/GCP project id for Crashlytics/BigQuery (per-repo).
+    firebase_project_id: str | None
 
     app_version: str | None
     device: str | None
