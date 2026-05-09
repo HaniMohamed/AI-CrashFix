@@ -9,6 +9,7 @@ class Endpoints {
   static const String repos = '/api/repos';
   static const String activeRepo = '/api/repos/active';
   static const String selectRepo = '/api/repos/select';
+  static String repoByKey(String repoKey) => '$repos/$repoKey';
 
   static String crashById(String id) => '$crashes/$id';
 }

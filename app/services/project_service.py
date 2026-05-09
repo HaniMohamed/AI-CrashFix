@@ -56,7 +56,13 @@ class ProjectService:
         if not self.base_dir.is_absolute():
             self.base_dir = (Path.cwd() / self.base_dir).resolve()
 
-    def prepare_repo(self, *, repo_url: str, repo_ref: str | None = None) -> PreparedProject:
+    def prepare_repo(
+        self,
+        *,
+        repo_url: str,
+        repo_ref: str | None = None,
+        access_token: str | None = None,
+    ) -> PreparedProject:
         url = (repo_url or "").strip()
         if not url:
             raise ValueError("repo_url is required")
@@ -69,17 +75,27 @@ class ProjectService:
         target = (self.base_dir / f"{name}-{project_id}").resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
+        token = (access_token or "").strip() or None
+        clone_cmd = ["git"]
+        if token:
+            # Avoid embedding tokens in URLs (and avoid leaking them in logs).
+            # For GitHub PATs, a Basic auth header of "x-access-token:<token>" works.
+            import base64
+
+            basic = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
+            clone_cmd.extend(["-c", f"http.extraHeader=Authorization: Basic {basic}"])
+
         if not (target / ".git").is_dir():
             # Clone once. Keep it lightweight for large repos.
             subprocess.check_output(
-                ["git", "clone", "--no-tags", "--filter=blob:none", url, str(target)],
+                [*clone_cmd, "clone", "--no-tags", "--filter=blob:none", url, str(target)],
                 text=True,
                 stderr=subprocess.STDOUT,
             )
         else:
             # Existing clone: refresh refs.
             subprocess.check_output(
-                ["git", "fetch", "--all", "--prune"],
+                [*clone_cmd, "fetch", "--all", "--prune"],
                 cwd=str(target),
                 text=True,
                 stderr=subprocess.STDOUT,

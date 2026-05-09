@@ -32,6 +32,24 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     if (activeJson is Map) {
       active = RepoEntry.fromJson(activeJson.cast<String, dynamic>());
     }
+
+    // If the backend has repos but no active selection (e.g. fresh DB,
+    // or active repo deleted), auto-select the most recently updated repo.
+    if (active == null && items.isNotEmpty) {
+      try {
+        final selected = await api.postJson(
+          Endpoints.selectRepo,
+          body: {'repo_key': items.first.repoKey},
+        );
+        final selJson = (selected as Map)['active'];
+        if (selJson is Map) {
+          active = RepoEntry.fromJson(selJson.cast<String, dynamic>());
+        }
+      } catch (_) {
+        // If selection fails, fall back to showing the repo list without an active repo.
+      }
+    }
+
     return RepoRegistryState(repos: items, active: active);
   }
 
@@ -48,19 +66,20 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     required String name,
     required String repoUrl,
     String? repoRef,
+    String? accessToken,
   }) async {
     final api = ref.read(apiClientProvider);
     final res = await api.postJson(Endpoints.repos, body: {
       'name': name,
       'repo_url': repoUrl,
       if (repoRef != null && repoRef.trim().isNotEmpty) 'repo_ref': repoRef.trim(),
+      if (accessToken != null && accessToken.trim().isNotEmpty)
+        'access_token': accessToken.trim(),
     });
-    // If this is the first repo (or active repo not set yet), auto-select it.
     final repoKey = (res is Map ? res['repo_key'] : null)?.toString().trim();
     await refresh();
-    final current = state.valueOrNull;
-    final hasActive = current?.active != null;
-    if (!hasActive && repoKey != null && repoKey.isNotEmpty) {
+    // Always auto-select the repo that was just added/updated.
+    if (repoKey != null && repoKey.isNotEmpty) {
       await selectRepo(repoKey);
     }
   }
@@ -81,6 +100,18 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     } else {
       await refresh();
     }
+  }
+
+  Future<void> deleteRepo({
+    required String repoKey,
+    required String confirmName,
+  }) async {
+    final api = ref.read(apiClientProvider);
+    await api.deleteJson(
+      Endpoints.repoByKey(repoKey),
+      body: {'confirm_name': confirmName},
+    );
+    await refresh();
   }
 }
 

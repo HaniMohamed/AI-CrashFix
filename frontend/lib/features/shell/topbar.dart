@@ -7,6 +7,8 @@ import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
+import 'repo_delete_dialog.dart';
+import 'repo_manage_dialog.dart';
 
 class AppTopbar extends ConsumerWidget {
   final VoidCallback onToggleSidebar;
@@ -64,69 +66,29 @@ class _RepoPicker extends ConsumerStatefulWidget {
 class _RepoPickerState extends ConsumerState<_RepoPicker> {
   bool _autoOpened = false;
 
-  Future<void> _openManageDialog() async {
-    final palette = context.palette;
-    final theme = Theme.of(context).textTheme;
-    final nameCtrl = TextEditingController();
-    final urlCtrl = TextEditingController();
-    final refCtrl = TextEditingController();
-
+  Future<void> _confirmDeleteRepo({
+    required String repoKey,
+    required String repoName,
+  }) async {
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: palette.surface2,
-        title: Text('Manage repositories', style: theme.titleLarge),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Display name'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: urlCtrl,
-                decoration: const InputDecoration(labelText: 'Remote repo URL'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: refCtrl,
-                decoration: const InputDecoration(labelText: 'Git ref (optional)'),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Saving here stores the repo in the backend SQLite registry.',
-                style: theme.bodySmall?.copyWith(color: palette.textSecondary),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await ref.read(repoRegistryProvider.notifier).upsertRepo(
-                    name: nameCtrl.text.trim(),
-                    repoUrl: urlCtrl.text.trim(),
-                    repoRef: refCtrl.text.trim().isEmpty ? null : refCtrl.text.trim(),
-                  );
-              if (ctx.mounted) Navigator.of(ctx).pop();
-            },
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (ctx) => DeleteRepoDialog(
+        repoKey: repoKey,
+        repoName: repoName,
       ),
     );
+  }
 
-    nameCtrl.dispose();
-    urlCtrl.dispose();
-    refCtrl.dispose();
+  Future<void> _openManageDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => ManageReposDialog(
+        onDelete: (repoKey, repoName) => _confirmDeleteRepo(
+          repoKey: repoKey,
+          repoName: repoName,
+        ),
+      ),
+    );
   }
 
   @override
@@ -171,9 +133,7 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
               return;
             }
             await ref.read(repoRegistryProvider.notifier).selectRepo(v);
-            // Repo changed: refresh repo-scoped screens.
-            ref.invalidate(repoRegistryProvider);
-            // Other providers will be invalidated by app shell logic or by explicit wiring later.
+            // Repo-scoped providers are refreshed by AppShell's listener.
           },
           itemBuilder: (ctx) => [
             if (data.repos.isEmpty)

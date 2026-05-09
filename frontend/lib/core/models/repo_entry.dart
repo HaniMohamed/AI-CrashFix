@@ -3,12 +3,14 @@ class RepoEntry {
   final String name;
   final String repoUrl;
   final String? repoRef;
+  final bool hasToken;
 
   const RepoEntry({
     required this.repoKey,
     required this.name,
     required this.repoUrl,
     this.repoRef,
+    this.hasToken = false,
   });
 
   factory RepoEntry.fromJson(Map<String, dynamic> j) => RepoEntry(
@@ -18,6 +20,7 @@ class RepoEntry {
         repoRef: (j['repo_ref'] as String?)?.trim().isEmpty ?? true
             ? null
             : (j['repo_ref'] as String?),
+        hasToken: j['has_token'] == true,
       );
 }
 

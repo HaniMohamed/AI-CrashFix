@@ -492,6 +492,150 @@ class CrashlyticsService:
         rows: list[dict] = []
         for i in range(max(0, int(limit))):
             idx = i + 1
+            # Make the first mock crash point at a real workspace Flutter repo so
+            # frame→file mapping can be exercised end-to-end.
+            if i == 0:
+                issue_id = "issue_flooz_wallet_0001"
+                rows.append(
+                    {
+                        "platform": "android",
+                        "bundle_identifier": "com.example.flooz_wallet",
+                        "event_id": "mock-event-flooz-0001",
+                        "is_fatal": True,
+                        "error_type": "FATAL",
+                        "issue_id": issue_id,
+                        "variant_id": "debug",
+                        "issue_title": "NoSuchMethodError: The method 'trim' was called on null",
+                        "issue_subtitle": "Null check / unexpected null in sign-up flow",
+                        "event_timestamp": "2026-05-09T08:12:30.123Z",
+                        "received_timestamp": "2026-05-09T08:12:31.456Z",
+                        "device": {
+                            "manufacturer": "Google",
+                            "model": "Pixel 7",
+                            "architecture": "arm64-v8a",
+                        },
+                        "memory": {"used": 223_456_789, "free": 887_654_321},
+                        "storage": {"used": 2_234_567_890, "free": 8_876_543_210},
+                        "operating_system": {
+                            "display_version": "14",
+                            "name": "Android",
+                            "modification_state": "unknown",
+                            "type": "android",
+                            "device_type": "phone",
+                        },
+                        "application": {"build_version": "1", "display_version": "1.0.0"},
+                        "user": {"name": None, "email": None, "id": "user_flooz_mock_0001"},
+                        "custom_keys": [
+                            {"key": "repo", "value": "workspace_projects/flooz_wallet-fb635da5f073"},
+                            {"key": "screen", "value": "sign_up"},
+                        ],
+                        "installation_uuid": "install_flooz_mock_0001",
+                        "crashlytics_sdk_version": "18.6.0",
+                        "app_orientation": "portrait",
+                        "device_orientation": "portrait",
+                        "process_state": "foreground",
+                        "logs": [
+                            {
+                                "timestamp": "2026-05-09T08:12:28Z",
+                                "message": "SignUpScreenBloc: NextEvent received",
+                            }
+                        ],
+                        "breadcrumbs": [
+                            {
+                                "timestamp": "2026-05-09T08:12:27Z",
+                                "name": "ui_event",
+                                "params": [
+                                    {"key": "message", "value": "User tapped Next on sign up"}
+                                ],
+                            }
+                        ],
+                        "files": [],
+                        "blame_frame": {
+                            "line": 21,
+                            "file": "lib/app/modules/sign_up_screen/bloc/sign_up_screen_bloc.dart",
+                            "symbol": "SignUpScreenBloc.<anonymous closure>",
+                            "offset": 0,
+                            "address": 0,
+                            "library": "app",
+                            "owner": "app",
+                            "blamed": True,
+                        },
+                        "exceptions": [
+                            {
+                                "type": "NoSuchMethodError",
+                                "exception_message": "The method 'trim' was called on null",
+                                "nested": False,
+                                "title": "NoSuchMethodError",
+                                "subtitle": "The method 'trim' was called on null",
+                                "blamed": True,
+                                "frames": [
+                                    {
+                                        "line": 22,
+                                        "file": "lib/app/modules/sign_up_screen/bloc/sign_up_screen_bloc.dart",
+                                        "symbol": "SignUpScreenBloc.<anonymous closure>",
+                                        "offset": 0,
+                                        "address": 0,
+                                        "library": "app",
+                                        "owner": "app",
+                                        "blamed": True,
+                                    },
+                                    {
+                                        "line": 13,
+                                        "file": "lib/app/helpers/validators.dart",
+                                        "symbol": "Validators.emailValidator",
+                                        "offset": 0,
+                                        "address": 0,
+                                        "library": "app",
+                                        "owner": "app",
+                                        "blamed": False,
+                                    },
+                                    {
+                                        "line": 10,
+                                        "file": "lib/main.dart",
+                                        "symbol": "main",
+                                        "offset": 0,
+                                        "address": 0,
+                                        "library": "app",
+                                        "owner": "app",
+                                        "blamed": False,
+                                    },
+                                ],
+                            }
+                        ],
+                        "errors": [],
+                        "threads": [
+                            {
+                                "crashed": True,
+                                "thread_name": "main",
+                                "queue_name": "main",
+                                "signal_name": None,
+                                "signal_code": None,
+                                "crash_address": None,
+                                "title": "main",
+                                "subtitle": None,
+                                "blamed": True,
+                                "frames": [
+                                    {
+                                        "line": 22,
+                                        "file": "lib/app/modules/sign_up_screen/bloc/sign_up_screen_bloc.dart",
+                                        "symbol": "SignUpScreenBloc.<anonymous closure>",
+                                        "offset": 0,
+                                        "address": 0,
+                                        "library": "app",
+                                        "owner": "app",
+                                        "blamed": True,
+                                    }
+                                ],
+                            }
+                        ],
+                        "unity_metadata": None,
+                        "native_crash_info": None,
+                        "remote_config_feature_rollouts": [],
+                        "firebase_session_id": "session_flooz_mock_0001",
+                    }
+                )
+                continue
+
             issue_id = f"issue_mock_{idx:04d}"
 
             rows.append(

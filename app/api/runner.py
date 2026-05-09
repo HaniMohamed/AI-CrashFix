@@ -137,6 +137,7 @@ def stream_run(
     crash_id: Optional[str] = None,
     repo_url: Optional[str] = None,
     repo_ref: Optional[str] = None,
+    access_token: Optional[str] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Yield NDJSON-ready event dicts for a batch or single-crash run.
 
@@ -158,11 +159,16 @@ def stream_run(
     resolved_repo_root: str | None = None
     resolved_repo_url: str | None = (repo_url or "").strip() or None
     resolved_repo_ref: str | None = (repo_ref or "").strip() or None
+    resolved_repo_token: str | None = (access_token or "").strip() or None
     resolved_repo_key: str | None = None
     if resolved_repo_url:
         from app.services.project_service import ProjectService
 
-        proj = ProjectService().prepare_repo(repo_url=resolved_repo_url, repo_ref=resolved_repo_ref)
+        proj = ProjectService().prepare_repo(
+            repo_url=resolved_repo_url,
+            repo_ref=resolved_repo_ref,
+            access_token=resolved_repo_token,
+        )
         resolved_repo_root = proj.repo_root
         resolved_repo_key = proj.project_id
     else:

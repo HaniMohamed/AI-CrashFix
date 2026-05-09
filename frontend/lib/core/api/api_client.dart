@@ -58,6 +58,17 @@ class ApiClient {
     return _decodeOrThrow(res);
   }
 
+  Future<dynamic> deleteJson(String path, {Map<String, dynamic>? body}) async {
+    final req = http.Request('DELETE', _uri(path))
+      ..headers['content-type'] = 'application/json';
+    if (body != null) {
+      req.body = jsonEncode(body);
+    }
+    final streamed = await _client.send(req);
+    final res = await http.Response.fromStream(streamed);
+    return _decodeOrThrow(res);
+  }
+
   /// Issue a streaming POST and return the raw [http.StreamedResponse]; the
   /// caller is responsible for consuming `response.stream`.
   Future<http.StreamedResponse> streamPost(

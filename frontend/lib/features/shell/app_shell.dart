@@ -24,13 +24,10 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _userCollapsed = false;
-  String? _lastRepoKey;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final k = ref.watch(repoRegistryProvider).valueOrNull?.active?.repoKey;
-    _lastRepoKey ??= k;
+  void initState() {
+    super.initState();
   }
 
   @override
@@ -51,19 +48,18 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    // When repo changes, reload all repo-scoped screens.
-    final activeRepoKey = ref.watch(repoRegistryProvider).valueOrNull?.active?.repoKey;
-    if (_lastRepoKey != null && activeRepoKey != null && activeRepoKey != _lastRepoKey) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref.read(analyticsProvider.notifier).refresh();
-        ref.invalidate(crashesProvider);
-        // MRs page provider is declared in the page file; invalidated when page is built.
-      });
-      _lastRepoKey = activeRepoKey;
-    } else {
-      _lastRepoKey = activeRepoKey;
-    }
+    // Riverpod requirement: `ref.listen` must be registered during build.
+    ref.listen<String?>(
+      repoRegistryProvider.select((s) => s.valueOrNull?.active?.repoKey),
+      (prev, next) {
+        if (prev == next) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref.read(analyticsProvider.notifier).refresh();
+          ref.invalidate(crashesProvider);
+        });
+      },
+    );
 
     final width = MediaQuery.sizeOf(context).width;
     final autoCollapse = width < 1100;

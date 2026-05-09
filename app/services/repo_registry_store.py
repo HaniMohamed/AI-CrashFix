@@ -27,6 +27,7 @@ class RepoEntry:
     name: str
     repo_url: str
     repo_ref: str | None
+    has_token: bool
     created_at: str
     updated_at: str
     last_selected_at: str | None
@@ -60,12 +61,18 @@ class RepoRegistryStore:
                     name TEXT NOT NULL,
                     repo_url TEXT NOT NULL,
                     repo_ref TEXT,
+                    access_token TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     last_selected_at TEXT
                 )
                 """
             )
+            # Migrate older DBs missing columns.
+            cur = conn.execute("PRAGMA table_info(repos)")
+            existing = {row[1] for row in cur.fetchall()}
+            if "access_token" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN access_token TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_state (
@@ -87,7 +94,14 @@ class RepoRegistryStore:
             ).fetchall()
         return [self._row_to_entry(r) for r in rows]
 
-    def upsert_repo(self, *, name: str, repo_url: str, repo_ref: str | None) -> RepoEntry:
+    def upsert_repo(
+        self,
+        *,
+        name: str,
+        repo_url: str,
+        repo_ref: str | None,
+        access_token: str | None = None,
+    ) -> RepoEntry:
         url = (repo_url or "").strip()
         if not url:
             raise ValueError("repo_url is required")
@@ -95,6 +109,7 @@ class RepoRegistryStore:
         if not nm:
             raise ValueError("name is required")
         ref = (repo_ref or "").strip() or None
+        tok = (access_token or "").strip() or None
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
         now = datetime.utcnow().isoformat()
@@ -102,15 +117,16 @@ class RepoRegistryStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO repos(repo_key, name, repo_url, repo_ref, created_at, updated_at, last_selected_at)
-                VALUES (?, ?, ?, ?, ?, ?, NULL)
+                INSERT INTO repos(repo_key, name, repo_url, repo_ref, access_token, created_at, updated_at, last_selected_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(repo_key) DO UPDATE SET
                   name = excluded.name,
                   repo_url = excluded.repo_url,
                   repo_ref = excluded.repo_ref,
+                  access_token = COALESCE(excluded.access_token, repos.access_token),
                   updated_at = excluded.updated_at
                 """,
-                (repo_key, nm, url, ref, now, now),
+                (repo_key, nm, url, ref, tok, now, now),
             )
             conn.commit()
 
@@ -127,6 +143,20 @@ class RepoRegistryStore:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM repos WHERE repo_key = ?", (key,)).fetchone()
         return self._row_to_entry(row) if row else None
+
+    def get_access_token(self, repo_key: str) -> str | None:
+        key = (repo_key or "").strip()
+        if not key:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT access_token FROM repos WHERE repo_key = ?",
+                (key,),
+            ).fetchone()
+        if not row:
+            return None
+        v = row[0]
+        return str(v).strip() or None
 
     def get_active_repo_key(self) -> str | None:
         with self._connect() as conn:
@@ -170,6 +200,22 @@ class RepoRegistryStore:
             return None
         return self.get_repo(key)
 
+    def delete_repo(self, repo_key: str) -> None:
+        key = (repo_key or "").strip()
+        if not key:
+            raise ValueError("repo_key is required")
+        with self._connect() as conn:
+            # If active repo is being deleted, clear selection.
+            active = conn.execute(
+                "SELECT v FROM app_state WHERE k = 'active_repo_key'"
+            ).fetchone()
+            if active and str(active[0]).strip() == key:
+                conn.execute("DELETE FROM app_state WHERE k = 'active_repo_key'")
+            cur = conn.execute("DELETE FROM repos WHERE repo_key = ?", (key,))
+            if cur.rowcount == 0:
+                raise LookupError(f"repo_key={key!r} not found")
+            conn.commit()
+
     @staticmethod
     def _row_to_entry(row: sqlite3.Row) -> RepoEntry:
         return RepoEntry(
@@ -177,6 +223,7 @@ class RepoRegistryStore:
             name=row["name"],
             repo_url=row["repo_url"],
             repo_ref=row["repo_ref"] if row["repo_ref"] else None,
+            has_token=bool(row["access_token"]) if "access_token" in row.keys() else False,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             last_selected_at=row["last_selected_at"] if row["last_selected_at"] else None,

@@ -23,6 +23,10 @@ import asyncio
 import threading
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+import os
+import shutil
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -100,10 +104,18 @@ class RepoUpsertRequest(BaseModel):
     name: str = Field(..., description="User-visible name for this repository.")
     repo_url: str = Field(..., description="Remote git repo URL.")
     repo_ref: Optional[str] = Field(None, description="Optional git ref (branch/tag/commit).")
+    access_token: Optional[str] = Field(
+        None,
+        description="Optional access token for cloning private repos. Stored server-side; never returned.",
+    )
 
 
 class RepoSelectRequest(BaseModel):
     repo_key: str = Field(..., description="repo_key to mark as active.")
+
+
+class RepoDeleteRequest(BaseModel):
+    confirm_name: str = Field(..., description="Must match the repo name to confirm deletion.")
 
 
 # ---- Endpoints -------------------------------------------------------------
@@ -189,9 +201,24 @@ async def list_repos() -> Dict[str, Any]:
 async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
     reg = RepoRegistryStore()
     try:
-        entry = reg.upsert_repo(name=req.name, repo_url=req.repo_url, repo_ref=req.repo_ref)
+        # Validate by cloning/checking out before persisting in registry.
+        from app.services.project_service import ProjectService
+
+        ProjectService().prepare_repo(
+            repo_url=req.repo_url,
+            repo_ref=req.repo_ref,
+            access_token=req.access_token,
+        )
+        entry = reg.upsert_repo(
+            name=req.name,
+            repo_url=req.repo_url,
+            repo_ref=req.repo_ref,
+            access_token=req.access_token,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to clone repo: {e}") from e
     return entry.__dict__
 
 
@@ -212,6 +239,48 @@ async def select_repo(req: RepoSelectRequest) -> Dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"active": entry.__dict__}
+
+
+@app.delete("/api/repos/{repo_key}")
+async def delete_repo(repo_key: str, req: RepoDeleteRequest) -> Dict[str, Any]:
+    reg = RepoRegistryStore()
+    entry = reg.get_repo(repo_key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"repo_key={repo_key!r} not found")
+    if (req.confirm_name or "").strip() != (entry.name or "").strip():
+        raise HTTPException(status_code=400, detail="confirm_name did not match repo name")
+
+    # Delete per-repo crash DB.
+    try:
+        crash_db = CrashStore(repo_key=repo_key).db_path
+        if crash_db and os.path.exists(crash_db):
+            os.remove(crash_db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete crash DB: {e}") from e
+
+    # Delete cloned workspace directory (best-effort).
+    try:
+        from app import config as cfg
+
+        base = Path((cfg.WORKSPACE_PROJECTS_DIR or "workspace_projects").strip() or "workspace_projects")
+        if not base.is_absolute():
+            base = (Path.cwd() / base).resolve()
+        if base.is_dir():
+            suffix = f"-{repo_key}"
+            for child in base.iterdir():
+                if child.is_dir() and child.name.endswith(suffix):
+                    shutil.rmtree(child, ignore_errors=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete workspace clone: {e}") from e
+
+    try:
+        reg.delete_repo(repo_key)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {"deleted": True, "repo_key": repo_key}
 
 
 @app.get("/api/config")
@@ -287,6 +356,7 @@ async def _ndjson_stream(req: RunRequest) -> AsyncIterator[bytes]:
                 crash_id=(req.crash_id or "").strip() or None,
                 repo_url=_run_repo_url(req),
                 repo_ref=_run_repo_ref(req),
+                access_token=_run_repo_token(req),
             ):
                 fut = asyncio.run_coroutine_threadsafe(queue.put(ev), loop)
                 fut.result()  # propagate back-pressure / cancellation
@@ -351,4 +421,11 @@ def _run_repo_ref(req: RunRequest) -> str | None:
         entry = reg.get_repo((req.repo_key or "").strip())
         if entry:
             return entry.repo_ref
+    return None
+
+
+def _run_repo_token(req: RunRequest) -> str | None:
+    # Only resolved from repo_key; we do not accept tokens in /api/runs payload.
+    if (req.repo_key or "").strip():
+        return RepoRegistryStore().get_access_token((req.repo_key or "").strip())
     return None
