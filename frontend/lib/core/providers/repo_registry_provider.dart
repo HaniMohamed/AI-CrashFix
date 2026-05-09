@@ -4,15 +4,55 @@ import '../api/endpoints.dart';
 import '../models/repo_entry.dart';
 import 'api_provider.dart';
 
+class RepoGitStatus {
+  final String? headSha;
+  final String? indexedSha;
+  final String? lastIndexedAt;
+  final String? lastError;
+
+  const RepoGitStatus({
+    this.headSha,
+    this.indexedSha,
+    this.lastIndexedAt,
+    this.lastError,
+  });
+
+  bool get isSynced => headSha != null && indexedSha != null && headSha == indexedSha;
+
+  static RepoGitStatus fromStatusJson(Map<String, dynamic> j) {
+    final head = (j['head_sha'] ?? '').toString().trim();
+    final idx = (j['index_status'] is Map ? (j['index_status'] as Map) : const {});
+    final indexed = (idx['indexed_sha'] ?? '').toString().trim();
+    final lastIndexedAt = (idx['last_indexed_at'] ?? '').toString().trim();
+    final lastError = (idx['last_error'] ?? '').toString().trim();
+    return RepoGitStatus(
+      headSha: head.isEmpty ? null : head,
+      indexedSha: indexed.isEmpty ? null : indexed,
+      lastIndexedAt: lastIndexedAt.isEmpty ? null : lastIndexedAt,
+      lastError: lastError.isEmpty ? null : lastError,
+    );
+  }
+}
+
 class RepoRegistryState {
   final List<RepoEntry> repos;
   final RepoEntry? active;
-  const RepoRegistryState({this.repos = const [], this.active});
+  final Map<String, RepoGitStatus> statusByKey;
+  const RepoRegistryState({
+    this.repos = const [],
+    this.active,
+    this.statusByKey = const {},
+  });
 
-  RepoRegistryState copyWith({List<RepoEntry>? repos, RepoEntry? active}) =>
+  RepoRegistryState copyWith({
+    List<RepoEntry>? repos,
+    RepoEntry? active,
+    Map<String, RepoGitStatus>? statusByKey,
+  }) =>
       RepoRegistryState(
         repos: repos ?? this.repos,
         active: active ?? this.active,
+        statusByKey: statusByKey ?? this.statusByKey,
       );
 }
 
@@ -50,7 +90,22 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
       }
     }
 
-    return RepoRegistryState(repos: items, active: active);
+    final statuses = <String, RepoGitStatus>{};
+    // Best-effort: fetch status for each repo so the UI can show commit + sync state.
+    await Future.wait(
+      items.map((r) async {
+        try {
+          final s = await api.getJson(Endpoints.repoStatus(r.repoKey));
+          if (s is Map) {
+            statuses[r.repoKey] = RepoGitStatus.fromStatusJson(s.cast<String, dynamic>());
+          }
+        } catch (_) {
+          // ignore
+        }
+      }),
+    );
+
+    return RepoRegistryState(repos: items, active: active, statusByKey: statuses);
   }
 
   Future<void> refresh() async {
@@ -62,12 +117,27 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     }
   }
 
+  Future<Map<String, dynamic>> fetchRepoStatus(String repoKey) async {
+    final api = ref.read(apiClientProvider);
+    final res = await api.getJson(Endpoints.repoStatus(repoKey));
+    return (res as Map).cast<String, dynamic>();
+  }
+
+  Future<Map<String, dynamic>> refreshRepo(String repoKey) async {
+    final api = ref.read(apiClientProvider);
+    final res = await api.postJson(Endpoints.repoRefresh(repoKey), body: const {});
+    // The backend may have updated repo metadata (packages dirs, token state, etc).
+    await refresh();
+    return (res as Map).cast<String, dynamic>();
+  }
+
   Future<void> upsertRepo({
     required String name,
     required String repoUrl,
     String? repoRef,
     String? firebaseProjectId,
     String? accessToken,
+    List<String>? packagesDirs,
   }) async {
     final api = ref.read(apiClientProvider);
     final res = await api.postJson(Endpoints.repos, body: {
@@ -78,6 +148,8 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
         'firebase_project_id': firebaseProjectId.trim(),
       if (accessToken != null && accessToken.trim().isNotEmpty)
         'access_token': accessToken.trim(),
+      if (packagesDirs != null && packagesDirs.where((e) => e.trim().isNotEmpty).isNotEmpty)
+        'packages_dirs': packagesDirs.where((e) => e.trim().isNotEmpty).toList(),
     });
     final repoKey = (res is Map ? res['repo_key'] : null)?.toString().trim();
     await refresh();

@@ -10,6 +10,8 @@ class Endpoints {
   static const String activeRepo = '/api/repos/active';
   static const String selectRepo = '/api/repos/select';
   static String repoByKey(String repoKey) => '$repos/$repoKey';
+  static String repoStatus(String repoKey) => '${repoByKey(repoKey)}/status';
+  static String repoRefresh(String repoKey) => '${repoByKey(repoKey)}/refresh';
 
   static String crashById(String id) => '$crashes/$id';
 }

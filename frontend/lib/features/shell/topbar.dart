@@ -145,13 +145,27 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(r.name, style: theme.bodyMedium),
+                    Row(
+                      children: [
+                        Expanded(child: Text(r.name, style: theme.bodyMedium)),
+                        const SizedBox(width: 8),
+                        if (data.statusByKey[r.repoKey]?.isSynced == true)
+                          Icon(Icons.check_circle, size: 14, color: palette.primary)
+                        else if ((data.statusByKey[r.repoKey]?.headSha ?? '').isNotEmpty)
+                          Icon(Icons.sync, size: 14, color: palette.textMuted),
+                      ],
+                    ),
                     Text(
                       r.repoUrl,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.labelSmall?.copyWith(color: palette.textMuted),
                     ),
+                    if ((data.statusByKey[r.repoKey]?.headSha ?? '').isNotEmpty)
+                      Text(
+                        'Commit: ${(data.statusByKey[r.repoKey]!.headSha!).substring(0, 12)}',
+                        style: theme.labelSmall?.copyWith(color: palette.textMuted),
+                      ),
                   ],
                 ),
               ),

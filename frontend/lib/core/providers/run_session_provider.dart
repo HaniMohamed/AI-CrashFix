@@ -129,6 +129,8 @@ class RunSessionNotifier extends Notifier<RunSession> {
     try {
       final active = ref.read(repoRegistryProvider).valueOrNull?.active;
       final body = req.copyWith(
+        repoKey: active?.repoKey,
+        // Keep url/ref as optional back-compat; backend prefers repo_key when present.
         repoUrl: active?.repoUrl,
         repoRef: active?.repoRef,
       );

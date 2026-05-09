@@ -56,6 +56,35 @@ class ProjectService:
         if not self.base_dir.is_absolute():
             self.base_dir = (Path.cwd() / self.base_dir).resolve()
 
+    def expected_repo_root(self, *, repo_url: str, repo_ref: str | None = None) -> str:
+        """Compute the deterministic local path for this repo key (no network)."""
+        url = (repo_url or "").strip()
+        if not url:
+            raise ValueError("repo_url is required")
+        ref = (repo_ref or "").strip() or None
+        key = f"{url}@{ref or ''}".encode("utf-8")
+        project_id = hashlib.sha1(key).hexdigest()[:12]
+        name = _repo_name_from_url(url)
+        target = (self.base_dir / f"{name}-{project_id}").resolve()
+        return os.fspath(target)
+
+    @staticmethod
+    def get_head_sha(repo_root: str) -> str | None:
+        root = (repo_root or "").strip()
+        if not root:
+            return None
+        try:
+            out = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            sha = (out or "").strip()
+            return sha or None
+        except Exception:
+            return None
+
     def prepare_repo(
         self,
         *,

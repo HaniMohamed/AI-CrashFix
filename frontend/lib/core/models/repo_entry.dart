@@ -5,6 +5,7 @@ class RepoEntry {
   final String? repoRef;
   final String? firebaseProjectId;
   final bool hasToken;
+  final List<String> packagesDirs;
 
   const RepoEntry({
     required this.repoKey,
@@ -13,6 +14,7 @@ class RepoEntry {
     this.repoRef,
     this.firebaseProjectId,
     this.hasToken = false,
+    this.packagesDirs = const [],
   });
 
   factory RepoEntry.fromJson(Map<String, dynamic> j) => RepoEntry(
@@ -27,6 +29,11 @@ class RepoEntry {
                 ? null
                 : (j['firebase_project_id'] as String?),
         hasToken: j['has_token'] == true,
+        packagesDirs: ((j['packages_dirs'] as List?) ?? const [])
+            .whereType<dynamic>()
+            .map((e) => e.toString())
+            .where((s) => s.trim().isNotEmpty)
+            .toList(growable: false),
       );
 }
 

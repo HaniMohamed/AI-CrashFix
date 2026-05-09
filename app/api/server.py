@@ -112,6 +112,13 @@ class RepoUpsertRequest(BaseModel):
         None,
         description="Optional access token for cloning private repos. Stored server-side; never returned.",
     )
+    packages_dirs: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Optional list of monorepo package root directories (repo-relative). "
+            "Each entry is used as <dir>/*/lib during indexing/mapping, in addition to root lib/."
+        ),
+    )
 
 
 class RepoSelectRequest(BaseModel):
@@ -120,6 +127,15 @@ class RepoSelectRequest(BaseModel):
 
 class RepoDeleteRequest(BaseModel):
     confirm_name: str = Field(..., description="Must match the repo name to confirm deletion.")
+
+
+class RepoStatusResponse(BaseModel):
+    repo_key: str
+    repo_url: str
+    repo_ref: Optional[str] = None
+    repo_root: Optional[str] = None
+    head_sha: Optional[str] = None
+    index_status: Dict[str, Any] = Field(default_factory=dict)
 
 
 # ---- Endpoints -------------------------------------------------------------
@@ -220,7 +236,7 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
         # Validate by cloning/checking out before persisting in registry.
         from app.services.project_service import ProjectService
 
-        ProjectService().prepare_repo(
+        proj = ProjectService().prepare_repo(
             repo_url=req.repo_url,
             repo_ref=req.repo_ref,
             access_token=req.access_token,
@@ -231,7 +247,37 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             repo_ref=req.repo_ref,
             firebase_project_id=req.firebase_project_id,
             access_token=req.access_token,
+            packages_dirs=req.packages_dirs,
         )
+        # Build the symbol index on first add/update so stacktrace mapping is reliable
+        # without requiring a manual refresh.
+        try:
+            from datetime import datetime
+
+            from app.services.dart_symbol_index import build_symbol_index
+
+            head_sha = ProjectService.get_head_sha(proj.repo_root)
+            if head_sha:
+                build_symbol_index(
+                    repo_root=proj.repo_root,
+                    repo_key=entry.repo_key,
+                    commit_sha=head_sha,
+                    packages_dirs=list(entry.packages_dirs or []),
+                )
+                reg.upsert_index_status(
+                    repo_key=entry.repo_key,
+                    indexed_sha=head_sha,
+                    last_indexed_at=datetime.utcnow().isoformat(),
+                    last_error=None,
+                )
+        except Exception as e:
+            # Best-effort: repo add should still succeed even if indexing fails.
+            reg.upsert_index_status(
+                repo_key=entry.repo_key,
+                indexed_sha=None,
+                last_indexed_at=None,
+                last_error=str(e),
+            )
         # Create the per-repo crash DB immediately (schema included) so users see it
         # right after adding the repo (not only after starting a run).
         CrashStore(repo_key=entry.repo_key, project_id=entry.firebase_project_id)
@@ -301,6 +347,115 @@ async def delete_repo(repo_key: str, req: RepoDeleteRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return {"deleted": True, "repo_key": repo_key}
+
+
+@app.get("/api/repos/{repo_key}/status")
+async def get_repo_status(repo_key: str) -> Dict[str, Any]:
+    key = (repo_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="repo_key is required")
+    reg = RepoRegistryStore()
+    entry = reg.get_repo(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"repo_key={key!r} not found")
+
+    from app.services.project_service import ProjectService
+
+    svc = ProjectService()
+    repo_root = None
+    head_sha = None
+    try:
+        repo_root = svc.expected_repo_root(repo_url=entry.repo_url, repo_ref=entry.repo_ref)
+        if repo_root and os.path.isdir(repo_root) and os.path.isdir(os.path.join(repo_root, ".git")):
+            head_sha = svc.get_head_sha(repo_root)
+        else:
+            repo_root = None
+    except Exception:
+        repo_root = None
+
+    idx = reg.get_index_status(key)
+    idx_payload = {
+        "indexed_sha": idx.indexed_sha if idx else None,
+        "last_indexed_at": idx.last_indexed_at if idx else None,
+        "last_error": idx.last_error if idx else None,
+        "indexing": False,
+    }
+    return RepoStatusResponse(
+        repo_key=entry.repo_key,
+        repo_url=entry.repo_url,
+        repo_ref=entry.repo_ref,
+        repo_root=repo_root,
+        head_sha=head_sha,
+        index_status=idx_payload,
+    ).model_dump()
+
+
+@app.post("/api/repos/{repo_key}/refresh")
+async def refresh_repo(repo_key: str) -> Dict[str, Any]:
+    key = (repo_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="repo_key is required")
+    reg = RepoRegistryStore()
+    entry = reg.get_repo(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"repo_key={key!r} not found")
+
+    # Fetch + checkout configured ref/main using existing behavior.
+    try:
+        from app.services.project_service import ProjectService
+
+        proj = ProjectService().prepare_repo(
+            repo_url=entry.repo_url,
+            repo_ref=entry.repo_ref,
+            access_token=(reg.get_access_token(key) or None),
+        )
+        head_sha = ProjectService.get_head_sha(proj.repo_root)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to refresh repo: {e}") from e
+
+    # Build / update index if HEAD changed.
+    idx_before = reg.get_index_status(key)
+    indexed_sha_before = idx_before.indexed_sha if idx_before else None
+    if head_sha and head_sha != indexed_sha_before:
+        try:
+            from app.services.dart_symbol_index import build_symbol_index
+            from datetime import datetime
+
+            build_symbol_index(
+                repo_root=proj.repo_root,
+                repo_key=key,
+                commit_sha=head_sha,
+                packages_dirs=list(entry.packages_dirs or []),
+            )
+            reg.upsert_index_status(
+                repo_key=key,
+                indexed_sha=head_sha,
+                last_indexed_at=datetime.utcnow().isoformat(),
+                last_error=None,
+            )
+        except Exception as e:
+            reg.upsert_index_status(
+                repo_key=key,
+                indexed_sha=indexed_sha_before,
+                last_indexed_at=(idx_before.last_indexed_at if idx_before else None),
+                last_error=str(e),
+            )
+
+    idx = reg.get_index_status(key)
+    idx_payload = {
+        "indexed_sha": idx.indexed_sha if idx else None,
+        "last_indexed_at": idx.last_indexed_at if idx else None,
+        "last_error": idx.last_error if idx else None,
+        "indexing": False,
+    }
+    return RepoStatusResponse(
+        repo_key=entry.repo_key,
+        repo_url=entry.repo_url,
+        repo_ref=entry.repo_ref,
+        repo_root=proj.repo_root,
+        head_sha=head_sha,
+        index_status=idx_payload,
+    ).model_dump()
 
 
 @app.get("/api/config")

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Iterable
 
 
 def compute_repo_key(*, repo_url: str, repo_ref: str | None) -> str:
@@ -29,9 +31,68 @@ class RepoEntry:
     repo_ref: str | None
     firebase_project_id: str | None
     has_token: bool
+    packages_dirs: list[str]
     created_at: str
     updated_at: str
     last_selected_at: str | None
+
+
+@dataclass(frozen=True)
+class RepoIndexStatus:
+    repo_key: str
+    indexed_sha: str | None
+    last_indexed_at: str | None
+    last_error: str | None
+
+
+def normalize_packages_dirs(value: str | list[str] | None) -> list[str]:
+    """
+    Normalize user-provided package roots (repo-scoped).
+
+    Accepts:
+    - None
+    - list[str]
+    - JSON-encoded list[str] (stored format)
+    - comma-separated string (legacy / UI convenience)
+    """
+    if value is None:
+        return []
+    raw: list[str] = []
+    if isinstance(value, list):
+        raw = [str(x) for x in value]
+    else:
+        s = str(value).strip()
+        if not s:
+            return []
+        # Prefer JSON storage format.
+        if s.startswith("[") and s.endswith("]"):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    raw = [str(x) for x in parsed]
+                else:
+                    raw = []
+            except Exception:
+                raw = []
+        else:
+            raw = [p.strip() for p in s.split(",")]
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in raw:
+        p = (p or "").strip().strip("/").strip()
+        if not p:
+            continue
+        # Keep it safe: repo-relative only.
+        if p.startswith(("/", "\\")):
+            continue
+        if ".." in p.split("/"):
+            continue
+        if p in seen:
+            continue
+        seen.add(p)
+        out.append(p)
+    return out
 
 
 class RepoRegistryStore:
@@ -64,6 +125,7 @@ class RepoRegistryStore:
                     repo_ref TEXT,
                     firebase_project_id TEXT,
                     access_token TEXT,
+                    packages_dirs TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     last_selected_at TEXT
@@ -77,11 +139,23 @@ class RepoRegistryStore:
                 conn.execute("ALTER TABLE repos ADD COLUMN access_token TEXT")
             if "firebase_project_id" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN firebase_project_id TEXT")
+            if "packages_dirs" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN packages_dirs TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_state (
                     k TEXT PRIMARY KEY,
                     v TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS repo_indexes (
+                    repo_key TEXT PRIMARY KEY,
+                    indexed_sha TEXT,
+                    last_indexed_at TEXT,
+                    last_error TEXT
                 )
                 """
             )
@@ -106,6 +180,7 @@ class RepoRegistryStore:
         repo_ref: str | None,
         firebase_project_id: str | None = None,
         access_token: str | None = None,
+        packages_dirs: str | list[str] | None = None,
     ) -> RepoEntry:
         url = (repo_url or "").strip()
         if not url:
@@ -116,6 +191,8 @@ class RepoRegistryStore:
         ref = (repo_ref or "").strip() or None
         fpid = (firebase_project_id or "").strip() or None
         tok = (access_token or "").strip() or None
+        pdirs = normalize_packages_dirs(packages_dirs)
+        pdirs_json = json.dumps(pdirs, ensure_ascii=False)
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
         now = datetime.utcnow().isoformat()
@@ -123,17 +200,18 @@ class RepoRegistryStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO repos(repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, created_at, updated_at, last_selected_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                INSERT INTO repos(repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, packages_dirs, created_at, updated_at, last_selected_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(repo_key) DO UPDATE SET
                   name = excluded.name,
                   repo_url = excluded.repo_url,
                   repo_ref = excluded.repo_ref,
                   firebase_project_id = excluded.firebase_project_id,
                   access_token = COALESCE(excluded.access_token, repos.access_token),
+                  packages_dirs = excluded.packages_dirs,
                   updated_at = excluded.updated_at
                 """,
-                (repo_key, nm, url, ref, fpid, tok, now, now),
+                (repo_key, nm, url, ref, fpid, tok, pdirs_json, now, now),
             )
             conn.commit()
 
@@ -163,7 +241,15 @@ class RepoRegistryStore:
         if not row:
             return None
         v = row[0]
-        return str(v).strip() or None
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
+        # Guard against accidental stringification of null-like values.
+        if s.lower() in {"none", "null"}:
+            return None
+        return s
 
     def get_active_repo_key(self) -> str | None:
         with self._connect() as conn:
@@ -221,10 +307,64 @@ class RepoRegistryStore:
             cur = conn.execute("DELETE FROM repos WHERE repo_key = ?", (key,))
             if cur.rowcount == 0:
                 raise LookupError(f"repo_key={key!r} not found")
+            conn.execute("DELETE FROM repo_indexes WHERE repo_key = ?", (key,))
             conn.commit()
+
+    def get_index_status(self, repo_key: str) -> RepoIndexStatus | None:
+        key = (repo_key or "").strip()
+        if not key:
+            return None
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM repo_indexes WHERE repo_key = ?",
+                (key,),
+            ).fetchone()
+        if not row:
+            return None
+        return RepoIndexStatus(
+            repo_key=row["repo_key"],
+            indexed_sha=(str(row["indexed_sha"]).strip() or None) if row["indexed_sha"] is not None else None,
+            last_indexed_at=(str(row["last_indexed_at"]).strip() or None)
+            if row["last_indexed_at"] is not None
+            else None,
+            last_error=(str(row["last_error"]).strip() or None) if row["last_error"] is not None else None,
+        )
+
+    def upsert_index_status(
+        self,
+        *,
+        repo_key: str,
+        indexed_sha: str | None,
+        last_indexed_at: str | None,
+        last_error: str | None,
+    ) -> RepoIndexStatus:
+        key = (repo_key or "").strip()
+        if not key:
+            raise ValueError("repo_key is required")
+        sha = (indexed_sha or "").strip() or None
+        ts = (last_indexed_at or "").strip() or None
+        err = (last_error or "").strip() or None
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO repo_indexes(repo_key, indexed_sha, last_indexed_at, last_error)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(repo_key) DO UPDATE SET
+                  indexed_sha = excluded.indexed_sha,
+                  last_indexed_at = excluded.last_indexed_at,
+                  last_error = excluded.last_error
+                """,
+                (key, sha, ts, err),
+            )
+            conn.commit()
+        return RepoIndexStatus(repo_key=key, indexed_sha=sha, last_indexed_at=ts, last_error=err)
 
     @staticmethod
     def _row_to_entry(row: sqlite3.Row) -> RepoEntry:
+        pdirs = []
+        if "packages_dirs" in row.keys():
+            pdirs = normalize_packages_dirs(row["packages_dirs"])
         return RepoEntry(
             repo_key=row["repo_key"],
             name=row["name"],
@@ -232,6 +372,7 @@ class RepoRegistryStore:
             repo_ref=row["repo_ref"] if row["repo_ref"] else None,
             firebase_project_id=row["firebase_project_id"] if row["firebase_project_id"] else None,
             has_token=bool(row["access_token"]) if "access_token" in row.keys() else False,
+            packages_dirs=pdirs,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             last_selected_at=row["last_selected_at"] if row["last_selected_at"] else None,

@@ -23,11 +23,15 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _refCtrl;
   late final TextEditingController _firebaseProjectIdCtrl;
   late final TextEditingController _tokenCtrl;
+  late final TextEditingController _packagesDirsCtrl;
 
   bool _saving = false;
+  bool _refreshing = false;
   bool _advancedOpen = false;
   bool _showToken = false;
   String? _error;
+  String? _editingRepoKey;
+  Map<String, dynamic>? _repoStatus;
 
   @override
   void initState() {
@@ -37,6 +41,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _refCtrl = TextEditingController();
     _firebaseProjectIdCtrl = TextEditingController();
     _tokenCtrl = TextEditingController();
+    _packagesDirsCtrl = TextEditingController();
 
     void onEdit() {
       if (!mounted) return;
@@ -50,6 +55,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _refCtrl.addListener(onEdit);
     _firebaseProjectIdCtrl.addListener(onEdit);
     _tokenCtrl.addListener(onEdit);
+    _packagesDirsCtrl.addListener(onEdit);
   }
 
   String? _validate() {
@@ -75,13 +81,55 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     // dynamic to avoid importing the model directly; `r` is a RepoEntry.
     setState(() {
       _error = null;
+      _editingRepoKey = (r.repoKey ?? '').toString();
       _nameCtrl.text = (r.name ?? '').toString();
       _urlCtrl.text = (r.repoUrl ?? '').toString();
       _refCtrl.text = (r.repoRef ?? '').toString();
       _firebaseProjectIdCtrl.text = (r.firebaseProjectId ?? '').toString();
       _tokenCtrl.text = '';
+      final dirs = (r.packagesDirs as List?) ?? const [];
+      _packagesDirsCtrl.text = dirs.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).join(', ');
       _advancedOpen = (r.repoRef != null && (r.repoRef as String).trim().isNotEmpty) || r.hasToken == true;
     });
+    _loadRepoStatus();
+  }
+
+  List<String> _parsePackagesDirs() => _packagesDirsCtrl.text
+      .split(',')
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList(growable: false);
+
+  Future<void> _loadRepoStatus() async {
+    final key = (_editingRepoKey ?? '').trim();
+    if (key.isEmpty) return;
+    try {
+      final s = await ref.read(repoRegistryProvider.notifier).fetchRepoStatus(key);
+      if (!mounted) return;
+      setState(() => _repoStatus = s);
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  Future<void> _refreshRepo() async {
+    final key = (_editingRepoKey ?? '').trim();
+    if (key.isEmpty || _refreshing) return;
+    setState(() {
+      _refreshing = true;
+      _error = null;
+    });
+    try {
+      final s = await ref.read(repoRegistryProvider.notifier).refreshRepo(key);
+      if (!mounted) return;
+      setState(() => _repoStatus = s);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (!mounted) return;
+      setState(() => _refreshing = false);
+    }
   }
 
   @override
@@ -91,6 +139,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _refCtrl.dispose();
     _firebaseProjectIdCtrl.dispose();
     _tokenCtrl.dispose();
+    _packagesDirsCtrl.dispose();
     super.dispose();
   }
 
@@ -101,9 +150,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     final async = ref.watch(repoRegistryProvider);
     final repos = async.valueOrNull?.repos ?? const [];
     final activeKey = async.valueOrNull?.active?.repoKey;
+    final statusByKey = async.valueOrNull?.statusByKey ?? const {};
 
     final validationError = _validate();
     final canSave = !_saving && validationError == null;
+    final headSha = (_repoStatus?['head_sha'] ?? '').toString().trim();
+    final indexedSha = ((_repoStatus?['index_status'] as Map?)?['indexed_sha'] ?? '').toString().trim();
 
     return AlertDialog(
       backgroundColor: palette.surface2,
@@ -199,6 +251,40 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.labelSmall?.copyWith(color: palette.textMuted),
                                   ),
+                                  if ((statusByKey[r.repoKey]?.headSha ?? '').isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          'Commit: ${statusByKey[r.repoKey]!.headSha!.substring(0, 12)}',
+                                          style: theme.labelSmall?.copyWith(color: palette.textMuted),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        if (statusByKey[r.repoKey]?.isSynced == true)
+                                          Row(
+                                            children: [
+                                              Icon(Icons.check_circle, size: 14, color: palette.primary),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Indexed',
+                                                style: theme.labelSmall?.copyWith(color: palette.primary),
+                                              ),
+                                            ],
+                                          )
+                                        else
+                                          Row(
+                                            children: [
+                                              Icon(Icons.sync, size: 14, color: palette.textMuted),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Not indexed',
+                                                style: theme.labelSmall?.copyWith(color: palette.textMuted),
+                                              ),
+                                            ],
+                                          ),
+                                      ],
+                                    ),
+                                  ],
                                   if ((r.repoRef ?? '').toString().trim().isNotEmpty ||
                                       (r.firebaseProjectId ?? '').toString().trim().isNotEmpty ||
                                       r.hasToken == true) ...[
@@ -232,6 +318,20 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               ),
                             ),
                             const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Refresh (fetch + reindex on commit change)',
+                              onPressed: _saving
+                                  ? null
+                                  : () async {
+                                      try {
+                                        await ref.read(repoRegistryProvider.notifier).refreshRepo(r.repoKey);
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        setState(() => _error = e.toString());
+                                      }
+                                    },
+                              icon: Icon(Icons.refresh, color: palette.textSecondary),
+                            ),
                             IconButton(
                               tooltip: 'Delete',
                               onPressed: _saving ? null : () => widget.onDelete(r.repoKey, r.name),
@@ -331,6 +431,73 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                   ),
                   children: [
                     const SizedBox(height: 6),
+                    TextField(
+                      controller: _packagesDirsCtrl,
+                      enabled: !_saving,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Packages dirs (optional)',
+                        hintText: 'e.g. packages, modules',
+                        helperText: 'Comma-separated repo-relative dirs. Each dir is scanned as <dir>/*/lib.',
+                        prefixIcon: const Icon(Icons.folder_outlined),
+                        suffixIcon: _packagesDirsCtrl.text.trim().isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear',
+                                onPressed: _saving ? null : () => _packagesDirsCtrl.clear(),
+                                icon: const Icon(Icons.close),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (_editingRepoKey != null && _editingRepoKey!.trim().isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: palette.surface1,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: palette.border.withValues(alpha: 0.35)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Repo status',
+                                    style: theme.labelLarge?.copyWith(color: palette.textSecondary),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    headSha.isEmpty ? 'Commit: —' : 'Commit: ${headSha.substring(0, headSha.length < 12 ? headSha.length : 12)}',
+                                    style: theme.bodySmall?.copyWith(color: palette.textMuted),
+                                  ),
+                                  Text(
+                                    indexedSha.isEmpty
+                                        ? 'Indexed: —'
+                                        : 'Indexed: ${indexedSha.substring(0, indexedSha.length < 12 ? indexedSha.length : 12)}',
+                                    style: theme.bodySmall?.copyWith(color: palette.textMuted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: (_saving || _refreshing) ? null : _refreshRepo,
+                              icon: _refreshing
+                                  ? SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: palette.primary),
+                                    )
+                                  : const Icon(Icons.refresh, size: 16),
+                              label: const Text('Refresh'),
+                            ),
+                          ],
+                        ),
+                      ),
                     TextField(
                       controller: _refCtrl,
                       enabled: !_saving,
@@ -433,6 +600,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               : _firebaseProjectIdCtrl.text.trim(),
                           accessToken:
                               _tokenCtrl.text.trim().isEmpty ? null : _tokenCtrl.text.trim(),
+                          packagesDirs: _parsePackagesDirs(),
                         );
                     if (!mounted) return;
                     nav.pop();
