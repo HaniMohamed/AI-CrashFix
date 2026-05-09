@@ -50,12 +50,19 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     String? repoRef,
   }) async {
     final api = ref.read(apiClientProvider);
-    await api.postJson(Endpoints.repos, body: {
+    final res = await api.postJson(Endpoints.repos, body: {
       'name': name,
       'repo_url': repoUrl,
       if (repoRef != null && repoRef.trim().isNotEmpty) 'repo_ref': repoRef.trim(),
     });
+    // If this is the first repo (or active repo not set yet), auto-select it.
+    final repoKey = (res is Map ? res['repo_key'] : null)?.toString().trim();
     await refresh();
+    final current = state.valueOrNull;
+    final hasActive = current?.active != null;
+    if (!hasActive && repoKey != null && repoKey.isNotEmpty) {
+      await selectRepo(repoKey);
+    }
   }
 
   Future<void> selectRepo(String repoKey) async {

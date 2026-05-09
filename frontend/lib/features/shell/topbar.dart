@@ -62,6 +62,8 @@ class _RepoPicker extends ConsumerStatefulWidget {
 }
 
 class _RepoPickerState extends ConsumerState<_RepoPicker> {
+  bool _autoOpened = false;
+
   Future<void> _openManageDialog() async {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
@@ -148,6 +150,14 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
         onPressed: _openManageDialog,
       ),
       data: (data) {
+        if (!_autoOpened && data.repos.isEmpty) {
+          _autoOpened = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            await _openManageDialog();
+          });
+        }
+
         final active = data.active;
         final label = (active?.name.trim().isNotEmpty ?? false) ? active!.name : 'Select repo';
         return PopupMenuButton<String>(
@@ -166,6 +176,14 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
             // Other providers will be invalidated by app shell logic or by explicit wiring later.
           },
           itemBuilder: (ctx) => [
+            if (data.repos.isEmpty)
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Text(
+                  'No repos saved yet.',
+                  style: theme.labelMedium?.copyWith(color: palette.textMuted),
+                ),
+              ),
             for (final r in data.repos)
               PopupMenuItem<String>(
                 value: r.repoKey,
