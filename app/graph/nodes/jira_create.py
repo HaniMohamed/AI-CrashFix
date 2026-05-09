@@ -49,7 +49,8 @@ def jira_create(state):
             ]
         ).strip()
 
-    project_key = state.get("project_key")
+    # Prefer repo-scoped Jira project key.
+    project_key = state.get("jira_project_key") or state.get("project_key")
     issue_type = state.get("issue_type") or "Bug"
     issue = create_jira_issue(
         summary,

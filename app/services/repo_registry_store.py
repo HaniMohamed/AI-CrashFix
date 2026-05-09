@@ -32,6 +32,12 @@ class RepoEntry:
     firebase_project_id: str | None
     has_token: bool
     packages_dirs: list[str]
+    crashlytics_fetch_backend: str | None
+    bq_dataset: str | None
+    bq_android_table: str | None
+    bq_ios_table: str | None
+    jira_project_key: str | None
+    gitlab_project: str | None
     created_at: str
     updated_at: str
     last_selected_at: str | None
@@ -126,6 +132,12 @@ class RepoRegistryStore:
                     firebase_project_id TEXT,
                     access_token TEXT,
                     packages_dirs TEXT,
+                    crashlytics_fetch_backend TEXT,
+                    bq_dataset TEXT,
+                    bq_android_table TEXT,
+                    bq_ios_table TEXT,
+                    jira_project_key TEXT,
+                    gitlab_project TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     last_selected_at TEXT
@@ -141,6 +153,18 @@ class RepoRegistryStore:
                 conn.execute("ALTER TABLE repos ADD COLUMN firebase_project_id TEXT")
             if "packages_dirs" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN packages_dirs TEXT")
+            if "crashlytics_fetch_backend" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN crashlytics_fetch_backend TEXT")
+            if "bq_dataset" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN bq_dataset TEXT")
+            if "bq_android_table" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN bq_android_table TEXT")
+            if "bq_ios_table" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN bq_ios_table TEXT")
+            if "jira_project_key" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_project_key TEXT")
+            if "gitlab_project" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN gitlab_project TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_state (
@@ -181,6 +205,12 @@ class RepoRegistryStore:
         firebase_project_id: str | None = None,
         access_token: str | None = None,
         packages_dirs: str | list[str] | None = None,
+        crashlytics_fetch_backend: str | None = None,
+        bq_dataset: str | None = None,
+        bq_android_table: str | None = None,
+        bq_ios_table: str | None = None,
+        jira_project_key: str | None = None,
+        gitlab_project: str | None = None,
     ) -> RepoEntry:
         url = (repo_url or "").strip()
         if not url:
@@ -193,6 +223,12 @@ class RepoRegistryStore:
         tok = (access_token or "").strip() or None
         pdirs = normalize_packages_dirs(packages_dirs)
         pdirs_json = json.dumps(pdirs, ensure_ascii=False)
+        cl_backend = (crashlytics_fetch_backend or "").strip().lower() or None
+        ds = (bq_dataset or "").strip() or None
+        at = (bq_android_table or "").strip() or None
+        it = (bq_ios_table or "").strip() or None
+        jira_pk = (jira_project_key or "").strip() or None
+        gl_proj = (gitlab_project or "").strip() or None
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
         now = datetime.utcnow().isoformat()
@@ -200,8 +236,13 @@ class RepoRegistryStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO repos(repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, packages_dirs, created_at, updated_at, last_selected_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                INSERT INTO repos(
+                  repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, packages_dirs,
+                  crashlytics_fetch_backend, bq_dataset, bq_android_table, bq_ios_table,
+                  jira_project_key, gitlab_project,
+                  created_at, updated_at, last_selected_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(repo_key) DO UPDATE SET
                   name = excluded.name,
                   repo_url = excluded.repo_url,
@@ -209,9 +250,31 @@ class RepoRegistryStore:
                   firebase_project_id = excluded.firebase_project_id,
                   access_token = COALESCE(excluded.access_token, repos.access_token),
                   packages_dirs = excluded.packages_dirs,
+                  crashlytics_fetch_backend = excluded.crashlytics_fetch_backend,
+                  bq_dataset = excluded.bq_dataset,
+                  bq_android_table = excluded.bq_android_table,
+                  bq_ios_table = excluded.bq_ios_table,
+                  jira_project_key = excluded.jira_project_key,
+                  gitlab_project = excluded.gitlab_project,
                   updated_at = excluded.updated_at
                 """,
-                (repo_key, nm, url, ref, fpid, tok, pdirs_json, now, now),
+                (
+                    repo_key,
+                    nm,
+                    url,
+                    ref,
+                    fpid,
+                    tok,
+                    pdirs_json,
+                    cl_backend,
+                    ds,
+                    at,
+                    it,
+                    jira_pk,
+                    gl_proj,
+                    now,
+                    now,
+                ),
             )
             conn.commit()
 
@@ -373,6 +436,18 @@ class RepoRegistryStore:
             firebase_project_id=row["firebase_project_id"] if row["firebase_project_id"] else None,
             has_token=bool(row["access_token"]) if "access_token" in row.keys() else False,
             packages_dirs=pdirs,
+            crashlytics_fetch_backend=row["crashlytics_fetch_backend"]
+            if "crashlytics_fetch_backend" in row.keys() and row["crashlytics_fetch_backend"]
+            else None,
+            bq_dataset=row["bq_dataset"] if "bq_dataset" in row.keys() and row["bq_dataset"] else None,
+            bq_android_table=row["bq_android_table"]
+            if "bq_android_table" in row.keys() and row["bq_android_table"]
+            else None,
+            bq_ios_table=row["bq_ios_table"] if "bq_ios_table" in row.keys() and row["bq_ios_table"] else None,
+            jira_project_key=row["jira_project_key"]
+            if "jira_project_key" in row.keys() and row["jira_project_key"]
+            else None,
+            gitlab_project=row["gitlab_project"] if "gitlab_project" in row.keys() and row["gitlab_project"] else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             last_selected_at=row["last_selected_at"] if row["last_selected_at"] else None,

@@ -5,6 +5,7 @@ import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/providers/api_provider.dart';
+import '../../core/providers/backend_settings_provider.dart';
 import '../../core/providers/config_provider.dart';
 import '../../core/providers/health_provider.dart';
 import '../../shared/widgets/error_banner.dart';
@@ -19,6 +20,7 @@ class SettingsPage extends ConsumerWidget {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
     final config = ref.watch(configProvider);
+    final backendSettings = ref.watch(backendSettingsProvider);
     final settings = ref.watch(appSettingsProvider).requireValue;
 
     return SingleChildScrollView(
@@ -43,12 +45,15 @@ class SettingsPage extends ConsumerWidget {
               const SizedBox(height: AppSpacing.xl),
               _ConnectionCard(settings: settings),
               const SizedBox(height: AppSpacing.lg),
+              _EditableBackendSettingsCard(async: backendSettings),
+              const SizedBox(height: AppSpacing.lg),
               Row(
                 children: [
                   Text('Backend configuration', style: theme.headlineMedium),
                   const Spacer(),
                   IconButton(
-                    onPressed: () => ref.read(configProvider.notifier).refresh(),
+                    onPressed: () =>
+                        ref.read(configProvider.notifier).refresh(),
                     icon: const Icon(Icons.refresh),
                     tooltip: 'Refresh',
                   ),
@@ -78,12 +83,6 @@ class SettingsPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     _ConfigSection(
-                      title: 'Repository',
-                      icon: Icons.source_outlined,
-                      data: cfg.section('repo'),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    _ConfigSection(
                       title: 'Crashlytics',
                       icon: Icons.cloud_outlined,
                       data: cfg.section('crashlytics'),
@@ -100,18 +99,248 @@ class SettingsPage extends ConsumerWidget {
                       icon: Icons.merge_outlined,
                       data: cfg.section('gitlab'),
                     ),
-                    const SizedBox(height: AppSpacing.lg),
-                    _ConfigSection(
-                      title: 'Logging',
-                      icon: Icons.list_alt_outlined,
-                      data: cfg.section('logging'),
-                    ),
                   ],
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EditableBackendSettingsCard extends ConsumerStatefulWidget {
+  final AsyncValue<BackendSettingsState> async;
+  const _EditableBackendSettingsCard({required this.async});
+
+  @override
+  ConsumerState<_EditableBackendSettingsCard> createState() =>
+      _EditableBackendSettingsCardState();
+}
+
+class _EditableBackendSettingsCardState
+    extends ConsumerState<_EditableBackendSettingsCard> {
+  late final TextEditingController _jiraUrl;
+  late final TextEditingController _jiraToken;
+  late final TextEditingController _gitlabUrl;
+  late final TextEditingController _gitlabToken;
+  late final TextEditingController _openaiKey;
+  late final TextEditingController _googleKey;
+  String? _result;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _jiraUrl = TextEditingController();
+    _jiraToken = TextEditingController();
+    _gitlabUrl = TextEditingController();
+    _gitlabToken = TextEditingController();
+    _openaiKey = TextEditingController();
+    _googleKey = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _jiraUrl.dispose();
+    _jiraToken.dispose();
+    _gitlabUrl.dispose();
+    _gitlabToken.dispose();
+    _openaiKey.dispose();
+    _googleKey.dispose();
+    super.dispose();
+  }
+
+  void _syncFrom(BackendSettingsState s) {
+    _jiraUrl.text = (s.section('jira')['server_url'] ?? '').toString();
+    _gitlabUrl.text = (s.section('gitlab')['server_url'] ?? '').toString();
+    // Tokens/keys are not returned; keep empty.
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+
+    return GlassCard(
+      child: widget.async.when(
+        loading: () => const ShimmerCard(height: 220),
+        error: (e, _) => ErrorBanner(
+          message: 'Failed to load editable settings: $e',
+          onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
+        ),
+        data: (s) {
+          _syncFrom(s);
+          final hasJira = s.section('jira')['has_token'] == true;
+          final hasGitlab = s.section('gitlab')['has_token'] == true;
+          final hasOpenai = s.section('llm')['has_openai_api_key'] == true;
+          final hasGoogle = s.section('llm')['has_google_api_key'] == true;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.tune, color: palette.primary),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('Editable backend settings', style: theme.headlineSmall),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () =>
+                        ref.read(backendSettingsProvider.notifier).refresh(),
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Saved server-side (SQLite) with .env fallback. Secrets are not shown after saving.',
+                style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _jiraUrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Jira server URL',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: TextField(
+                      controller: _jiraToken,
+                      decoration: InputDecoration(
+                        labelText: 'Jira token',
+                        helperText: hasJira ? 'Token saved' : 'Not set',
+                      ),
+                      obscureText: true,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _gitlabUrl,
+                      decoration: const InputDecoration(
+                        labelText: 'GitLab server URL',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: TextField(
+                      controller: _gitlabToken,
+                      decoration: InputDecoration(
+                        labelText: 'GitLab token',
+                        helperText: hasGitlab ? 'Token saved' : 'Not set',
+                      ),
+                      obscureText: true,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _openaiKey,
+                      decoration: InputDecoration(
+                        labelText: 'OpenAI API key',
+                        helperText: hasOpenai ? 'Key saved' : 'Not set',
+                      ),
+                      obscureText: true,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: TextField(
+                      controller: _googleKey,
+                      decoration: InputDecoration(
+                        labelText: 'Google API key (Gemini)',
+                        helperText: hasGoogle ? 'Key saved' : 'Not set',
+                      ),
+                      obscureText: true,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
+                children: [
+                  FilledButton(
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            setState(() {
+                              _saving = true;
+                              _result = null;
+                            });
+                            try {
+                              await ref
+                                  .read(backendSettingsProvider.notifier)
+                                  .save({
+                                    'jira': {
+                                      'server_url': _jiraUrl.text.trim(),
+                                      if (_jiraToken.text.trim().isNotEmpty)
+                                        'token': _jiraToken.text.trim(),
+                                    },
+                                    'gitlab': {
+                                      'server_url': _gitlabUrl.text.trim(),
+                                      if (_gitlabToken.text.trim().isNotEmpty)
+                                        'token': _gitlabToken.text.trim(),
+                                    },
+                                    'llm': {
+                                      if (_openaiKey.text.trim().isNotEmpty)
+                                        'openai_api_key': _openaiKey.text
+                                            .trim(),
+                                      if (_googleKey.text.trim().isNotEmpty)
+                                        'google_api_key': _googleKey.text
+                                            .trim(),
+                                    },
+                                  });
+                              if (!mounted) return;
+                              setState(() => _result = 'Saved.');
+                              _jiraToken.clear();
+                              _gitlabToken.clear();
+                              _openaiKey.clear();
+                              _googleKey.clear();
+                            } catch (e) {
+                              if (!mounted) return;
+                              setState(() => _result = e.toString());
+                            } finally {
+                              if (mounted) {
+                                setState(() => _saving = false);
+                              }
+                            }
+                          },
+                    child: Text(_saving ? 'Saving…' : 'Save'),
+                  ),
+                  if (_result != null) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(
+                        _result!,
+                        style: theme.bodySmall?.copyWith(
+                          color: palette.textSecondary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -240,7 +469,11 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       final api = ref.read(apiClientProvider);
       final res = await api.getJson('/api/health');
       final ok = res is Map && res['ok'] == true;
-      setState(() => _testResult = ok ? 'Healthy ✓' : 'Reached, but unexpected response.');
+      setState(
+        () => _testResult = ok
+            ? 'Healthy ✓'
+            : 'Reached, but unexpected response.',
+      );
     } catch (e) {
       setState(() => _testResult = 'Failed: $e');
     } finally {
@@ -253,7 +486,11 @@ class _ConfigSection extends StatelessWidget {
   final String title;
   final IconData icon;
   final Map<String, dynamic> data;
-  const _ConfigSection({required this.title, required this.icon, required this.data});
+  const _ConfigSection({
+    required this.title,
+    required this.icon,
+    required this.data,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +538,11 @@ class _Row extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: (b ? palette.success : palette.danger).withValues(alpha: 0.13),
-          border: Border.all(color: (b ? palette.success : palette.danger).withValues(alpha: 0.4)),
+          border: Border.all(
+            color: (b ? palette.success : palette.danger).withValues(
+              alpha: 0.4,
+            ),
+          ),
           borderRadius: AppRadii.all(AppRadii.pill),
         ),
         child: Row(
@@ -315,17 +556,16 @@ class _Row extends StatelessWidget {
             const SizedBox(width: 4),
             Text(
               b ? 'set' : 'not set',
-              style: theme.labelSmall?.copyWith(color: b ? palette.success : palette.danger),
+              style: theme.labelSmall?.copyWith(
+                color: b ? palette.success : palette.danger,
+              ),
             ),
           ],
         ),
       );
     } else {
       final str = v == null || v.toString().isEmpty ? '—' : v.toString();
-      value = Text(
-        str,
-        style: theme.bodyMedium?.copyWith(color: palette.text),
-      );
+      value = Text(str, style: theme.bodyMedium?.copyWith(color: palette.text));
     }
 
     return Padding(

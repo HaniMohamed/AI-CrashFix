@@ -38,9 +38,17 @@ def _resolve_crashlytics_backend(raw: str) -> str:
 
 class CrashlyticsService:
 
-    def __init__(self, *, mock: bool = False, project_id: str | None = None):
+    def __init__(self, *, mock: bool = False, project_id: str | None = None, repo_key: str | None = None):
         self._mock = bool(mock)
-        self._backend = _resolve_crashlytics_backend(CRASHLYTICS_FETCH_BACKEND)
+        # Effective config: repo-scoped -> global settings -> env
+        try:
+            from app.services.settings_resolver import SettingsResolver
+
+            self._effective = SettingsResolver().effective_crashlytics(repo_key=repo_key)
+            self._backend = _resolve_crashlytics_backend(self._effective.backend)
+        except Exception:
+            self._effective = None
+            self._backend = _resolve_crashlytics_backend(CRASHLYTICS_FETCH_BACKEND)
         self.project_id = (project_id or "").strip() or (BQ_PROJECT_ID or "").strip() or None
         self.client = None
         self._logging_client = None
@@ -81,9 +89,16 @@ class CrashlyticsService:
         """BigQuery and Cloud Logging expect a google-auth Credentials object (not a path string)."""
         if mock:
             return None
-        if GOOGLE_APPLICATION_CREDENTIALS and service_account is not None:
+        creds = None
+        try:
+            from app.services.settings_resolver import SettingsResolver
+
+            creds = SettingsResolver().effective_google_application_credentials()
+        except Exception:
+            creds = GOOGLE_APPLICATION_CREDENTIALS
+        if creds and service_account is not None:
             return service_account.Credentials.from_service_account_file(
-                GOOGLE_APPLICATION_CREDENTIALS
+                creds
             )
         return None
 
@@ -137,8 +152,12 @@ class CrashlyticsService:
             )
 
         assert self.project_id is not None
-        android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
-        ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
+        if getattr(self, "_effective", None) is not None:
+            android_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_android_table}`"
+            ios_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_ios_table}`"
+        else:
+            android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
+            ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
 
         query = f"""
         WITH unioned AS (
@@ -232,8 +251,12 @@ class CrashlyticsService:
         # Crashlytics export is split by app/platform into concrete tables.
         # We union Android + iOS into a single stream and then apply a global LIMIT.
         assert self.project_id is not None
-        android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
-        ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
+        if getattr(self, "_effective", None) is not None:
+            android_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_android_table}`"
+            ios_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_ios_table}`"
+        else:
+            android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
+            ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
 
         query = f"""
         WITH unioned AS (

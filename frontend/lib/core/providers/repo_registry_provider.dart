@@ -138,6 +138,12 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     String? firebaseProjectId,
     String? accessToken,
     List<String>? packagesDirs,
+    String? crashlyticsFetchBackend,
+    String? bqDataset,
+    String? bqCrashlyticsAndroidTable,
+    String? bqCrashlyticsIosTable,
+    String? jiraProjectKey,
+    String? gitlabProject,
   }) async {
     final api = ref.read(apiClientProvider);
     final res = await api.postJson(Endpoints.repos, body: {
@@ -150,6 +156,16 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
         'access_token': accessToken.trim(),
       if (packagesDirs != null && packagesDirs.where((e) => e.trim().isNotEmpty).isNotEmpty)
         'packages_dirs': packagesDirs.where((e) => e.trim().isNotEmpty).toList(),
+      if (crashlyticsFetchBackend != null && crashlyticsFetchBackend.trim().isNotEmpty)
+        'crashlytics_fetch_backend': crashlyticsFetchBackend.trim(),
+      if (bqDataset != null && bqDataset.trim().isNotEmpty) 'bq_dataset': bqDataset.trim(),
+      if (bqCrashlyticsAndroidTable != null && bqCrashlyticsAndroidTable.trim().isNotEmpty)
+        'bq_crashlytics_android_table': bqCrashlyticsAndroidTable.trim(),
+      if (bqCrashlyticsIosTable != null && bqCrashlyticsIosTable.trim().isNotEmpty)
+        'bq_crashlytics_ios_table': bqCrashlyticsIosTable.trim(),
+      if (jiraProjectKey != null && jiraProjectKey.trim().isNotEmpty)
+        'jira_project_key': jiraProjectKey.trim(),
+      if (gitlabProject != null && gitlabProject.trim().isNotEmpty) 'gitlab_project': gitlabProject.trim(),
     });
     final repoKey = (res is Map ? res['repo_key'] : null)?.toString().trim();
     await refresh();

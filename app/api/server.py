@@ -27,7 +27,7 @@ import os
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -118,6 +118,30 @@ class RepoUpsertRequest(BaseModel):
             "Optional list of monorepo package root directories (repo-relative). "
             "Each entry is used as <dir>/*/lib during indexing/mapping, in addition to root lib/."
         ),
+    )
+    crashlytics_fetch_backend: Optional[str] = Field(
+        None,
+        description="Optional: per-repo Crashlytics fetch backend override ('bigquery' or 'cloud_logging').",
+    )
+    bq_dataset: Optional[str] = Field(
+        None,
+        description="Optional: per-repo BigQuery dataset override (default firebase_crashlytics).",
+    )
+    bq_crashlytics_android_table: Optional[str] = Field(
+        None,
+        description="Optional: per-repo Crashlytics Android export table override.",
+    )
+    bq_crashlytics_ios_table: Optional[str] = Field(
+        None,
+        description="Optional: per-repo Crashlytics iOS export table override.",
+    )
+    jira_project_key: Optional[str] = Field(
+        None,
+        description="Optional: per-repo Jira project key override.",
+    )
+    gitlab_project: Optional[str] = Field(
+        None,
+        description="Optional: per-repo GitLab project override (namespace/project).",
     )
 
 
@@ -248,6 +272,12 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             firebase_project_id=req.firebase_project_id,
             access_token=req.access_token,
             packages_dirs=req.packages_dirs,
+            crashlytics_fetch_backend=req.crashlytics_fetch_backend,
+            bq_dataset=req.bq_dataset,
+            bq_android_table=req.bq_crashlytics_android_table,
+            bq_ios_table=req.bq_crashlytics_ios_table,
+            jira_project_key=req.jira_project_key,
+            gitlab_project=req.gitlab_project,
         )
         # Build the symbol index on first add/update so stacktrace mapping is reliable
         # without requiring a manual refresh.
@@ -509,6 +539,165 @@ async def get_config() -> Dict[str, Any]:
             "style": cfg.AI_CRASH_FIX_GRAPH_LOG_STYLE,
         },
     }
+
+
+@app.get("/api/settings")
+async def get_settings() -> Dict[str, Any]:
+    """
+    Editable backend settings (persisted in SQLite) with .env fallback.
+
+    Secrets are never returned; callers get a has_* boolean indicator instead.
+    """
+    from app import config as cfg
+    from app.services.app_settings_store import AppSettingsStore
+
+    store = AppSettingsStore()
+
+    def eff_str(key: str, env_val: str | None) -> str | None:
+        v = store.get(k=key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+        if env_val is None:
+            return None
+        s = str(env_val).strip()
+        return s or None
+
+    def eff_secret(key: str, env_val: str | None) -> bool:
+        v = store.get(k=key)
+        if isinstance(v, str) and v.strip():
+            return True
+        return bool(env_val)
+
+    # NOTE: repo-scoped fields are intentionally excluded here:
+    # - CRASHLYTICS_FETCH_BACKEND, BQ_DATASET, BQ_CRASHLYTICS_*_TABLE
+    # - JIRA_PROJECT_KEY, GITLAB_PROJECT
+    return {
+        "updated_at": store.get_updated_at(),
+        "llm": {
+            "provider": eff_str("LLM_PROVIDER", cfg.LLM_PROVIDER),
+            "openai_model": eff_str("OPENAI_MODEL", cfg.OPENAI_MODEL),
+            "openai_url": eff_str("OPENAI_URL", cfg.OPENAI_URL),
+            "has_openai_api_key": eff_secret("OPENAI_API_KEY", cfg.OPENAI_API_KEY),
+            "gemini_model": eff_str("GEMINI_MODEL", cfg.GEMINI_MODEL),
+            "has_google_api_key": eff_secret("GOOGLE_API_KEY", cfg.GOOGLE_API_KEY),
+        },
+        "crashlytics": {
+            "google_application_credentials": eff_str(
+                "GOOGLE_APPLICATION_CREDENTIALS", cfg.GOOGLE_APPLICATION_CREDENTIALS
+            ),
+            "bq_project_id": eff_str("BQ_PROJECT_ID", cfg.BQ_PROJECT_ID),
+            "firebase_console_project_id": eff_str(
+                "FIREBASE_CONSOLE_PROJECT_ID", cfg.FIREBASE_CONSOLE_PROJECT_ID
+            ),
+            "android_package_default": eff_str(
+                "CRASHLYTICS_ANDROID_PACKAGE", cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
+            ),
+            "ios_bundle_id_default": eff_str(
+                "CRASHLYTICS_IOS_BUNDLE_ID", cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
+            ),
+        },
+        "jira": {
+            "server_url": eff_str("JIRA_SERVER_URL", cfg.JIRA_SERVER_URL),
+            "verify_ssl": eff_str("JIRA_VERIFY_SSL", cfg.JIRA_VERIFY_SSL),
+            "has_token": eff_secret("JIRA_TOKEN", cfg.JIRA_TOKEN),
+        },
+        "gitlab": {
+            "server_url": eff_str("GITLAB_SERVER_URL", cfg.GITLAB_SERVER_URL),
+            "verify_ssl": eff_str("GITLAB_VERIFY_SSL", cfg.GITLAB_VERIFY_SSL),
+            "ca_bundle": eff_str("GITLAB_SSL_CA_BUNDLE", cfg.GITLAB_SSL_CA_BUNDLE),
+            "has_token": eff_secret("GITLAB_TOKEN", cfg.GITLAB_TOKEN),
+        },
+    }
+
+
+class SettingsUpdateRequest(BaseModel):
+    llm: Optional[Dict[str, Any]] = None
+    crashlytics: Optional[Dict[str, Any]] = None
+    jira: Optional[Dict[str, Any]] = None
+    gitlab: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/settings")
+async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
+    from app.services.app_settings_store import AppSettingsStore
+
+    store = AppSettingsStore()
+
+    def set_if_present(d: Dict[str, Any] | None, field: str, key: str) -> None:
+        if not d:
+            return
+        if field not in d:
+            return
+        v = d.get(field)
+        if v is None:
+            store.set(k=key, v=None)
+            return
+        if isinstance(v, str):
+            v = v.strip()
+            store.set(k=key, v=v or None)
+            return
+        store.set(k=key, v=v)
+
+    set_if_present(req.llm, "provider", "LLM_PROVIDER")
+    set_if_present(req.llm, "openai_model", "OPENAI_MODEL")
+    set_if_present(req.llm, "openai_url", "OPENAI_URL")
+    set_if_present(req.llm, "openai_api_key", "OPENAI_API_KEY")
+    set_if_present(req.llm, "gemini_model", "GEMINI_MODEL")
+    set_if_present(req.llm, "google_api_key", "GOOGLE_API_KEY")
+
+    set_if_present(req.crashlytics, "google_application_credentials", "GOOGLE_APPLICATION_CREDENTIALS")
+    set_if_present(req.crashlytics, "bq_project_id", "BQ_PROJECT_ID")
+    set_if_present(req.crashlytics, "firebase_console_project_id", "FIREBASE_CONSOLE_PROJECT_ID")
+    set_if_present(req.crashlytics, "android_package_default", "CRASHLYTICS_ANDROID_PACKAGE")
+    set_if_present(req.crashlytics, "ios_bundle_id_default", "CRASHLYTICS_IOS_BUNDLE_ID")
+
+    set_if_present(req.jira, "server_url", "JIRA_SERVER_URL")
+    set_if_present(req.jira, "verify_ssl", "JIRA_VERIFY_SSL")
+    set_if_present(req.jira, "token", "JIRA_TOKEN")
+
+    set_if_present(req.gitlab, "server_url", "GITLAB_SERVER_URL")
+    set_if_present(req.gitlab, "verify_ssl", "GITLAB_VERIFY_SSL")
+    set_if_present(req.gitlab, "ca_bundle", "GITLAB_SSL_CA_BUNDLE")
+    set_if_present(req.gitlab, "token", "GITLAB_TOKEN")
+
+    return {"saved": True}
+
+
+@app.post("/api/settings/google_credentials")
+async def upload_google_credentials(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Upload a GCP service account JSON file and persist its path as
+    GOOGLE_APPLICATION_CREDENTIALS override.
+    """
+    from app.services.app_settings_store import AppSettingsStore
+    from app import config as cfg
+    import json
+    from datetime import datetime
+    from pathlib import Path
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    try:
+        parsed = json.loads(raw.decode("utf-8", errors="strict"))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON: expected object")
+    if not parsed.get("type"):
+        raise HTTPException(status_code=400, detail="Invalid service account JSON (missing 'type')")
+
+    base = Path((cfg.WORKSPACE_PROJECTS_DIR or "workspace_projects").strip() or "workspace_projects")
+    if not base.is_absolute():
+        base = (Path.cwd() / base).resolve()
+    target_dir = (base / "_credentials").resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    target = target_dir / f"gcp_credentials_{ts}.json"
+    target.write_bytes(raw)
+
+    AppSettingsStore().set(k="GOOGLE_APPLICATION_CREDENTIALS", v=str(target))
+    return {"uploaded": True, "path": str(target)}
 
 
 # ---- internals -------------------------------------------------------------

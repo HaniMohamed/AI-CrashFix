@@ -6,6 +6,12 @@ class RepoEntry {
   final String? firebaseProjectId;
   final bool hasToken;
   final List<String> packagesDirs;
+  final String? crashlyticsFetchBackend;
+  final String? bqDataset;
+  final String? bqCrashlyticsAndroidTable;
+  final String? bqCrashlyticsIosTable;
+  final String? jiraProjectKey;
+  final String? gitlabProject;
 
   const RepoEntry({
     required this.repoKey,
@@ -15,6 +21,12 @@ class RepoEntry {
     this.firebaseProjectId,
     this.hasToken = false,
     this.packagesDirs = const [],
+    this.crashlyticsFetchBackend,
+    this.bqDataset,
+    this.bqCrashlyticsAndroidTable,
+    this.bqCrashlyticsIosTable,
+    this.jiraProjectKey,
+    this.gitlabProject,
   });
 
   factory RepoEntry.fromJson(Map<String, dynamic> j) => RepoEntry(
@@ -34,6 +46,26 @@ class RepoEntry {
             .map((e) => e.toString())
             .where((s) => s.trim().isNotEmpty)
             .toList(growable: false),
+        crashlyticsFetchBackend:
+            (j['crashlytics_fetch_backend'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (j['crashlytics_fetch_backend'] as String?)?.trim(),
+        bqDataset: (j['bq_dataset'] as String?)?.trim().isEmpty ?? true
+            ? null
+            : (j['bq_dataset'] as String?)?.trim(),
+        bqCrashlyticsAndroidTable:
+            (j['bq_android_table'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (j['bq_android_table'] as String?)?.trim(),
+        bqCrashlyticsIosTable: (j['bq_ios_table'] as String?)?.trim().isEmpty ?? true
+            ? null
+            : (j['bq_ios_table'] as String?)?.trim(),
+        jiraProjectKey: (j['jira_project_key'] as String?)?.trim().isEmpty ?? true
+            ? null
+            : (j['jira_project_key'] as String?)?.trim(),
+        gitlabProject: (j['gitlab_project'] as String?)?.trim().isEmpty ?? true
+            ? null
+            : (j['gitlab_project'] as String?)?.trim(),
       );
 }
 

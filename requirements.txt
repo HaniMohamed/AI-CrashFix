@@ -4,6 +4,8 @@ google-genai
 python-dotenv
 google-cloud-bigquery
 google-cloud-logging
+google-auth
 fastapi
 uvicorn[standard]
+python-multipart
 pyinstaller

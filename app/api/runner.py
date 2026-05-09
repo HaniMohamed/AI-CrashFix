@@ -66,6 +66,26 @@ def _initial_state_for_crash(
     repo_key: str | None,
     firebase_project_id: str | None,
 ) -> Dict[str, Any]:
+    jira_project_key = None
+    gitlab_project = None
+    crashlytics_fetch_backend = None
+    bq_dataset = None
+    bq_crashlytics_android_table = None
+    bq_crashlytics_ios_table = None
+    if (repo_key or "").strip():
+        try:
+            from app.services.repo_registry_store import RepoRegistryStore
+
+            entry = RepoRegistryStore().get_repo((repo_key or "").strip())
+            if entry is not None:
+                jira_project_key = entry.jira_project_key
+                gitlab_project = entry.gitlab_project
+                crashlytics_fetch_backend = entry.crashlytics_fetch_backend
+                bq_dataset = entry.bq_dataset
+                bq_crashlytics_android_table = entry.bq_android_table
+                bq_crashlytics_ios_table = entry.bq_ios_table
+        except Exception:
+            pass
     return {
         "graph_run_id": run_id,
         "graph_error": None,
@@ -76,6 +96,12 @@ def _initial_state_for_crash(
         "repo_ref": repo_ref,
         "repo_key": repo_key,
         "firebase_project_id": firebase_project_id,
+        "jira_project_key": jira_project_key,
+        "gitlab_project": gitlab_project,
+        "crashlytics_fetch_backend": crashlytics_fetch_backend,
+        "bq_dataset": bq_dataset,
+        "bq_crashlytics_android_table": bq_crashlytics_android_table,
+        "bq_crashlytics_ios_table": bq_crashlytics_ios_table,
         "crash_id": crash.get("crash_id") or "",
         "exception": crash.get("exception") or "",
         "stacktrace": crash.get("stacktrace") or [],
@@ -247,7 +273,11 @@ def stream_run(
                     },
                 }
                 return
-            service = CrashlyticsService(mock=mock, project_id=resolved_firebase_project_id)
+            service = CrashlyticsService(
+                mock=mock,
+                project_id=resolved_firebase_project_id,
+                repo_key=resolved_repo_key,
+            )
             resolved = _resolve_single_crash_payload(
                 crash_store=crash_store,
                 service=service,
@@ -341,7 +371,11 @@ def _run_batch(
 ) -> Iterator[Dict[str, Any]]:
     # CrashlyticsService uses the repo's firebase/gcp project id when provided.
     # It falls back to .env BQ_PROJECT_ID otherwise.
-    service = CrashlyticsService(mock=mock, project_id=crash_store.project_id)
+    service = CrashlyticsService(
+        mock=mock,
+        project_id=crash_store.project_id,
+        repo_key=repo_key,
+    )
 
     with node_span(
         {"graph_run_id": run_id},

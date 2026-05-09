@@ -45,13 +45,17 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Configuration (.env)
-AI Crash Fix loads environment variables from `.env` (see `app/config.py`).
+### Configuration overview
+AI Crash Fix supports three configuration sources:
+- **Repo-scoped settings** (recommended): stored in the repo registry via the UI “Add / update repo” dialog.
+- **Backend settings**: editable from the UI Settings page and persisted server-side (SQLite), with `.env` fallback.
+- **`.env`**: loaded at backend startup (see `app/config.py`); still works as a fallback.
 
-#### Required: target repo
-- **REPO_ROOT**: (legacy) absolute path to the **target repository** AI Crash Fix will read/apply patches to if you don't provide a `repo_url` per run
-- **WORKSPACE_PROJECTS_DIR**: where the backend clones user-provided remote repos (default: `workspace_projects`)
-- **MAIN_BRANCH**: base branch for feature branches (default: `main`)
+#### Repo selection
+- **UI (recommended)**: add/select a repo in the web UI. The backend clones it under `WORKSPACE_PROJECTS_DIR`.
+- **Legacy**: `REPO_ROOT` can still point at a local repo if you do not use repo URLs.
+
+`MAIN_BRANCH` is used as the base branch when creating feature branches for PR/MR generation. In the UI, branch selection is represented by the repo’s `repo_ref`.
 
 #### LLM provider
 - **LLM_PROVIDER**: `gemini` (default) or `openai`
@@ -60,26 +64,50 @@ AI Crash Fix loads environment variables from `.env` (see `app/config.py`).
 
 #### Crashlytics (BigQuery)
 Used when you run without `--mock`.
-- **GOOGLE_APPLICATION_CREDENTIALS**: path to GCP service account json
+- **GOOGLE_APPLICATION_CREDENTIALS**: path to GCP service account json (also supports upload via Settings UI)
 - **BQ_PROJECT_ID**
-- **BQ_DATASET** (default: `firebase_crashlytics`)
-- **BQ_CRASHLYTICS_ANDROID_TABLE** / **BQ_CRASHLYTICS_IOS_TABLE**: table names within `BQ_DATASET`
+- Repo-scoped overrides (set per repo in the repo dialog):
+  - **CRASHLYTICS_FETCH_BACKEND**
+  - **BQ_DATASET**
+  - **BQ_CRASHLYTICS_ANDROID_TABLE** / **BQ_CRASHLYTICS_IOS_TABLE**
 
 #### Jira (optional)
 If you don’t pass `--skip-jira-creation`, the graph creates a Jira issue before generating a PR.
 - **JIRA_SERVER_URL**
-- **JIRA_PROJECT_KEY**
+- Repo-scoped override: **JIRA_PROJECT_KEY** (set per repo in the repo dialog)
 - **JIRA_TOKEN**
 - **JIRA_VERIFY_SSL** (default: `true`)
 
 #### GitLab merge requests (optional, requires Jira id)
 PR generation is best-effort and will be skipped if `jira_issue_id` is missing.
 - **GITLAB_SERVER_URL**
-- **GITLAB_PROJECT**: `namespace/project`
+- Repo-scoped override: **GITLAB_PROJECT**: `namespace/project` (set per repo in the repo dialog)
 - **GITLAB_TOKEN**
 - **GITLAB_VERIFY_SSL** (default: `true`)
 - **GITLAB_SSL_CA_BUNDLE** (optional, for custom CAs)
 
+### Repo refresh + on-demand symbol indexing (Dart)
+AI Crash Fix uses an on-demand Dart symbol index to improve stacktrace→file mapping.
+
+- **Build trigger**: index is built when you **add/update a repo** or **refresh a repo** in the UI.
+- **Cache**: stored under `db/ast_index/<repo_key>/<commit_sha>/symbols.json`.
+
+In the web UI:
+- **Add/select repo**: use the topbar repo dropdown → **Add repo…** (or **Manage repositories**).
+- **Commit/Indexed status**: shown next to each repo; “Indexed” means the index matches current `HEAD`.
+- **Refresh**: runs `git fetch` + checkout and rebuilds the index if the commit changes.
+
+API:
+- **`GET /api/repos/{repo_key}/status`** → commit + indexing status
+- **`POST /api/repos/{repo_key}/refresh`** → fetch/checkout + reindex-on-change
+
+### Stacktrace mapping (enhanced)
+`map_stacktrace` maps raw stack lines into `state["mapped_frames"]`. For Dart frames, it will prefer the cached **symbol index** (AST-derived) for ambiguous frames (e.g. Crashlytics “bare” `file.dart:line` frames), and fall back to legacy glob/rg heuristics when needed.
+
+Every mapped frame includes **`resolved_by`** so you can tell which resolver was used, for example:
+- `dart_ast_index`: resolved via the symbol index
+- `dart_legacy_glob`: resolved via legacy basename+glob heuristic
+- `dart_stack_lib_path`: frame already had a concrete `lib/...` path
 ### How it works (high level)
 Main graph (`app/graph/graph_builder.py`):
 `map_stacktrace → repo_context → git_regression → llm_analysis → (jira_create?) → fix_generation → END`
@@ -164,6 +192,10 @@ OpenAPI docs are at `http://localhost:8000/docs`.
 - **`GET /api/crashes/{crash_id}`** → one crash row + parsed `result` JSON (404 if not found).
 - **`GET /api/analytics?no_cache=0|1`** → pre-computed dashboard aggregates (totals, pipeline funnel, completion rate, avg duration, daily timeseries, top platforms / app versions / devices, recent items). Cached in-process for 5 seconds.
 - **`GET /api/config`** → read-only redacted snapshot of `app/config.py` (LLM, repo, Crashlytics, Jira, GitLab, logging). Secrets are returned as `has_*` booleans only.
+- **`GET /api/settings`** → editable backend settings (SQLite overrides + `.env` fallback); secrets returned only as `has_*` booleans.
+- **`POST /api/settings`** → update backend settings; secrets are accepted but never returned.
+- **`POST /api/settings/google_credentials`** → upload a GCP service account JSON; saved under `workspace_projects/_credentials/` and stored as `GOOGLE_APPLICATION_CREDENTIALS` override.
+- **`GET /api/repos/{repo_key}/status`**, **`POST /api/repos/{repo_key}/refresh`** → repo commit + index status and refresh/reindex behavior.
 
 #### Streamed event types
 Each NDJSON line is `{"type": "...", "run_id": "...", ...}`. Common types:
@@ -212,8 +244,9 @@ curl -N -X POST http://localhost:8000/api/runs \
 
 A polished Flutter web app lives in [`frontend/`](frontend/). It talks to the
 HTTP API above (no backend imports), and exposes a dashboard, crash explorer,
-run trigger with full flag form, live NDJSON stream view, and a read-only
-settings page.
+run trigger with full flag form, live NDJSON stream view, repo management, and
+an editable settings page (backend settings + secrets are stored server-side;
+secrets are not re-displayed after save).
 
 #### Prerequisites
 - Flutter SDK 3.24+ (Dart 3.10+) and Chrome.
@@ -260,7 +293,7 @@ Use the included launch config in `.vscode/launch.json`:
 
 ### Troubleshooting
 - **`rg` not found**: install ripgrep (see above).
-- **“Missing …” errors**: verify `.env` values listed above (LLM provider keys, BigQuery/Jira/GitLab as needed). Repo selection can now be provided per run via `repo_url`.
+- **“Missing …” errors**: verify repo dialog settings (repo-scoped Crashlytics/Jira/GitLab fields), and global Settings UI values (LLM keys, Jira/GitLab tokens, credentials). `.env` remains a fallback; backend must be restarted to re-read `.env`.
 - **PR generation skipped**: `generate_pr` requires a non-empty `generated_fix` (unified diff, not `insufficient evidence`) and a `jira_issue_id`. If Jira creation is skipped, PR creation is skipped as well.
 - **“Failed to apply diff via git apply”**: the patch did not match the files under `REPO_ROOT` (wrong context or line anchors). Ensure the repo matches the branch the graph expects (`create_branch_from_main` fast-forwards `MAIN_BRANCH` first). Common LLM mistakes with wrong `@@` **line counts** are corrected automatically before apply; mismatched **context lines** still fail until the fix or repo is updated.
 - **No working tree changes after apply**: the diff applied but produced no net changes; the tool treats that as an error to avoid empty commits.

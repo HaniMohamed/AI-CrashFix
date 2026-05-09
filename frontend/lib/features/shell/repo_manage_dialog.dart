@@ -24,6 +24,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _firebaseProjectIdCtrl;
   late final TextEditingController _tokenCtrl;
   late final TextEditingController _packagesDirsCtrl;
+  late final TextEditingController _crashBackendCtrl;
+  late final TextEditingController _bqDatasetCtrl;
+  late final TextEditingController _bqAndroidTableCtrl;
+  late final TextEditingController _bqIosTableCtrl;
+  late final TextEditingController _jiraProjectKeyCtrl;
+  late final TextEditingController _gitlabProjectCtrl;
 
   bool _saving = false;
   bool _refreshing = false;
@@ -42,6 +48,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _firebaseProjectIdCtrl = TextEditingController();
     _tokenCtrl = TextEditingController();
     _packagesDirsCtrl = TextEditingController();
+    _crashBackendCtrl = TextEditingController();
+    _bqDatasetCtrl = TextEditingController();
+    _bqAndroidTableCtrl = TextEditingController();
+    _bqIosTableCtrl = TextEditingController();
+    _jiraProjectKeyCtrl = TextEditingController();
+    _gitlabProjectCtrl = TextEditingController();
 
     void onEdit() {
       if (!mounted) return;
@@ -56,6 +68,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _firebaseProjectIdCtrl.addListener(onEdit);
     _tokenCtrl.addListener(onEdit);
     _packagesDirsCtrl.addListener(onEdit);
+    _crashBackendCtrl.addListener(onEdit);
+    _bqDatasetCtrl.addListener(onEdit);
+    _bqAndroidTableCtrl.addListener(onEdit);
+    _bqIosTableCtrl.addListener(onEdit);
+    _jiraProjectKeyCtrl.addListener(onEdit);
+    _gitlabProjectCtrl.addListener(onEdit);
   }
 
   String? _validate() {
@@ -89,6 +107,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _tokenCtrl.text = '';
       final dirs = (r.packagesDirs as List?) ?? const [];
       _packagesDirsCtrl.text = dirs.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).join(', ');
+      _crashBackendCtrl.text = (r.crashlyticsFetchBackend ?? '').toString();
+      _bqDatasetCtrl.text = (r.bqDataset ?? '').toString();
+      _bqAndroidTableCtrl.text = (r.bqCrashlyticsAndroidTable ?? '').toString();
+      _bqIosTableCtrl.text = (r.bqCrashlyticsIosTable ?? '').toString();
+      _jiraProjectKeyCtrl.text = (r.jiraProjectKey ?? '').toString();
+      _gitlabProjectCtrl.text = (r.gitlabProject ?? '').toString();
       _advancedOpen = (r.repoRef != null && (r.repoRef as String).trim().isNotEmpty) || r.hasToken == true;
     });
     _loadRepoStatus();
@@ -127,8 +151,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
-      if (!mounted) return;
-      setState(() => _refreshing = false);
+      if (mounted) {
+        setState(() => _refreshing = false);
+      }
     }
   }
 
@@ -140,6 +165,13 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _firebaseProjectIdCtrl.dispose();
     _tokenCtrl.dispose();
     _packagesDirsCtrl.dispose();
+    _crashBackendCtrl.dispose();
+    _bqDatasetCtrl.dispose();
+    _bqAndroidTableCtrl.dispose();
+    _bqAndroidTableCtrl.dispose();
+    _bqIosTableCtrl.dispose();
+    _jiraProjectKeyCtrl.dispose();
+    _gitlabProjectCtrl.dispose();
     super.dispose();
   }
 
@@ -432,6 +464,78 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                   children: [
                     const SizedBox(height: 6),
                     TextField(
+                      controller: _crashBackendCtrl,
+                      enabled: !_saving,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Crashlytics backend (optional)',
+                        hintText: 'bigquery  or  cloud_logging',
+                        helperText: 'Per-repo override for CRASHLYTICS_FETCH_BACKEND.',
+                        prefixIcon: const Icon(Icons.cloud_sync_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _bqDatasetCtrl,
+                      enabled: !_saving,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'BigQuery dataset (optional)',
+                        hintText: 'firebase_crashlytics',
+                        helperText: 'Per-repo override for BQ_DATASET.',
+                        prefixIcon: const Icon(Icons.table_chart_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _bqAndroidTableCtrl,
+                      enabled: !_saving,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Crashlytics Android table (optional)',
+                        hintText: 'my_android_table',
+                        helperText: 'Per-repo override for BQ_CRASHLYTICS_ANDROID_TABLE.',
+                        prefixIcon: const Icon(Icons.table_rows_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _bqIosTableCtrl,
+                      enabled: !_saving,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Crashlytics iOS table (optional)',
+                        hintText: 'my_ios_table',
+                        helperText: 'Per-repo override for BQ_CRASHLYTICS_IOS_TABLE.',
+                        prefixIcon: const Icon(Icons.table_rows_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _jiraProjectKeyCtrl,
+                      enabled: !_saving,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Jira project key (optional)',
+                        hintText: 'PROJ',
+                        helperText: 'Per-repo override for JIRA_PROJECT_KEY.',
+                        prefixIcon: const Icon(Icons.confirmation_number_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _gitlabProjectCtrl,
+                      enabled: !_saving,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'GitLab project (optional)',
+                        hintText: 'namespace/project',
+                        helperText: 'Per-repo override for GITLAB_PROJECT.',
+                        prefixIcon: const Icon(Icons.merge_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
                       controller: _packagesDirsCtrl,
                       enabled: !_saving,
                       textInputAction: TextInputAction.next,
@@ -601,6 +705,22 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                           accessToken:
                               _tokenCtrl.text.trim().isEmpty ? null : _tokenCtrl.text.trim(),
                           packagesDirs: _parsePackagesDirs(),
+                          crashlyticsFetchBackend: _crashBackendCtrl.text.trim().isEmpty
+                              ? null
+                              : _crashBackendCtrl.text.trim(),
+                          bqDataset: _bqDatasetCtrl.text.trim().isEmpty ? null : _bqDatasetCtrl.text.trim(),
+                          bqCrashlyticsAndroidTable: _bqAndroidTableCtrl.text.trim().isEmpty
+                              ? null
+                              : _bqAndroidTableCtrl.text.trim(),
+                          bqCrashlyticsIosTable: _bqIosTableCtrl.text.trim().isEmpty
+                              ? null
+                              : _bqIosTableCtrl.text.trim(),
+                          jiraProjectKey: _jiraProjectKeyCtrl.text.trim().isEmpty
+                              ? null
+                              : _jiraProjectKeyCtrl.text.trim(),
+                          gitlabProject: _gitlabProjectCtrl.text.trim().isEmpty
+                              ? null
+                              : _gitlabProjectCtrl.text.trim(),
                         );
                     if (!mounted) return;
                     nav.pop();
