@@ -194,7 +194,7 @@ def stream_run(
                     },
                 }
                 return
-            service = CrashlyticsService()
+            service = CrashlyticsService(mock=mock)
             resolved = _resolve_single_crash_payload(
                 crash_store=crash_store,
                 service=service,
@@ -276,7 +276,7 @@ def _run_batch(
     crash_ids: Optional[List[str]],
     pending: queue.Queue[Dict[str, Any]],
 ) -> Iterator[Dict[str, Any]]:
-    service = CrashlyticsService()
+    service = CrashlyticsService(mock=mock)
 
     with node_span(
         {"graph_run_id": run_id},

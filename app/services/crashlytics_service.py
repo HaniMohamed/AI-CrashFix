@@ -38,11 +38,17 @@ def _resolve_crashlytics_backend(raw: str) -> str:
 
 class CrashlyticsService:
 
-    def __init__(self):
+    def __init__(self, *, mock: bool = False):
+        self._mock = bool(mock)
         self._backend = _resolve_crashlytics_backend(CRASHLYTICS_FETCH_BACKEND)
-        credentials = self._load_credentials()
         self.client = None
         self._logging_client = None
+
+        # Mock runs should not attempt to resolve credentials or initialize any GCP clients.
+        if self._mock:
+            return
+
+        credentials = self._load_credentials(mock=self._mock)
 
         if self._backend == "bigquery":
             if bigquery is None:
@@ -66,8 +72,10 @@ class CrashlyticsService:
         self._logging_client = cloud_logging.Client(project=BQ_PROJECT_ID, credentials=credentials)
 
     @staticmethod
-    def _load_credentials():
+    def _load_credentials(*, mock: bool = False):
         """BigQuery and Cloud Logging expect a google-auth Credentials object (not a path string)."""
+        if mock:
+            return None
         if GOOGLE_APPLICATION_CREDENTIALS and service_account is not None:
             return service_account.Credentials.from_service_account_file(
                 GOOGLE_APPLICATION_CREDENTIALS
@@ -78,6 +86,8 @@ class CrashlyticsService:
         """
         Fetch latest crash events from BigQuery or Cloud Logging (see CRASHLYTICS_FETCH_BACKEND).
         """
+        if self._mock:
+            return self.fetch_recent_crashes_mock(limit=limit)
         if self._backend == "cloud_logging":
             return self._fetch_recent_crashes_cloud_logging(limit=limit)
         return self._fetch_recent_crashes_bigquery(limit=limit)
@@ -92,7 +102,7 @@ class CrashlyticsService:
         cid = (crash_id or "").strip()
         if not cid:
             return None
-        if mock:
+        if self._mock or mock:
             for r in self.fetch_recent_crashes_mock_rows(limit=500):
                 rid = r.get("issue_id") or r.get("issueId")
                 if rid is not None and str(rid).strip() == cid:

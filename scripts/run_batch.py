@@ -71,7 +71,7 @@ def main() -> int:
 
     graph = build_graph()
     crash_store = CrashStore()
-    service = CrashlyticsService()
+    service = CrashlyticsService(mock=args.mock)
 
     batch_state: dict[str, Any] = {}
     run_id = ensure_run_id(batch_state)
