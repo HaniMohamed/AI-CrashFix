@@ -70,10 +70,7 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
   }) async {
     await showDialog<void>(
       context: context,
-      builder: (ctx) => DeleteRepoDialog(
-        repoKey: repoKey,
-        repoName: repoName,
-      ),
+      builder: (ctx) => DeleteRepoDialog(repoKey: repoKey, repoName: repoName),
     );
   }
 
@@ -82,10 +79,8 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
       context: context,
       barrierDismissible: allowClose,
       builder: (ctx) => ManageReposDialog(
-        onDelete: (repoKey, repoName) => _confirmDeleteRepo(
-          repoKey: repoKey,
-          repoName: repoName,
-        ),
+        onDelete: (repoKey, repoName) =>
+            _confirmDeleteRepo(repoKey: repoKey, repoName: repoName),
         allowClose: allowClose,
       ),
     );
@@ -104,7 +99,10 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
           border: Border.all(color: palette.border),
           borderRadius: AppRadii.all(AppRadii.pill),
         ),
-        child: Text('Repo…', style: theme.labelMedium?.copyWith(color: palette.textMuted)),
+        child: Text(
+          'Repo…',
+          style: theme.labelMedium?.copyWith(color: palette.textMuted),
+        ),
       ),
       error: (_, _) => OutlinedButton.icon(
         icon: const Icon(Icons.source_outlined, size: 16),
@@ -116,12 +114,16 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
         // so the topbar must not auto-open a second, dismissible dialog.
 
         final active = data.active;
-        final label = (active?.name.trim().isNotEmpty ?? false) ? active!.name : 'Select repo';
+        final label = (active?.name.trim().isNotEmpty ?? false)
+            ? active!.name
+            : 'Select repo';
         return PopupMenuButton<String>(
           tooltip: 'Repository',
           position: PopupMenuPosition.under,
           color: palette.surface2,
-          shape: RoundedRectangleBorder(borderRadius: AppRadii.all(AppRadii.md)),
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadii.all(AppRadii.md),
+          ),
           onSelected: (v) async {
             if (v == '__manage__') {
               await _openManageDialog();
@@ -150,8 +152,13 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
                         Expanded(child: Text(r.name, style: theme.bodyMedium)),
                         const SizedBox(width: 8),
                         if (data.statusByKey[r.repoKey]?.isSynced == true)
-                          Icon(Icons.check_circle, size: 14, color: palette.primary)
-                        else if ((data.statusByKey[r.repoKey]?.headSha ?? '').isNotEmpty)
+                          Icon(
+                            Icons.check_circle,
+                            size: 14,
+                            color: palette.primary,
+                          )
+                        else if ((data.statusByKey[r.repoKey]?.headSha ?? '')
+                            .isNotEmpty)
                           Icon(Icons.sync, size: 14, color: palette.textMuted),
                       ],
                     ),
@@ -159,12 +166,16 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
                       r.repoUrl,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.labelSmall?.copyWith(color: palette.textMuted),
+                      style: theme.labelSmall?.copyWith(
+                        color: palette.textMuted,
+                      ),
                     ),
                     if ((data.statusByKey[r.repoKey]?.headSha ?? '').isNotEmpty)
                       Text(
                         'Commit: ${(data.statusByKey[r.repoKey]!.headSha!).substring(0, 12)}',
-                        style: theme.labelSmall?.copyWith(color: palette.textMuted),
+                        style: theme.labelSmall?.copyWith(
+                          color: palette.textMuted,
+                        ),
                       ),
                   ],
                 ),
@@ -176,7 +187,7 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
                 children: [
                   Icon(Icons.add, size: 16),
                   SizedBox(width: 8),
-                  Text('Add repo…'),
+                  Text('Manage repos…'),
                 ],
               ),
             ),
@@ -191,7 +202,11 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.source_outlined, size: 14, color: palette.textSecondary),
+                Icon(
+                  Icons.source_outlined,
+                  size: 14,
+                  color: palette.textSecondary,
+                ),
                 const SizedBox(width: 6),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 220),
@@ -271,7 +286,8 @@ class _HealthPill extends ConsumerWidget {
       label = ok ? 'API healthy' : 'API offline';
     }
     return Tooltip(
-      message: 'Last check: ${health.value?.checkedAt.toLocal().toString().split('.').first ?? "—"}',
+      message:
+          'Last check: ${health.value?.checkedAt.toLocal().toString().split('.').first ?? "—"}',
       child: InkWell(
         borderRadius: AppRadii.all(AppRadii.pill),
         onTap: () => ref.read(healthProvider.notifier).refresh(),
@@ -288,9 +304,13 @@ class _HealthPill extends ConsumerWidget {
               Container(
                 width: 8,
                 height: 8,
-                decoration: BoxDecoration(color: dot, shape: BoxShape.circle, boxShadow: [
-                  BoxShadow(color: dot.withValues(alpha: 0.6), blurRadius: 6),
-                ]),
+                decoration: BoxDecoration(
+                  color: dot,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: dot.withValues(alpha: 0.6), blurRadius: 6),
+                  ],
+                ),
               ),
               const SizedBox(width: 8),
               Text(
@@ -406,9 +426,9 @@ class _BaseUrlPopoverState extends ConsumerState<_BaseUrlPopover> {
               child: Text(
                 widget.currentUrl,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: palette.text,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(color: palette.text),
               ),
             ),
             const SizedBox(width: 4),
@@ -430,9 +450,9 @@ class _ThemeToggle extends ConsumerWidget {
       tooltip: isDark ? 'Switch to light' : 'Switch to dark',
       icon: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
       onPressed: () {
-        ref.read(appSettingsProvider.notifier).setThemeMode(
-              isDark ? ThemeMode.light : ThemeMode.dark,
-            );
+        ref
+            .read(appSettingsProvider.notifier)
+            .setThemeMode(isDark ? ThemeMode.light : ThemeMode.dark);
       },
     );
   }

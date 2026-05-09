@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,6 +16,53 @@ class SymbolLocation:
     file: str  # repo-relative posix path
     line: int  # 1-based
     kind: str  # class|mixin|extension|method|function|unknown
+
+
+def _default_index_base(*, repo_root: str | None) -> Path:
+    """
+    Per-project cache root for the Dart symbol index.
+
+    We intentionally store this alongside the checked-out repo (typically under
+    `workspace_projects/<project_id>/...`) so the cache lifecycle is tied to the
+    project clone, not the AI Crash Fix app repo.
+    """
+    root = (repo_root or "").strip()
+    if root:
+        return (Path(root).expanduser().resolve() / ".aicrashfix" / "ast_index").resolve()
+    # Fallback for legacy callers/tests that don't pass repo_root.
+    return (Path.cwd() / "db" / "ast_index").resolve()
+
+
+def _maybe_migrate_legacy_index(
+    *,
+    repo_key: str,
+    commit_sha: str,
+    repo_root: str,
+    new_base: Path,
+) -> None:
+    """
+    Best-effort migration from the old global `db/ast_index/<repo_key>/<sha>/...`
+    location into the per-project cache.
+    """
+    repo_key = (repo_key or "").strip()
+    commit_sha = (commit_sha or "").strip()
+    repo_root = (repo_root or "").strip()
+    if not repo_key or not commit_sha or not repo_root:
+        return
+
+    # Old base was always relative to the AI Crash Fix app working directory.
+    old_base = (Path.cwd() / "db" / "ast_index").resolve()
+    old_dir = (old_base / repo_key / commit_sha).resolve()
+    new_dir = (new_base / repo_key / commit_sha).resolve()
+    if new_dir.is_dir() or not old_dir.is_dir():
+        return
+
+    new_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.move(os.fspath(old_dir), os.fspath(new_dir))
+    except Exception:
+        # Never fail indexing/mapping due to cache migration.
+        return
 
 
 def _posix_relpath(path: str, *, repo_root: str) -> str:
@@ -109,7 +157,8 @@ def build_symbol_index(
     if not commit_sha:
         raise ValueError("commit_sha is required")
 
-    out_base = Path(out_dir or "db/ast_index").expanduser().resolve()
+    out_base = Path(out_dir).expanduser().resolve() if out_dir else _default_index_base(repo_root=repo_root)
+    _maybe_migrate_legacy_index(repo_key=repo_key, commit_sha=commit_sha, repo_root=repo_root, new_base=out_base)
     target = (out_base / repo_key / commit_sha).resolve()
     target.mkdir(parents=True, exist_ok=True)
 
@@ -199,12 +248,20 @@ def build_symbol_index(
     return payload
 
 
-def load_symbol_index(*, repo_key: str, commit_sha: str, base_dir: str | None = None) -> dict[str, Any] | None:
+def load_symbol_index(
+    *,
+    repo_key: str,
+    commit_sha: str,
+    repo_root: str | None = None,
+    base_dir: str | None = None,
+) -> dict[str, Any] | None:
     repo_key = (repo_key or "").strip()
     commit_sha = (commit_sha or "").strip()
     if not repo_key or not commit_sha:
         return None
-    base = Path(base_dir or "db/ast_index").expanduser().resolve()
+    base = Path(base_dir).expanduser().resolve() if base_dir else _default_index_base(repo_root=repo_root)
+    if repo_root:
+        _maybe_migrate_legacy_index(repo_key=repo_key, commit_sha=commit_sha, repo_root=repo_root, new_base=base)
     p = (base / repo_key / commit_sha / "symbols.json").resolve()
     if not p.is_file():
         return None
@@ -214,12 +271,20 @@ def load_symbol_index(*, repo_key: str, commit_sha: str, base_dir: str | None = 
         return None
 
 
-def index_exists(*, repo_key: str, commit_sha: str, base_dir: str | None = None) -> bool:
+def index_exists(
+    *,
+    repo_key: str,
+    commit_sha: str,
+    repo_root: str | None = None,
+    base_dir: str | None = None,
+) -> bool:
     repo_key = (repo_key or "").strip()
     commit_sha = (commit_sha or "").strip()
     if not repo_key or not commit_sha:
         return False
-    base = Path(base_dir or "db/ast_index").expanduser().resolve()
+    base = Path(base_dir).expanduser().resolve() if base_dir else _default_index_base(repo_root=repo_root)
+    if repo_root:
+        _maybe_migrate_legacy_index(repo_key=repo_key, commit_sha=commit_sha, repo_root=repo_root, new_base=base)
     p = (base / repo_key / commit_sha / "symbols.json").resolve()
     return p.is_file()
 

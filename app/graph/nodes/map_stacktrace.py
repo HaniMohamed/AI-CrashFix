@@ -228,7 +228,7 @@ def parse_dart(
         try:
             from app.services.dart_symbol_index import load_symbol_index, lookup_symbol
 
-            index = load_symbol_index(repo_key=repo_key, commit_sha=head_sha)
+            index = load_symbol_index(repo_key=repo_key, commit_sha=head_sha, repo_root=repo_root)
         except Exception:
             index = None
 

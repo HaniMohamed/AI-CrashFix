@@ -90,7 +90,7 @@ PR generation is best-effort and will be skipped if `jira_issue_id` is missing.
 AI Crash Fix uses an on-demand Dart symbol index to improve stacktrace→file mapping.
 
 - **Build trigger**: index is built when you **add/update a repo** or **refresh a repo** in the UI.
-- **Cache**: stored under `db/ast_index/<repo_key>/<commit_sha>/symbols.json`.
+- **Cache**: stored under `workspace_projects/<target_project>/.aicrashfix/ast_index/<repo_key>/<commit_sha>/symbols.json`.
 
 In the web UI:
 - **Add/select repo**: use the topbar repo dropdown → **Add repo…** (or **Manage repositories**).
