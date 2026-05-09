@@ -70,3 +70,6 @@ frontend/.metadata
 
 
 frontend/pubspec.lock
+
+## workspace_projects
+workspace_projects/
