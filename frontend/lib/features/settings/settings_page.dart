@@ -45,8 +45,6 @@ class SettingsPage extends ConsumerWidget {
               const SizedBox(height: AppSpacing.xl),
               _ConnectionCard(settings: settings),
               const SizedBox(height: AppSpacing.lg),
-              _EditableBackendSettingsCard(async: backendSettings),
-              const SizedBox(height: AppSpacing.lg),
               Row(
                 children: [
                   Text('Backend configuration', style: theme.headlineMedium),
@@ -88,17 +86,9 @@ class SettingsPage extends ConsumerWidget {
                       data: cfg.section('crashlytics'),
                     ),
                     const SizedBox(height: AppSpacing.lg),
-                    _ConfigSection(
-                      title: 'Jira',
-                      icon: Icons.confirmation_number_outlined,
-                      data: cfg.section('jira'),
-                    ),
+                    _EditableJiraSection(async: backendSettings),
                     const SizedBox(height: AppSpacing.lg),
-                    _ConfigSection(
-                      title: 'GitLab',
-                      icon: Icons.merge_outlined,
-                      data: cfg.section('gitlab'),
-                    ),
+                    _EditableGitlabSection(async: backendSettings),
                   ],
                 ),
               ),
@@ -332,6 +322,264 @@ class _EditableBackendSettingsCardState
                         style: theme.bodySmall?.copyWith(
                           color: palette.textSecondary,
                         ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EditableJiraSection extends ConsumerStatefulWidget {
+  final AsyncValue<BackendSettingsState> async;
+  const _EditableJiraSection({required this.async});
+
+  @override
+  ConsumerState<_EditableJiraSection> createState() => _EditableJiraSectionState();
+}
+
+class _EditableJiraSectionState extends ConsumerState<_EditableJiraSection> {
+  late final TextEditingController _urlCtrl;
+  late final TextEditingController _tokenCtrl;
+  bool _didSync = false;
+  bool _saving = false;
+  String? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlCtrl = TextEditingController();
+    _tokenCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    _tokenCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+
+    return GlassCard(
+      child: widget.async.when(
+        loading: () => const ShimmerCard(height: 180),
+        error: (e, _) => ErrorBanner(
+          message: 'Failed to load Jira settings: $e',
+          onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
+        ),
+        data: (s) {
+          final jira = s.section('jira');
+          final hasToken = jira['has_token'] == true;
+          if (!_didSync) {
+            _didSync = true;
+            _urlCtrl.text = (jira['server_url'] ?? '').toString();
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.confirmation_number_outlined, color: palette.primary),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('Jira', style: theme.headlineSmall),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => ref.read(backendSettingsProvider.notifier).refresh(),
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _urlCtrl,
+                decoration: const InputDecoration(labelText: 'Server URL'),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _tokenCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Token',
+                  helperText: hasToken ? 'Token saved' : 'Not set',
+                ),
+                obscureText: true,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
+                children: [
+                  FilledButton(
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            setState(() {
+                              _saving = true;
+                              _result = null;
+                            });
+                            try {
+                              await ref.read(backendSettingsProvider.notifier).save({
+                                'jira': {
+                                  'server_url': _urlCtrl.text.trim(),
+                                  if (_tokenCtrl.text.trim().isNotEmpty) 'token': _tokenCtrl.text.trim(),
+                                },
+                              });
+                              if (!mounted) return;
+                              setState(() => _result = 'Saved.');
+                              _tokenCtrl.clear();
+                            } catch (e) {
+                              if (!mounted) return;
+                              setState(() => _result = e.toString());
+                            } finally {
+                              if (mounted) setState(() => _saving = false);
+                            }
+                          },
+                    child: Text(_saving ? 'Saving…' : 'Save'),
+                  ),
+                  if (_result != null) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(
+                        _result!,
+                        style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EditableGitlabSection extends ConsumerStatefulWidget {
+  final AsyncValue<BackendSettingsState> async;
+  const _EditableGitlabSection({required this.async});
+
+  @override
+  ConsumerState<_EditableGitlabSection> createState() => _EditableGitlabSectionState();
+}
+
+class _EditableGitlabSectionState extends ConsumerState<_EditableGitlabSection> {
+  late final TextEditingController _urlCtrl;
+  late final TextEditingController _tokenCtrl;
+  bool _didSync = false;
+  bool _saving = false;
+  String? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlCtrl = TextEditingController();
+    _tokenCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    _tokenCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+
+    return GlassCard(
+      child: widget.async.when(
+        loading: () => const ShimmerCard(height: 180),
+        error: (e, _) => ErrorBanner(
+          message: 'Failed to load GitLab settings: $e',
+          onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
+        ),
+        data: (s) {
+          final gl = s.section('gitlab');
+          final hasToken = gl['has_token'] == true;
+          if (!_didSync) {
+            _didSync = true;
+            _urlCtrl.text = (gl['server_url'] ?? '').toString();
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.merge_outlined, color: palette.primary),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('GitLab', style: theme.headlineSmall),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => ref.read(backendSettingsProvider.notifier).refresh(),
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _urlCtrl,
+                decoration: const InputDecoration(labelText: 'Server URL'),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _tokenCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Token',
+                  helperText: hasToken ? 'Token saved' : 'Not set',
+                ),
+                obscureText: true,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
+                children: [
+                  FilledButton(
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            setState(() {
+                              _saving = true;
+                              _result = null;
+                            });
+                            try {
+                              await ref.read(backendSettingsProvider.notifier).save({
+                                'gitlab': {
+                                  'server_url': _urlCtrl.text.trim(),
+                                  if (_tokenCtrl.text.trim().isNotEmpty) 'token': _tokenCtrl.text.trim(),
+                                },
+                              });
+                              if (!mounted) return;
+                              setState(() => _result = 'Saved.');
+                              _tokenCtrl.clear();
+                            } catch (e) {
+                              if (!mounted) return;
+                              setState(() => _result = e.toString());
+                            } finally {
+                              if (mounted) setState(() => _saving = false);
+                            }
+                          },
+                    child: Text(_saving ? 'Saving…' : 'Save'),
+                  ),
+                  if (_result != null) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(
+                        _result!,
+                        style: theme.bodySmall?.copyWith(color: palette.textSecondary),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
