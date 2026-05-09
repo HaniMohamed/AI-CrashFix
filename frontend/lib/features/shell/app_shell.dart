@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/providers/analytics_provider.dart';
 import '../../core/providers/crashes_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
+import '../dashboard/dashboard_page.dart';
 import 'sidebar.dart';
 import 'topbar.dart';
+import 'repo_manage_dialog.dart';
 
 /// Layout chrome shared by all top-level routes. Sidebar collapses on small
 /// screens; topbar carries health pill, theme toggle, and base URL popover.
@@ -24,6 +26,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _userCollapsed = false;
+  bool _forcedDialogOpen = false;
 
   @override
   void initState() {
@@ -60,6 +63,69 @@ class _AppShellState extends ConsumerState<AppShell> {
         });
       },
     );
+
+    final repoAsync = ref.watch(repoRegistryProvider);
+    final hasRepos = repoAsync.valueOrNull?.repos.isNotEmpty == true;
+
+    // Hard gate: if no repos configured, keep the user in onboarding and block navigation,
+    // even if they opened the app via a deep link.
+    if (repoAsync.hasValue && !hasRepos) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        // Force dashboard behind the dialog; deep links must not be usable before onboarding.
+        if (widget.currentPath != '/') {
+          context.go('/');
+        }
+        if (_forcedDialogOpen) return;
+        _forcedDialogOpen = true;
+        try {
+          await showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => ManageReposDialog(
+              allowClose: false,
+              onDelete: (repoKey, repoName) async {
+                // Deletion is allowed, but there shouldn't be any repos here anyway.
+                // Keep signature compatible with the dialog.
+              },
+            ),
+          );
+        } finally {
+          if (mounted) _forcedDialogOpen = false;
+        }
+      });
+
+      // Keep the app UI (dashboard) as the background so the dialog doesn't sit on a blank/black page.
+      // Block ALL background interaction until a repo is added.
+      return PopScope(
+        canPop: false,
+        child: Stack(
+          children: [
+            AbsorbPointer(
+              absorbing: true,
+              child: Scaffold(
+                body: Row(
+                  children: [
+                    // Show the normal chrome, but disable it via AbsorbPointer.
+                    if (MediaQuery.sizeOf(context).width >= 720)
+                      AppSidebar(currentPath: '/', collapsed: false),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          AppTopbar(onToggleSidebar: () {}),
+                          const Expanded(child: DashboardPage()),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const ModalBarrier(dismissible: false, color: Colors.transparent),
+          ],
+        ),
+      );
+    }
 
     final width = MediaQuery.sizeOf(context).width;
     final autoCollapse = width < 1100;

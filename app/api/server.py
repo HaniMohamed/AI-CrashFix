@@ -232,6 +232,9 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             firebase_project_id=req.firebase_project_id,
             access_token=req.access_token,
         )
+        # Create the per-repo crash DB immediately (schema included) so users see it
+        # right after adding the repo (not only after starting a run).
+        CrashStore(repo_key=entry.repo_key, project_id=entry.firebase_project_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:

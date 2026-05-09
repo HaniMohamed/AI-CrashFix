@@ -6,7 +6,12 @@ import '../../core/providers/repo_registry_provider.dart';
 
 class ManageReposDialog extends ConsumerStatefulWidget {
   final Future<void> Function(String repoKey, String repoName) onDelete;
-  const ManageReposDialog({super.key, required this.onDelete});
+  final bool allowClose;
+  const ManageReposDialog({
+    super.key,
+    required this.onDelete,
+    this.allowClose = true,
+  });
 
   @override
   ConsumerState<ManageReposDialog> createState() => _ManageReposDialogState();
@@ -404,10 +409,11 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
+        if (widget.allowClose)
+          TextButton(
+            onPressed: _saving ? null : () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         FilledButton(
           onPressed: !canSave
               ? null

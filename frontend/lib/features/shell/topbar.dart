@@ -64,8 +64,6 @@ class _RepoPicker extends ConsumerStatefulWidget {
 }
 
 class _RepoPickerState extends ConsumerState<_RepoPicker> {
-  bool _autoOpened = false;
-
   Future<void> _confirmDeleteRepo({
     required String repoKey,
     required String repoName,
@@ -79,14 +77,16 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
     );
   }
 
-  Future<void> _openManageDialog() async {
+  Future<void> _openManageDialog({bool allowClose = true}) async {
     await showDialog<void>(
       context: context,
+      barrierDismissible: allowClose,
       builder: (ctx) => ManageReposDialog(
         onDelete: (repoKey, repoName) => _confirmDeleteRepo(
           repoKey: repoKey,
           repoName: repoName,
         ),
+        allowClose: allowClose,
       ),
     );
   }
@@ -112,13 +112,8 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
         onPressed: _openManageDialog,
       ),
       data: (data) {
-        if (!_autoOpened && data.repos.isEmpty) {
-          _autoOpened = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) async {
-            if (!mounted) return;
-            await _openManageDialog();
-          });
-        }
+        // NOTE: First-run onboarding is enforced globally by `AppShell` (non-dismissible),
+        // so the topbar must not auto-open a second, dismissible dialog.
 
         final active = data.active;
         final label = (active?.name.trim().isNotEmpty ?? false) ? active!.name : 'Select repo';
