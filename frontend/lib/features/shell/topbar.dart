@@ -6,6 +6,7 @@ import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/providers/health_provider.dart';
+import '../../core/providers/repo_registry_provider.dart';
 
 class AppTopbar extends ConsumerWidget {
   final VoidCallback onToggleSidebar;
@@ -15,6 +16,7 @@ class AppTopbar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
     final settings = ref.watch(appSettingsProvider).requireValue;
+    final reposAsync = ref.watch(repoRegistryProvider);
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -32,6 +34,8 @@ class AppTopbar extends ConsumerWidget {
           const SizedBox(width: AppSpacing.sm),
           _SearchOrTitle(),
           const Spacer(),
+          _RepoPicker(async: reposAsync),
+          const SizedBox(width: AppSpacing.md),
           const _HealthPill(),
           const SizedBox(width: AppSpacing.md),
           _BaseUrlPopover(currentUrl: settings.apiBaseUrl),
@@ -45,6 +49,178 @@ class AppTopbar extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RepoPicker extends ConsumerStatefulWidget {
+  final AsyncValue<RepoRegistryState> async;
+  const _RepoPicker({required this.async});
+
+  @override
+  ConsumerState<_RepoPicker> createState() => _RepoPickerState();
+}
+
+class _RepoPickerState extends ConsumerState<_RepoPicker> {
+  Future<void> _openManageDialog() async {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+    final refCtrl = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: palette.surface2,
+        title: Text('Manage repositories', style: theme.titleLarge),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Display name'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: urlCtrl,
+                decoration: const InputDecoration(labelText: 'Remote repo URL'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: refCtrl,
+                decoration: const InputDecoration(labelText: 'Git ref (optional)'),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Saving here stores the repo in the backend SQLite registry.',
+                style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ref.read(repoRegistryProvider.notifier).upsertRepo(
+                    name: nameCtrl.text.trim(),
+                    repoUrl: urlCtrl.text.trim(),
+                    repoRef: refCtrl.text.trim().isEmpty ? null : refCtrl.text.trim(),
+                  );
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    nameCtrl.dispose();
+    urlCtrl.dispose();
+    refCtrl.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+
+    return widget.async.when(
+      loading: () => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: palette.surface2,
+          border: Border.all(color: palette.border),
+          borderRadius: AppRadii.all(AppRadii.pill),
+        ),
+        child: Text('Repo…', style: theme.labelMedium?.copyWith(color: palette.textMuted)),
+      ),
+      error: (_, _) => OutlinedButton.icon(
+        icon: const Icon(Icons.source_outlined, size: 16),
+        label: const Text('Repo'),
+        onPressed: _openManageDialog,
+      ),
+      data: (data) {
+        final active = data.active;
+        final label = (active?.name.trim().isNotEmpty ?? false) ? active!.name : 'Select repo';
+        return PopupMenuButton<String>(
+          tooltip: 'Repository',
+          position: PopupMenuPosition.under,
+          color: palette.surface2,
+          shape: RoundedRectangleBorder(borderRadius: AppRadii.all(AppRadii.md)),
+          onSelected: (v) async {
+            if (v == '__manage__') {
+              await _openManageDialog();
+              return;
+            }
+            await ref.read(repoRegistryProvider.notifier).selectRepo(v);
+            // Repo changed: refresh repo-scoped screens.
+            ref.invalidate(repoRegistryProvider);
+            // Other providers will be invalidated by app shell logic or by explicit wiring later.
+          },
+          itemBuilder: (ctx) => [
+            for (final r in data.repos)
+              PopupMenuItem<String>(
+                value: r.repoKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.name, style: theme.bodyMedium),
+                    Text(
+                      r.repoUrl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.labelSmall?.copyWith(color: palette.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            const PopupMenuDivider(),
+            const PopupMenuItem<String>(
+              value: '__manage__',
+              child: Row(
+                children: [
+                  Icon(Icons.add, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add repo…'),
+                ],
+              ),
+            ),
+          ],
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: palette.surface2,
+              border: Border.all(color: palette.border),
+              borderRadius: AppRadii.all(AppRadii.pill),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.source_outlined, size: 14, color: palette.textSecondary),
+                const SizedBox(width: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.labelMedium?.copyWith(color: palette.text),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.expand_more, size: 16, color: palette.textMuted),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -27,7 +27,7 @@ _FUNNEL_COLUMNS: Tuple[str, ...] = (
     "mr_created",
 )
 
-# Five-second TTL cache keyed by db path.
+# Five-second TTL cache keyed by db path (repo-scoped crash DB).
 _CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _CACHE_TTL_SECONDS = 5.0
 

@@ -63,6 +63,7 @@ def _initial_state_for_crash(
     repo_root: str | None,
     repo_url: str | None,
     repo_ref: str | None,
+    repo_key: str | None,
 ) -> Dict[str, Any]:
     return {
         "graph_run_id": run_id,
@@ -72,6 +73,7 @@ def _initial_state_for_crash(
         "repo_root": repo_root,
         "repo_url": repo_url,
         "repo_ref": repo_ref,
+        "repo_key": repo_key,
         "crash_id": crash.get("crash_id") or "",
         "exception": crash.get("exception") or "",
         "stacktrace": crash.get("stacktrace") or [],
@@ -149,8 +151,6 @@ def stream_run(
         crash_id: required when ``mode="single"``; Crashlytics issue id to load.
     """
     graph = build_graph()
-    crash_store = CrashStore()
-
     batch_state: Dict[str, Any] = {}
     run_id = ensure_run_id(batch_state)
 
@@ -158,16 +158,21 @@ def stream_run(
     resolved_repo_root: str | None = None
     resolved_repo_url: str | None = (repo_url or "").strip() or None
     resolved_repo_ref: str | None = (repo_ref or "").strip() or None
+    resolved_repo_key: str | None = None
     if resolved_repo_url:
         from app.services.project_service import ProjectService
 
         proj = ProjectService().prepare_repo(repo_url=resolved_repo_url, repo_ref=resolved_repo_ref)
         resolved_repo_root = proj.repo_root
+        resolved_repo_key = proj.project_id
     else:
         # Back-compat: allow env REPO_ROOT, but UI should prefer repo_url.
         from app import config as cfg
 
         resolved_repo_root = (cfg.REPO_ROOT or "").strip() or None
+        resolved_repo_key = None
+
+    crash_store = CrashStore(repo_key=resolved_repo_key) if resolved_repo_key else CrashStore()
 
     # NOTE: Must be a thread-safe queue. Subgraph node events can be emitted while
     # `graph.stream(...)` is blocked inside a long-running node; we still want to
@@ -196,6 +201,7 @@ def stream_run(
                 "repo_url": resolved_repo_url,
                 "repo_ref": resolved_repo_ref,
                 "repo_root": resolved_repo_root,
+                "repo_key": resolved_repo_key,
             },
         }
 
@@ -209,6 +215,10 @@ def stream_run(
                 skip_jira_creation=skip_jira_creation,
                 crash_ids=crash_ids,
                 pending=pending,
+                repo_root=resolved_repo_root,
+                repo_url=resolved_repo_url,
+                repo_ref=resolved_repo_ref,
+                repo_key=resolved_repo_key,
             )
         elif mode == "single":
             cid = (crash_id or "").strip()
@@ -258,6 +268,10 @@ def stream_run(
                 mock=mock,
                 skip_jira_creation=skip_jira_creation,
                 pending=pending,
+                repo_root=resolved_repo_root,
+                repo_url=resolved_repo_url,
+                repo_ref=resolved_repo_ref,
+                repo_key=resolved_repo_key,
             )
         else:
             yield {
@@ -303,6 +317,10 @@ def _run_batch(
     skip_jira_creation: bool,
     crash_ids: Optional[List[str]],
     pending: queue.Queue[Dict[str, Any]],
+    repo_root: str | None,
+    repo_url: str | None,
+    repo_ref: str | None,
+    repo_key: str | None,
 ) -> Iterator[Dict[str, Any]]:
     service = CrashlyticsService(mock=mock)
 
@@ -375,9 +393,10 @@ def _run_batch(
             run_id=run_id,
             skip_jira_creation=skip_jira_creation,
             mock=mock,
-            repo_root=resolved_repo_root,
-            repo_url=resolved_repo_url,
-            repo_ref=resolved_repo_ref,
+            repo_root=repo_root,
+            repo_url=repo_url,
+            repo_ref=repo_ref,
+            repo_key=repo_key,
         )
         yield from _stream_one_crash(
             graph=graph,
@@ -408,6 +427,10 @@ def _run_single(
     mock: bool,
     skip_jira_creation: bool,
     pending: queue.Queue[Dict[str, Any]],
+    repo_root: str | None,
+    repo_url: str | None,
+    repo_ref: str | None,
+    repo_key: str | None,
 ) -> Iterator[Dict[str, Any]]:
     crash_id = (crash.get("crash_id") or "").strip()
     if crash_id:
@@ -418,9 +441,10 @@ def _run_single(
         run_id=run_id,
         skip_jira_creation=skip_jira_creation,
         mock=mock,
-        repo_root=resolved_repo_root,
-        repo_url=resolved_repo_url,
-        repo_ref=resolved_repo_ref,
+        repo_root=repo_root,
+        repo_url=repo_url,
+        repo_ref=repo_ref,
+        repo_key=repo_key,
     )
 
     counters = {"processed": 0, "skipped": 0, "deduped": 0, "failed": 0}

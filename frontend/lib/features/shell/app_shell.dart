@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/providers/analytics_provider.dart';
 import '../../core/providers/crashes_provider.dart';
+import '../../core/providers/repo_registry_provider.dart';
 import 'sidebar.dart';
 import 'topbar.dart';
 
@@ -23,6 +24,14 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _userCollapsed = false;
+  String? _lastRepoKey;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final k = ref.watch(repoRegistryProvider).valueOrNull?.active?.repoKey;
+    _lastRepoKey ??= k;
+  }
 
   @override
   void didUpdateWidget(AppShell oldWidget) {
@@ -42,6 +51,20 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // When repo changes, reload all repo-scoped screens.
+    final activeRepoKey = ref.watch(repoRegistryProvider).valueOrNull?.active?.repoKey;
+    if (_lastRepoKey != null && activeRepoKey != null && activeRepoKey != _lastRepoKey) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(analyticsProvider.notifier).refresh();
+        ref.invalidate(crashesProvider);
+        // MRs page provider is declared in the page file; invalidated when page is built.
+      });
+      _lastRepoKey = activeRepoKey;
+    } else {
+      _lastRepoKey = activeRepoKey;
+    }
+
     final width = MediaQuery.sizeOf(context).width;
     final autoCollapse = width < 1100;
     final hideSidebar = width < 720;

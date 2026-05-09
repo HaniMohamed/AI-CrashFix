@@ -6,9 +6,6 @@ from app.services.crash_store import CrashStore
 from app.utils.fix_json import fix_corrupted_json
 from app.utils.llm_helpers import parse_json
 
-crash_store = CrashStore()
-
-
 def _normalize_unified_diff_fix(fix: str | None) -> str | None:
     """Strip accidental markdown fences from the JSON 'fix' field."""
     if fix is None:
@@ -73,6 +70,7 @@ def generate_fix_node(state: CrashState):
 
     cid = state.get("crash_id")
     if cid and normalized and str(normalized).lower() != "insufficient evidence":
-        crash_store.set_pipeline_flags(cid, fix_generated=True)
+        repo_key = (state.get("repo_key") or "").strip() or None
+        CrashStore(repo_key=repo_key).set_pipeline_flags(cid, fix_generated=True)
 
     return state

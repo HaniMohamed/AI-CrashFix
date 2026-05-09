@@ -8,6 +8,7 @@ import '../api/ndjson_client.dart';
 import '../models/run_event.dart';
 import '../models/run_request.dart';
 import 'api_provider.dart';
+import 'repo_registry_provider.dart';
 
 enum RunStatus { idle, starting, running, completed, failed }
 
@@ -126,7 +127,12 @@ class RunSessionNotifier extends Notifier<RunSession> {
     );
 
     try {
-      final stream = streamNdjsonPost(_client!, Endpoints.runs, body: req.toJson());
+      final active = ref.read(repoRegistryProvider).valueOrNull?.active;
+      final body = req.copyWith(
+        repoUrl: active?.repoUrl,
+        repoRef: active?.repoRef,
+      );
+      final stream = streamNdjsonPost(_client!, Endpoints.runs, body: body.toJson());
       _sub = stream.listen(
         _handleRaw,
         onError: (Object e, StackTrace _) {

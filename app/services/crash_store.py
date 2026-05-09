@@ -30,15 +30,27 @@ class CrashStore:
     ``CrashStore()`` on another thread.
     """
 
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, db_path: str | None = None, *, repo_key: str | None = None):
         # Priority:
         # 1) Explicit arg
         # 2) AI_CRASH_FIX_DB_PATH env var
         # 3) Default per environment (repo-local for dev, Application Support for frozen apps)
-        db_path = db_path or (os.environ.get("AI_CRASH_FIX_DB_PATH") or "").strip() or None
-        if not db_path:
+        #
+        # If repo_key is provided, the default becomes db/<BQ_PROJECT_ID>_<repo_key>_crash_store.db
+        env_db = (os.environ.get("AI_CRASH_FIX_DB_PATH") or "").strip() or None
+        repo_key = (repo_key or "").strip() or None
+
+        if db_path:
+            resolved = db_path
+        elif env_db:
+            resolved = env_db
+        elif repo_key:
+            resolved = f"db/{BQ_PROJECT_ID}_{repo_key}_crash_store.db"
+        else:
+            resolved = None
+        if not resolved:
             if sys.platform == "darwin" and bool(getattr(sys, "frozen", False)):
-                db_path = str(
+                resolved = str(
                     Path.home()
                     / "Library"
                     / "Application Support"
@@ -46,9 +58,9 @@ class CrashStore:
                     / f"{BQ_PROJECT_ID}_crash_store.db"
                 )
             else:
-                db_path = f"db/{BQ_PROJECT_ID}_crash_store.db"
+                resolved = f"db/{BQ_PROJECT_ID}_crash_store.db"
 
-        path = Path(db_path).expanduser().resolve()
+        path = Path(resolved).expanduser().resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(path)
         self._ensure_schema()

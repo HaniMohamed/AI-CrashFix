@@ -2,8 +2,6 @@
 from app.services.jira_service import create_jira_issue
 from app.services.crash_store import CrashStore
 
-crash_store = CrashStore()
-
 def jira_create(state):
     crash_id = state.get("crash_id")
     exception = state.get("exception")
@@ -63,7 +61,8 @@ def jira_create(state):
     state["jira_issue_id"] = issue.get("id")
     cid = state.get("crash_id")
     if cid and state.get("jira_issue_id"):
-        crash_store.set_pipeline_flags(
+        repo_key = (state.get("repo_key") or "").strip() or None
+        CrashStore(repo_key=repo_key).set_pipeline_flags(
             cid,
             jira_created=True,
             jira_issue_id=str(state["jira_issue_id"]),

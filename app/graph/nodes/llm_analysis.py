@@ -5,7 +5,6 @@ from app.prompts.prompts import SYSTEM_PROMPT, USER_PROMPT
 from app.utils.llm_helpers import parse_json, extract_top_commits
 
 llm = LLMService()
-crash_store = CrashStore()
 
 
 def llm_analysis(state):
@@ -30,6 +29,7 @@ def llm_analysis(state):
 
     cid = state.get("crash_id")
     if cid:
-        crash_store.set_pipeline_flags(cid, analysis_done=True)
+        repo_key = (state.get("repo_key") or "").strip() or None
+        CrashStore(repo_key=repo_key).set_pipeline_flags(cid, analysis_done=True)
 
     return state

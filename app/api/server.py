@@ -32,6 +32,7 @@ from app.api.analytics import compute_analytics
 from app.api.events import ERROR, to_ndjson
 from app.api.runner import stream_run
 from app.services.crash_store import CrashStore
+from app.services.repo_registry_store import RepoRegistryStore
 
 
 app = FastAPI(
@@ -89,6 +90,20 @@ class RunRequest(BaseModel):
         None,
         description="Optional: git ref to checkout after cloning (branch, tag, or commit).",
     )
+    repo_key: Optional[str] = Field(
+        None,
+        description="Optional: stable repo key. If set, the backend resolves repo_url/ref from the repo registry.",
+    )
+
+
+class RepoUpsertRequest(BaseModel):
+    name: str = Field(..., description="User-visible name for this repository.")
+    repo_url: str = Field(..., description="Remote git repo URL.")
+    repo_ref: Optional[str] = Field(None, description="Optional git ref (branch/tag/commit).")
+
+
+class RepoSelectRequest(BaseModel):
+    repo_key: str = Field(..., description="repo_key to mark as active.")
 
 
 # ---- Endpoints -------------------------------------------------------------
@@ -127,8 +142,10 @@ async def list_crashes(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     include_result: bool = Query(False, description="parse and include the result JSON"),
+    repo_key: Optional[str] = Query(None, description="Scope crashes to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
-    store = CrashStore()
+    key = _resolve_repo_key(repo_key)
+    store = CrashStore(repo_key=key) if key else CrashStore()
     rows = store.list_crashes(
         status=status,
         limit=limit,
@@ -139,8 +156,12 @@ async def list_crashes(
 
 
 @app.get("/api/crashes/{crash_id}")
-async def get_crash(crash_id: str) -> Dict[str, Any]:
-    store = CrashStore()
+async def get_crash(
+    crash_id: str,
+    repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
+) -> Dict[str, Any]:
+    key = _resolve_repo_key(repo_key)
+    store = CrashStore(repo_key=key) if key else CrashStore()
     row = store.get_crash(crash_id, include_result=True)
     if row is None:
         raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
@@ -150,9 +171,47 @@ async def get_crash(crash_id: str) -> Dict[str, Any]:
 @app.get("/api/analytics")
 async def get_analytics(
     no_cache: bool = Query(False, description="Bypass the 5s in-process cache"),
+    repo_key: Optional[str] = Query(None, description="Scope analytics to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
-    store = CrashStore()
+    key = _resolve_repo_key(repo_key)
+    store = CrashStore(repo_key=key) if key else CrashStore()
     return compute_analytics(store, use_cache=not no_cache)
+
+
+@app.get("/api/repos")
+async def list_repos() -> Dict[str, Any]:
+    reg = RepoRegistryStore()
+    items = [e.__dict__ for e in reg.list_repos()]
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/repos")
+async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
+    reg = RepoRegistryStore()
+    try:
+        entry = reg.upsert_repo(name=req.name, repo_url=req.repo_url, repo_ref=req.repo_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return entry.__dict__
+
+
+@app.get("/api/repos/active")
+async def get_active_repo() -> Dict[str, Any]:
+    reg = RepoRegistryStore()
+    active = reg.get_active_repo()
+    return {"active": (active.__dict__ if active else None)}
+
+
+@app.post("/api/repos/select")
+async def select_repo(req: RepoSelectRequest) -> Dict[str, Any]:
+    reg = RepoRegistryStore()
+    try:
+        entry = reg.set_active_repo(req.repo_key)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"active": entry.__dict__}
 
 
 @app.get("/api/config")
@@ -226,8 +285,8 @@ async def _ndjson_stream(req: RunRequest) -> AsyncIterator[bytes]:
                 skip_jira_creation=req.skip_jira_creation,
                 crash_ids=req.crash_ids,
                 crash_id=(req.crash_id or "").strip() or None,
-                repo_url=(req.repo_url or "").strip() or None,
-                repo_ref=(req.repo_ref or "").strip() or None,
+                repo_url=_run_repo_url(req),
+                repo_ref=_run_repo_ref(req),
             ):
                 fut = asyncio.run_coroutine_threadsafe(queue.put(ev), loop)
                 fut.result()  # propagate back-pressure / cancellation
@@ -262,3 +321,34 @@ async def _ndjson_stream(req: RunRequest) -> AsyncIterator[bytes]:
         if item is sentinel:
             break
         yield to_ndjson(item)
+
+
+def _resolve_repo_key(explicit: str | None) -> str | None:
+    key = (explicit or "").strip() or None
+    if key:
+        return key
+    return RepoRegistryStore().get_active_repo_key()
+
+
+def _run_repo_url(req: RunRequest) -> str | None:
+    # Priority: explicit repo_url in request > resolve from repo_key > None
+    if (req.repo_url or "").strip():
+        return (req.repo_url or "").strip()
+    if (req.repo_key or "").strip():
+        reg = RepoRegistryStore()
+        entry = reg.get_repo((req.repo_key or "").strip())
+        if entry:
+            return entry.repo_url
+    return None
+
+
+def _run_repo_ref(req: RunRequest) -> str | None:
+    # Priority: explicit repo_ref in request > resolve from repo_key > None
+    if (req.repo_ref or "").strip():
+        return (req.repo_ref or "").strip()
+    if (req.repo_key or "").strip():
+        reg = RepoRegistryStore()
+        entry = reg.get_repo((req.repo_key or "").strip())
+        if entry:
+            return entry.repo_ref
+    return None

@@ -9,6 +9,7 @@ import '../../app/theme/spacing.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/models/crash.dart';
 import '../../core/providers/api_provider.dart';
+import '../../core/providers/repo_registry_provider.dart';
 import '../../shared/widgets/error_banner.dart';
 
 /// Strips boilerplate prefixes and leading crash hashes so titles read like a headline.
@@ -77,10 +78,12 @@ MarkdownStyleSheet mrMarkdownStyleSheet(ThemeData theme, AppPalette palette) {
 
 final generatedMrsProvider = FutureProvider.autoDispose<List<Crash>>((ref) async {
   final api = ref.watch(apiClientProvider);
+  final repo = ref.watch(repoRegistryProvider).valueOrNull?.active;
   final res = await api.getJson(Endpoints.crashes, query: {
     'limit': 500,
     'offset': 0,
     'include_result': 1,
+    if (repo != null) 'repo_key': repo.repoKey,
   });
   final j = (res as Map).cast<String, dynamic>();
   final items = (j['items'] as List? ?? const [])
