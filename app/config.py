@@ -34,10 +34,28 @@ def _load_env() -> None:
 
 _load_env()
 
+def _data_dir() -> Path | None:
+    raw = (os.getenv("AI_CRASH_FIX_DATA_DIR") or "").strip()
+    if not raw:
+        return None
+    try:
+        return Path(raw).expanduser().resolve()
+    except Exception:
+        return None
+
+
 REPO_ROOT = os.getenv("REPO_ROOT", os.getcwd())
 MAIN_BRANCH = os.getenv("MAIN_BRANCH", "main")
 # Where user-provided remote repos are cloned for analysis runs.
-WORKSPACE_PROJECTS_DIR = os.getenv("WORKSPACE_PROJECTS_DIR", "workspace_projects").strip() or "workspace_projects"
+_workspace_raw = (os.getenv("WORKSPACE_PROJECTS_DIR") or "").strip() or None
+if _workspace_raw:
+    WORKSPACE_PROJECTS_DIR = _workspace_raw
+else:
+    base = _data_dir()
+    if base is not None:
+        WORKSPACE_PROJECTS_DIR = str((base / "workspace_projects").resolve())
+    else:
+        WORKSPACE_PROJECTS_DIR = "workspace_projects"
 
 # Optional: monorepo packages directory.
 # This directory is expected to contain child package directories, each with its own `lib/`:

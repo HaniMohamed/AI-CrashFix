@@ -53,10 +53,12 @@ IOS_ROOT = "ios"
 def run_rg_search(query: str, *, repo_root: str) -> str:
     """Fallback search using ripgrep"""
     try:
+        rg_path = (os.getenv("AI_CRASH_FIX_RG_PATH") or "").strip() or "rg"
         result = subprocess.check_output(
-            ["rg", "--files-with-matches", query],
+            [rg_path, "--files-with-matches", query],
             cwd=repo_root,
-            text=True
+            text=True,
+            stderr=subprocess.STDOUT,
         )
         return result.splitlines()[0] if result else None
     except Exception:

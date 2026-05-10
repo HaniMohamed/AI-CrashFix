@@ -20,16 +20,36 @@ PROJECT_ROOT = Path.cwd().resolve()
 hiddenimports = []
 hiddenimports += collect_submodules("app")
 
+datas = []
+
+# Bundle Flutter Web build output (served by FastAPI when frozen).
+# Expected path: frontend/build/web/index.html
+web_root = PROJECT_ROOT / "frontend" / "build" / "web"
+if (web_root / "index.html").is_file():
+    datas.append((str(web_root), "web"))
+
 a = Analysis(
     [str(PROJECT_ROOT / "backend_main.py")],
     pathex=[str(PROJECT_ROOT)],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # PyInstaller cannot freeze an env with multiple Qt bindings installed.
+    # Our backend doesn't use Qt; exclude all Qt bindings/hooks that might be present
+    # in a developer machine's global environment.
+    excludes=[
+        "PyQt5",
+        "PyQt6",
+        "PySide2",
+        "PySide6",
+        "qtpy",
+        "sip",
+        "shiboken2",
+        "shiboken6",
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=None,

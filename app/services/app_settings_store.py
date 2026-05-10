@@ -9,6 +9,16 @@ from pathlib import Path
 from typing import Any
 
 
+def _data_dir() -> Path | None:
+    raw = (os.environ.get("AI_CRASH_FIX_DATA_DIR") or "").strip()
+    if not raw:
+        return None
+    try:
+        return Path(raw).expanduser().resolve()
+    except Exception:
+        return None
+
+
 @dataclass(frozen=True)
 class AppSettingsSnapshot:
     # LLM
@@ -50,7 +60,11 @@ class AppSettingsStore:
     def __init__(self, db_path: str | None = None) -> None:
         path = (db_path or os.environ.get("AI_CRASH_FIX_REPO_REGISTRY_DB") or "").strip()
         if not path:
-            path = "db/repo_registry.db"
+            base = _data_dir()
+            if base is not None:
+                path = os.fspath((base / "db" / "repo_registry.db").resolve())
+            else:
+                path = "db/repo_registry.db"
         p = Path(path).expanduser().resolve()
         p.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(p)

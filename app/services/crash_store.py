@@ -69,6 +69,18 @@ class CrashStore:
             else:
                 resolved = f"db/{resolved_project}_crash_store.db"
 
+        # If a data dir is provided (launcher / packaged app), store DBs under it
+        # instead of relative to the process cwd.
+        data_dir = (os.environ.get("AI_CRASH_FIX_DATA_DIR") or "").strip()
+        if data_dir:
+            try:
+                base = Path(data_dir).expanduser().resolve()
+                rp = Path(resolved)
+                if not rp.is_absolute():
+                    resolved = os.fspath((base / rp).resolve())
+            except Exception:
+                pass
+
         path = Path(resolved).expanduser().resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(path)
