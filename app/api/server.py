@@ -25,12 +25,14 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.staticfiles import StaticFiles
 
 from app.api.analytics import compute_analytics
 from app.api.events import ERROR, to_ndjson
@@ -698,6 +700,43 @@ async def upload_google_credentials(file: UploadFile = File(...)) -> Dict[str, A
 
     AppSettingsStore().set(k="GOOGLE_APPLICATION_CREDENTIALS", v=str(target))
     return {"uploaded": True, "path": str(target)}
+
+
+def _resolve_web_root() -> Path | None:
+    """
+    Return the directory containing the built Flutter Web app (must include index.html),
+    or None when running backend-only (e.g. dev server without a frontend build).
+    """
+    explicit = (os.getenv("AI_CRASH_FIX_WEB_ROOT") or "").strip()
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit))
+
+    # Frozen app (PyInstaller): ship assets as a top-level "web/" directory.
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(str(meipass)) / "web")
+
+    # Dev/repo layout: frontend/build/web
+    try:
+        repo_root = Path(__file__).resolve().parents[2]
+        candidates.append(repo_root / "frontend" / "build" / "web")
+    except Exception:
+        pass
+
+    for p in candidates:
+        try:
+            if p.is_dir() and (p / "index.html").is_file():
+                return p
+        except Exception:
+            continue
+    return None
+
+
+_web_root = _resolve_web_root()
+if _web_root is not None:
+    # Mount last so /api/* routes still match first.
+    app.mount("/", StaticFiles(directory=str(_web_root), html=True), name="ui")
 
 
 # ---- internals -------------------------------------------------------------
