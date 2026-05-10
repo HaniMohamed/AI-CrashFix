@@ -1,36 +1,94 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AI Crash Fix">
   <defs>
-    <linearGradient id="g" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#6366F1"/>
-      <stop offset="1" stop-color="#8B5CF6"/>
+    <linearGradient id="bg" x1="64" y1="72" x2="448" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1226"/>
+      <stop offset="1" stop-color="#070A14"/>
     </linearGradient>
-    <radialGradient id="glow" cx="180" cy="150" r="300" gradientUnits="userSpaceOnUse">
+
+    <radialGradient id="orb" cx="190" cy="170" r="310" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A7F3D0"/>
+      <stop offset="0.35" stop-color="#22D3EE"/>
+      <stop offset="0.72" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </radialGradient>
+
+    <radialGradient id="orbGlow" cx="220" cy="190" r="260" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
       <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.06"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
     </radialGradient>
-    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.35"/>
+
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
     </filter>
   </defs>
 
   <!-- Background -->
-  <rect width="512" height="512" rx="120" fill="#0A0E1A"/>
-  <rect x="40" y="40" width="432" height="432" rx="108" fill="url(#g)"/>
-  <rect x="40" y="40" width="432" height="432" rx="108" fill="url(#glow)"/>
+  <rect width="512" height="512" rx="120" fill="url(#bg)"/>
 
-  <!-- Bolt mark -->
+  <!-- AI core orb -->
+  <g filter="url(#shadow)">
+    <circle cx="256" cy="256" r="176" fill="url(#orb)"/>
+    <circle cx="256" cy="256" r="176" fill="url(#orbGlow)"/>
+  </g>
+
+  <!-- Crash seam (subtle break) -->
   <path
-    filter="url(#softShadow)"
-    fill="#0A0E1A"
-    d="M291 84c7 0 11 7 8 13l-42 92h78c8 0 12 8 8 14L222 428c-4 7-15 5-16-3l-8-137H132c-8 0-12-8-8-14L275 90c2-4 6-6 10-6h6z"
+    d="M172 202c26-20 56-30 88-30 44 0 82 20 112 54 12 13 28 20 44 22"
+    fill="none"
+    stroke="#071021"
+    stroke-opacity="0.55"
+    stroke-width="22"
+    stroke-linecap="round"
+  />
+  <path
+    d="M172 202c26-20 56-30 88-30 44 0 82 20 112 54 12 13 28 20 44 22"
+    fill="none"
+    stroke="#EAF2FF"
+    stroke-opacity="0.28"
+    stroke-width="10"
+    stroke-linecap="round"
   />
 
-  <!-- Inner highlight -->
+  <!-- Fix stitch (AI repair) -->
   <path
+    d="M188 212l42 34 42-40 42 52 42-34"
+    fill="none"
+    stroke="#0A0E1A"
+    stroke-opacity="0.55"
+    stroke-width="16"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M188 212l42 34 42-40 42 52 42-34"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-opacity="0.9"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- Neural nodes -->
+  <g fill="#FFFFFF" fill-opacity="0.95">
+    <circle cx="188" cy="212" r="10"/>
+    <circle cx="230" cy="246" r="10"/>
+    <circle cx="272" cy="206" r="10"/>
+    <circle cx="314" cy="258" r="10"/>
+    <circle cx="356" cy="224" r="10"/>
+  </g>
+
+  <!-- AI spark (inspiring accent) -->
+  <path
+    d="M362 140l12 30 30 12-30 12-12 30-12-30-30-12 30-12 12-30z"
     fill="#FFFFFF"
-    fill-opacity="0.18"
-    d="M290 112l-33 73h73L224 388l-5-91H148l142-185z"
+    fill-opacity="0.9"
+  />
+  <path
+    d="M396 116l6 15 15 6-15 6-6 15-6-15-15-6 15-6 6-15z"
+    fill="#FFFFFF"
+    fill-opacity="0.55"
   />
 </svg>
 

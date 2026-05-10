@@ -15,6 +15,11 @@ mkdir -p "${APP_DIR}/Contents/Resources/bin"
 # Info.plist
 cp "${ROOT_DIR}/packaging/macos/Info.plist" "${APP_DIR}/Contents/Info.plist"
 
+# Optional app icon
+if [[ -f "${ROOT_DIR}/packaging/macos/AppIcon.icns" ]]; then
+  cp "${ROOT_DIR}/packaging/macos/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
+fi
+
 # Build the launcher (no Xcode project required)
 swiftc \
   -O \

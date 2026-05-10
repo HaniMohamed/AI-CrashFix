@@ -37,6 +37,12 @@ class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
   static String defaultBaseUrl() {
     const fromDefine = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (fromDefine.isNotEmpty) return fromDefine;
+    if (kIsWeb) {
+      // When served by the backend (packaged app), default to same origin so
+      // dynamic ports work without manual configuration.
+      final origin = Uri.base.origin.trim();
+      if (origin.isNotEmpty) return origin;
+    }
     return 'http://localhost:8000';
   }
 

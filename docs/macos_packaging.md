@@ -47,6 +47,23 @@ Notes:
 Output:
 - `dist/AI-Crash-Fix.dmg`
 
+### App icon (optional but recommended)
+
+#### From the existing favicon.svg (recommended)
+
+```bash
+./scripts/macos_icon_from_svg.sh frontend/web/favicon.svg
+```
+
+#### From a custom PNG
+
+1) Provide a 1024×1024 PNG (transparent background recommended).
+2) Generate an `.icns`:
+```bash
+./scripts/macos_make_icns.sh path/to/icon_1024.png
+```
+This writes `packaging/macos/AppIcon.icns`, and `./scripts/build_macos_app.sh` will automatically embed it into the `.app`.
+
 ### 1) Build Flutter Web
 
 ```bash

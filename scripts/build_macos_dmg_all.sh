@@ -26,6 +26,19 @@ need_cmd flutter
 need_cmd swiftc
 need_cmd hdiutil
 
+# Generate the app icon (use the existing favicon.svg by default).
+#
+# If you want a different icon, pre-create packaging/macos/AppIcon.icns before running
+# this script and it will be used as-is.
+if [[ -f "frontend/web/favicon.svg" ]] && [[ ! -f "packaging/macos/AppIcon.icns" ]]; then
+  need_cmd qlmanage
+  need_cmd iconutil
+  need_cmd sips
+  echo "==> Generating AppIcon.icns from frontend/web/favicon.svg"
+  ./scripts/macos_icon_from_svg.sh "frontend/web/favicon.svg"
+  echo
+fi
+
 # Locate ripgrep to bundle.
 # Priority:
 # - RG_PATH env var

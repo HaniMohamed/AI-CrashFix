@@ -234,12 +234,115 @@ func openBrowser(url: String) {
   NSWorkspace.shared.open(u)
 }
 
+final class LauncherUI {
+  private let window: NSWindow
+  private let label: NSTextField
+  private let spinner: NSProgressIndicator
+
+  init() {
+    let size = NSSize(width: 420, height: 160)
+    window = NSWindow(
+      contentRect: NSRect(origin: .zero, size: size),
+      styleMask: [.titled, .closable],
+      backing: .buffered,
+      defer: false
+    )
+    window.title = "AI Crash Fix"
+    window.center()
+    window.isReleasedWhenClosed = false
+
+    let content = NSView(frame: NSRect(origin: .zero, size: size))
+    window.contentView = content
+
+    label = NSTextField(labelWithString: "Starting…")
+    label.font = NSFont.systemFont(ofSize: 14, weight: .medium)
+    label.frame = NSRect(x: 24, y: 90, width: size.width - 48, height: 22)
+    content.addSubview(label)
+
+    let sub = NSTextField(labelWithString: "This may take a few seconds on first launch.")
+    sub.textColor = .secondaryLabelColor
+    sub.frame = NSRect(x: 24, y: 66, width: size.width - 48, height: 18)
+    content.addSubview(sub)
+
+    spinner = NSProgressIndicator(frame: NSRect(x: 24, y: 24, width: 20, height: 20))
+    spinner.style = .spinning
+    spinner.controlSize = .regular
+    spinner.startAnimation(nil)
+    content.addSubview(spinner)
+
+    let hint = NSTextField(labelWithString: "Opening browser when ready…")
+    hint.textColor = .secondaryLabelColor
+    hint.frame = NSRect(x: 52, y: 24, width: size.width - 76, height: 20)
+    content.addSubview(hint)
+  }
+
+  func show() {
+    window.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+  }
+
+  func setStatus(_ s: String) {
+    label.stringValue = s
+  }
+
+  func showFailure(title: String, message: String) {
+    spinner.stopAnimation(nil)
+    label.stringValue = title
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = message
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+  }
+
+  func close() {
+    window.close()
+  }
+}
+
 // ---- main ----
+
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
 
 let res = resourcePath()
 let binDir = URL(fileURLWithPath: res).appendingPathComponent("bin", isDirectory: true).path
 let backendPath = Env.get("AI_CRASH_FIX_BACKEND_BIN") ?? (binDir + "/ai_crash_fix_backend")
 let rgPath = binDir + "/rg"
+
+final class OpenUiAction: NSObject {
+  let getBaseUrl: () -> String
+  init(getBaseUrl: @escaping () -> String) { self.getBaseUrl = getBaseUrl }
+  @objc func run() { openBrowser(url: getBaseUrl() + "/") }
+}
+
+final class QuitAction: NSObject {
+  let terminateBackend: () -> Void
+  init(terminateBackend: @escaping () -> Void) { self.terminateBackend = terminateBackend }
+  @objc func run() {
+    terminateBackend()
+    NSApp.terminate(nil)
+  }
+}
+
+func installMenuBar(getBaseUrl: @escaping () -> String, terminateBackend: @escaping () -> Void) {
+  let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+  statusItem.button?.title = "AI"
+  let menu = NSMenu()
+  let openAction = OpenUiAction(getBaseUrl: getBaseUrl)
+  let quitAction = QuitAction(terminateBackend: terminateBackend)
+  let openItem = NSMenuItem(title: "Open UI", action: #selector(OpenUiAction.run), keyEquivalent: "o")
+  openItem.target = openAction
+  let quitItem = NSMenuItem(title: "Quit", action: #selector(QuitAction.run), keyEquivalent: "q")
+  quitItem.target = quitAction
+  menu.addItem(openItem)
+  menu.addItem(NSMenuItem.separator())
+  menu.addItem(quitItem)
+  statusItem.menu = menu
+  // Keep actions alive by associating them with the status item button.
+  objc_setAssociatedObject(statusItem, "openAction", openAction, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+  objc_setAssociatedObject(statusItem, "quitAction", quitAction, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+}
 
 let port: Int
 do {
@@ -294,22 +397,72 @@ if let fh = try? FileHandle(forWritingTo: backendLogURL) {
   proc.standardError = fh
 }
 
-do {
-  try proc.run()
-} catch {
-  appendLine("Failed to start backend at \(backendExe): \(error)", to: logURL)
-  exit(1)
+let ui = LauncherUI()
+ui.setStatus("Starting backend…")
+ui.show()
+
+installMenuBar(
+  getBaseUrl: { baseURL },
+  terminateBackend: {
+    if proc.isRunning {
+      proc.terminate()
+    }
+  }
+)
+
+proc.terminationHandler = { p in
+  appendLine("Backend exited with code \(p.terminationStatus)", to: logURL)
+  DispatchQueue.main.async {
+    ui.showFailure(
+      title: "AI Crash Fix stopped",
+      message: "The backend process exited (code \(p.terminationStatus)).\n\nLogs:\n\(backendLogURL.path)"
+    )
+    NSApp.terminate(nil)
+  }
 }
 
-if !waitForHealth(baseURL: baseURL, timeoutSeconds: 20.0) {
-  appendLine("Backend did not become healthy in time. UI may not load.", to: logURL)
-  appendLine("See backend log at: \(backendLogURL.path)", to: logURL)
+DispatchQueue.global(qos: .userInitiated).async {
+  do {
+    try proc.run()
+  } catch {
+    appendLine("Failed to start backend at \(backendExe): \(error)", to: logURL)
+    DispatchQueue.main.async {
+      ui.showFailure(
+        title: "Failed to start",
+        message: "Could not start the backend.\n\n\(error)\n\nLogs:\n\(backendLogURL.path)"
+      )
+      NSApp.terminate(nil)
+    }
+    return
+  }
+
+  DispatchQueue.main.async {
+    ui.setStatus("Warming up…")
+  }
+
+  let ok = waitForHealth(baseURL: baseURL, timeoutSeconds: 25.0)
+  if !ok {
+    appendLine("Backend did not become healthy in time. UI may not load.", to: logURL)
+    appendLine("See backend log at: \(backendLogURL.path)", to: logURL)
+    DispatchQueue.main.async {
+      ui.showFailure(
+        title: "Startup timed out",
+        message: "Backend did not become healthy in time.\n\nLogs:\n\(backendLogURL.path)"
+      )
+    }
+    return
+  }
+
+  DispatchQueue.main.async {
+    ui.setStatus("Opening browser…")
+  }
+
+  openBrowser(url: baseURL + "/")
+  appendLine("Opened browser at: \(baseURL)/", to: logURL)
+
+  DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+    ui.close()
+  }
 }
 
-openBrowser(url: baseURL + "/")
-appendLine("Opened browser at: \(baseURL)/", to: logURL)
-
-// Keep the launcher alive while backend runs; quit when backend exits.
-proc.waitUntilExit()
-appendLine("Backend exited with code \(proc.terminationStatus)", to: logURL)
-exit(proc.terminationStatus)
+app.run()

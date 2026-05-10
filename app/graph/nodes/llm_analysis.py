@@ -4,10 +4,8 @@ from app.services.crash_store import CrashStore
 from app.prompts.prompts import SYSTEM_PROMPT, USER_PROMPT
 from app.utils.llm_helpers import parse_json, extract_top_commits
 
-llm = LLMService()
-
-
 def llm_analysis(state):
+    llm = LLMService()
     prompt_input = {
         "mapped_frames": state["mapped_frames"],
         "repo_context": state["repo_context"],

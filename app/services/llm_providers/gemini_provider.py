@@ -12,11 +12,16 @@ class GeminiProvider(LLMProvider):
     def __init__(self):
         if genai is None:
             raise RuntimeError("Missing dependency for Gemini. Install `google-genai` (or the configured SDK) to use Gemini.")
-        # Client uses GEMINI_API_KEY / GOOGLE_API_KEY from env by default.
-        self.client = genai.Client(api_key=GOOGLE_API_KEY) if GOOGLE_API_KEY else genai.Client()
+        # Lazy-init client so backend can start without keys (UI/settings still usable).
+        self._client = None
 
     def call(self, system_prompt: str, user_prompt: str) -> str:
+        if not (GOOGLE_API_KEY or "").strip():
+            raise RuntimeError("Missing GOOGLE_API_KEY. Set it in Settings UI or environment to use Gemini.")
+        if self._client is None:
+            # Always pass the key explicitly so behavior is deterministic.
+            self._client = genai.Client(api_key=GOOGLE_API_KEY)
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-        response = self.client.models.generate_content(model=GEMINI_MODEL, contents=full_prompt)
+        response = self._client.models.generate_content(model=GEMINI_MODEL, contents=full_prompt)
         return response.text

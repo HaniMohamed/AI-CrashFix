@@ -16,17 +16,27 @@ fi
 
 rm -f "${DMG_PATH}"
 
-# Create a simple read-only DMG containing the .app.
+# Create a standard "drag to Applications" DMG:
+# - DMG root contains: AI Crash Fix.app + Applications (symlink)
+STAGE_DIR="${OUT_DIR}/.dmg-stage"
+rm -rf "${STAGE_DIR}"
+mkdir -p "${STAGE_DIR}"
+
+cp -R "${APP_PATH}" "${STAGE_DIR}/${APP_NAME}"
+ln -s "/Applications" "${STAGE_DIR}/Applications"
+
+# Create a read-only DMG from the staging directory.
 TMP_DMG="${OUT_DIR}/.tmp-ai-crash-fix.dmg"
 rm -f "${TMP_DMG}"
 
 hdiutil create \
   -volname "AI Crash Fix" \
-  -srcfolder "${APP_PATH}" \
+  -srcfolder "${STAGE_DIR}" \
   -ov \
   -format UDZO \
   "${TMP_DMG}"
 
 mv "${TMP_DMG}" "${DMG_PATH}"
+rm -rf "${STAGE_DIR}"
 
 echo "DMG created at: ${DMG_PATH}"
