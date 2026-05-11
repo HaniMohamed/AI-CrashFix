@@ -58,6 +58,26 @@ class ApiClient {
     return _decodeOrThrow(res);
   }
 
+  /// Multipart upload (e.g. `POST /api/settings/google_credentials` with field `file`).
+  Future<dynamic> postMultipartFile(
+    String path, {
+    required List<int> bytes,
+    required String filename,
+    String fieldName = 'file',
+  }) async {
+    final req = http.MultipartRequest('POST', _uri(path))
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          fieldName,
+          bytes,
+          filename: filename,
+        ),
+      );
+    final streamed = await _client.send(req);
+    final res = await http.Response.fromStream(streamed);
+    return _decodeOrThrow(res);
+  }
+
   Future<dynamic> deleteJson(String path, {Map<String, dynamic>? body}) async {
     final req = http.Request('DELETE', _uri(path))
       ..headers['content-type'] = 'application/json';

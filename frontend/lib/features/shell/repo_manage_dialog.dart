@@ -1,9 +1,39 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/endpoints.dart';
+import '../../core/providers/api_provider.dart';
+import '../../core/providers/config_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
+
+/// `namespace/project` path for the GitLab API, derived from a normal git remote URL.
+String? deriveGitlabProjectPathFromRepoUrl(String raw) {
+  final u = raw.trim();
+  if (u.isEmpty) return null;
+  if (u.startsWith('git@')) {
+    final at = u.indexOf('@');
+    final colon = u.indexOf(':');
+    if (colon <= at || colon >= u.length - 1) return null;
+    var path = u.substring(colon + 1).trim();
+    if (path.toLowerCase().endsWith('.git')) {
+      path = path.substring(0, path.length - 4);
+    }
+    path = path.replaceAll(RegExp(r'^/+|/+$'), '');
+    return path.isEmpty ? null : path;
+  }
+  final uri = Uri.tryParse(u);
+  if (uri == null || uri.host.isEmpty) return null;
+  var path = uri.path;
+  if (path.toLowerCase().endsWith('.git')) {
+    path = path.substring(0, path.length - 4);
+  }
+  path = path.replaceAll(RegExp(r'^/+|/+$'), '');
+  if (path.isEmpty) return null;
+  return path;
+}
 
 class ManageReposDialog extends ConsumerStatefulWidget {
   final Future<void> Function(String repoKey, String repoName) onDelete;
@@ -30,17 +60,18 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _bqAndroidTableCtrl;
   late final TextEditingController _bqIosTableCtrl;
   late final TextEditingController _jiraProjectKeyCtrl;
-  late final TextEditingController _gitlabProjectCtrl;
 
   bool _saving = false;
   bool _refreshing = false;
-  bool _crashResourcesOpen = false;
-  bool _gitAndIntegrationsOpen = false;
-  bool _gitlabOpen = false;
+  /// Accordion: at most one panel expanded; `0` = repository (default), `1` = Crashlytics, `2` = integrations.
+  int? _expandedPanelIndex = 0;
   bool _showToken = false;
   String? _error;
   String? _editingRepoKey;
   Map<String, dynamic>? _repoStatus;
+  bool _gcpCredsUploading = false;
+  String? _gcpCredsLastMessage;
+  bool _gcpCredsLastError = false;
 
   static const _crashBackendOptions = <String>['cloud_logging', 'bigquery'];
   static const bool _debug = kDebugMode;
@@ -59,7 +90,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqAndroidTableCtrl = TextEditingController();
     _bqIosTableCtrl = TextEditingController();
     _jiraProjectKeyCtrl = TextEditingController();
-    _gitlabProjectCtrl = TextEditingController();
 
     void onEdit() {
       if (!mounted) return;
@@ -79,7 +109,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqAndroidTableCtrl.addListener(onEdit);
     _bqIosTableCtrl.addListener(onEdit);
     _jiraProjectKeyCtrl.addListener(onEdit);
-    _gitlabProjectCtrl.addListener(onEdit);
   }
 
   String? _validate() {
@@ -138,10 +167,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _bqAndroidTableCtrl.text = (r.bqCrashlyticsAndroidTable ?? '').toString();
       _bqIosTableCtrl.text = (r.bqCrashlyticsIosTable ?? '').toString();
       _jiraProjectKeyCtrl.text = (r.jiraProjectKey ?? '').toString();
-      _gitlabProjectCtrl.text = (r.gitlabProject ?? '').toString();
-      _crashResourcesOpen = false;
-      _gitAndIntegrationsOpen = false;
-      _gitlabOpen = false;
+      _expandedPanelIndex = 0;
     });
     _loadRepoStatus();
   }
@@ -163,6 +189,56 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       setState(() => _repoStatus = s);
     } catch (_) {
       // Best-effort.
+    }
+  }
+
+  Future<void> _pickAndUploadGcpCredentials() async {
+    setState(() {
+      _gcpCredsLastMessage = null;
+      _gcpCredsLastError = false;
+    });
+    final pick = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+      withData: true,
+    );
+    if (!mounted) return;
+    if (pick == null || pick.files.isEmpty) return;
+    final file = pick.files.single;
+    final bytes = file.bytes;
+    final name = file.name.trim().isEmpty ? 'credentials.json' : file.name.trim();
+    if (bytes == null || bytes.isEmpty) {
+      setState(() {
+        _gcpCredsLastMessage =
+            'Could not read file (empty or unavailable on this platform).';
+        _gcpCredsLastError = true;
+      });
+      return;
+    }
+    setState(() => _gcpCredsUploading = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.postMultipartFile(
+        Endpoints.googleCredentials,
+        bytes: bytes,
+        filename: name,
+      );
+      if (!mounted) return;
+      setState(() {
+        _gcpCredsUploading = false;
+        _gcpCredsLastError = false;
+        _gcpCredsLastMessage =
+            'Saved on the server. The backend uses this key for Crashlytics '
+            '(BigQuery or Cloud Logging, depending on the backend you chose).';
+      });
+      await ref.read(configProvider.notifier).refresh();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _gcpCredsUploading = false;
+        _gcpCredsLastError = true;
+        _gcpCredsLastMessage = e.toString();
+      });
     }
   }
 
@@ -192,9 +268,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _error = null;
       _editingRepoKey = null;
       _repoStatus = null;
-      _crashResourcesOpen = false;
-      _gitAndIntegrationsOpen = false;
-      _gitlabOpen = false;
+      _expandedPanelIndex = 0;
     });
     _nameCtrl.clear();
     _urlCtrl.clear();
@@ -207,7 +281,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqAndroidTableCtrl.clear();
     _bqIosTableCtrl.clear();
     _jiraProjectKeyCtrl.clear();
-    _gitlabProjectCtrl.clear();
   }
 
   @override
@@ -223,7 +296,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqAndroidTableCtrl.dispose();
     _bqIosTableCtrl.dispose();
     _jiraProjectKeyCtrl.dispose();
-    _gitlabProjectCtrl.dispose();
     super.dispose();
   }
 
@@ -526,385 +598,455 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
             style: theme.bodySmall?.copyWith(color: palette.textMuted),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _nameCtrl,
-            enabled: !_saving,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              labelText: 'Display name',
-              hintText: 'e.g. Taminaty Mobile',
-              prefixIcon: const Icon(Icons.badge_outlined),
-              suffixIcon: _nameCtrl.text.trim().isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear',
-                      onPressed: _saving ? null : () => _nameCtrl.clear(),
-                      icon: const Icon(Icons.close),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _urlCtrl,
-            enabled: !_saving,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              labelText: 'Remote repo URL',
-              hintText:
-                  'https://github.com/org/repo.git  or  git@github.com:org/repo.git',
-              prefixIcon: const Icon(Icons.link),
-              suffixIcon: _urlCtrl.text.trim().isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear',
-                      onPressed: _saving ? null : () => _urlCtrl.clear(),
-                      icon: const Icon(Icons.close),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _firebaseProjectIdCtrl,
-            enabled: !_saving,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              labelText: 'Firebase project ID',
-              hintText: 'e.g. my-firebase-project',
-              helperText:
-                  'Used for Crashlytics/BigQuery queries for this repo.',
-              prefixIcon: const Icon(Icons.cloud_outlined),
-              suffixIcon: _firebaseProjectIdCtrl.text.trim().isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear',
-                      onPressed: _saving
-                          ? null
-                          : () => _firebaseProjectIdCtrl.clear(),
-                      icon: const Icon(Icons.close),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 12),
           Theme(
             data: Theme.of(context).copyWith(
               dividerColor: Colors.transparent,
               splashColor: Colors.transparent,
               highlightColor: Colors.transparent,
             ),
-            child: Column(
+            child: ExpansionPanelList(
+              elevation: 0,
+              expandedHeaderPadding: EdgeInsets.zero,
+              expansionCallback: (int index, bool isExpanded) {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedPanelIndex = index;
+                  } else if (_expandedPanelIndex == index) {
+                    _expandedPanelIndex = null;
+                  }
+                });
+              },
               children: [
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  initiallyExpanded: _crashResourcesOpen,
-                  onExpansionChanged: (v) =>
-                      setState(() => _crashResourcesOpen = v),
-                  title: Text(
-                    'Crashlytics resources',
-                    style: theme.labelLarge?.copyWith(
-                      color: palette.textSecondary,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Required for fetching Crashlytics',
-                    style: theme.bodySmall?.copyWith(color: palette.textMuted),
-                  ),
-                  children: [
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      value: crashBackendValue,
-                      items: _crashBackendOptions
-                          .map(
-                            (v) => DropdownMenuItem<String>(
-                              value: v,
-                              child: Text(v),
-                            ),
-                          )
-                          .toList(growable: false),
-                      onChanged: _saving
-                          ? null
-                          : (v) {
-                              setState(() {
-                                _crashBackendCtrl.text = (v ?? '').trim();
-                                if (_crashBackendCtrl.text != 'bigquery') {
-                                  _bqDatasetCtrl.clear();
-                                  _bqAndroidTableCtrl.clear();
-                                  _bqIosTableCtrl.clear();
-                                }
-                              });
-                            },
-                      decoration: InputDecoration(
-                        labelText: 'Crashlytics backend',
-                        helperText: _debug
-                            ? 'Maps to CRASHLYTICS_FETCH_BACKEND.'
-                            : 'Where Crashlytics data is queried from.',
-                        prefixIcon: const Icon(Icons.cloud_sync_outlined),
-                      ),
-                    ),
-                    if (usesBigQuery) ...[
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _bqDatasetCtrl,
-                        enabled: !_saving,
-                        textInputAction: TextInputAction.next,
-                        decoration: InputDecoration(
-                          labelText: 'BigQuery dataset',
-                          hintText: 'firebase_crashlytics',
-                          helperText: _debug
-                              ? 'BQ_DATASET'
-                              : 'Dataset name that contains Crashlytics tables.',
-                          prefixIcon: const Icon(Icons.table_chart_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _bqAndroidTableCtrl,
-                        enabled: !_saving,
-                        textInputAction: TextInputAction.next,
-                        decoration: InputDecoration(
-                          labelText: 'Crashlytics Android table',
-                          hintText: 'my_android_table',
-                          helperText: _debug
-                              ? 'BQ_CRASHLYTICS_ANDROID_TABLE'
-                              : 'Table name for Android crashes.',
-                          prefixIcon: const Icon(Icons.table_rows_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _bqIosTableCtrl,
-                        enabled: !_saving,
-                        textInputAction: TextInputAction.next,
-                        decoration: InputDecoration(
-                          labelText: 'Crashlytics iOS table',
-                          hintText: 'my_ios_table',
-                          helperText: _debug
-                              ? 'BQ_CRASHLYTICS_IOS_TABLE'
-                              : 'Table name for iOS crashes.',
-                          prefixIcon: const Icon(Icons.table_rows_outlined),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  initiallyExpanded: _gitAndIntegrationsOpen,
-                  onExpansionChanged: (v) =>
-                      setState(() => _gitAndIntegrationsOpen = v),
-                  title: Text(
-                    'Git & integrations',
-                    style: theme.labelLarge?.copyWith(
-                      color: palette.textSecondary,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Git ref, token, indexing and external tools',
-                    style: theme.bodySmall?.copyWith(color: palette.textMuted),
-                  ),
-                  children: [
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _refCtrl,
-                      enabled: !_saving,
-                      textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
-                        labelText: 'Git ref (optional)',
-                        hintText: 'branch / tag / commit SHA',
-                        prefixIcon: const Icon(Icons.alt_route),
-                        suffixIcon: _refCtrl.text.trim().isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Clear',
-                                onPressed: _saving
-                                    ? null
-                                    : () => _refCtrl.clear(),
-                                icon: const Icon(Icons.close),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _packagesDirsCtrl,
-                      enabled: !_saving,
-                      textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
-                        labelText: 'Packages dirs (optional)',
-                        hintText: 'e.g. packages, modules',
-                        helperText:
-                            'Comma-separated repo-relative dirs. Each dir is scanned as <dir>/*/lib.',
-                        prefixIcon: const Icon(Icons.folder_outlined),
-                        suffixIcon: _packagesDirsCtrl.text.trim().isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Clear',
-                                onPressed: _saving
-                                    ? null
-                                    : () => _packagesDirsCtrl.clear(),
-                                icon: const Icon(Icons.close),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _tokenCtrl,
-                      enabled: !_saving,
-                      obscureText: !_showToken,
-                      textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
-                        labelText: 'Access token (optional)',
-                        hintText: 'Only needed for private repos',
-                        prefixIcon: const Icon(Icons.key_outlined),
-                        suffixIcon: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: _showToken ? 'Hide' : 'Show',
-                              onPressed: _saving
-                                  ? null
-                                  : () => setState(
-                                      () => _showToken = !_showToken,
-                                    ),
-                              icon: Icon(
-                                _showToken
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                              ),
-                            ),
-                            if (_tokenCtrl.text.trim().isNotEmpty)
-                              IconButton(
-                                tooltip: 'Clear',
-                                onPressed: _saving
-                                    ? null
-                                    : () => _tokenCtrl.clear(),
-                                icon: const Icon(Icons.close),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (selectedKey.isNotEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: palette.surface1,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: palette.border.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Repo status',
-                                    style: theme.labelLarge?.copyWith(
-                                      color: palette.textSecondary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    headSha.isEmpty
-                                        ? 'Commit: —'
-                                        : 'Commit: ${headSha.substring(0, headSha.length < 12 ? headSha.length : 12)}',
-                                    style: theme.bodySmall?.copyWith(
-                                      color: palette.textMuted,
-                                    ),
-                                  ),
-                                  Text(
-                                    indexedSha.isEmpty
-                                        ? 'Indexed: —'
-                                        : 'Indexed: ${indexedSha.substring(0, indexedSha.length < 12 ? indexedSha.length : 12)}',
-                                    style: theme.bodySmall?.copyWith(
-                                      color: palette.textMuted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            OutlinedButton.icon(
-                              onPressed: (_saving || _refreshing)
-                                  ? null
-                                  : _refreshRepo,
-                              icon: _refreshing
-                                  ? SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: palette.primary,
-                                      ),
-                                    )
-                                  : const Icon(Icons.refresh, size: 16),
-                              label: const Text('Refresh'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _jiraProjectKeyCtrl,
-                      enabled: !_saving,
-                      textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
-                        labelText: 'Jira project key (optional)',
-                        hintText: 'PROJ',
-                        helperText: _debug
-                            ? 'JIRA_PROJECT_KEY'
-                            : 'Used when creating Jira issues.',
-                        prefixIcon: const Icon(
-                          Icons.confirmation_number_outlined,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      initiallyExpanded: _gitlabOpen,
-                      onExpansionChanged: (v) =>
-                          setState(() => _gitlabOpen = v),
+                ExpansionPanel(
+                  canTapOnHeader: true,
+                  backgroundColor: palette.surface2,
+                  isExpanded: _expandedPanelIndex == 0,
+                  headerBuilder: (context, expanded) {
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
                       title: Text(
-                        'GitLab',
+                        'Repository',
                         style: theme.labelLarge?.copyWith(
                           color: palette.textSecondary,
                         ),
                       ),
                       subtitle: Text(
-                        'GitLab-specific settings',
+                        'Display name, remote URL, Git, packages',
                         style: theme.bodySmall?.copyWith(
                           color: palette.textMuted,
                         ),
                       ),
+                    );
+                  },
+                  body: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: 6),
                         TextField(
-                          controller: _gitlabProjectCtrl,
+                          controller: _nameCtrl,
                           enabled: !_saving,
-                          textInputAction: TextInputAction.done,
+                          textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
-                            labelText: 'GitLab project (optional)',
-                            hintText: 'namespace/project',
-                            helperText: _debug
-                                ? 'GITLAB_PROJECT'
-                                : 'Used for GitLab lookups/integrations.',
-                            prefixIcon: const Icon(Icons.merge_outlined),
+                            labelText: 'Display name',
+                            hintText: 'e.g. Taminaty Mobile',
+                            prefixIcon: const Icon(Icons.badge_outlined),
+                            suffixIcon: _nameCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed:
+                                        _saving ? null : () => _nameCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _urlCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Remote repo URL',
+                            hintText:
+                                'https://github.com/org/repo.git  or  git@github.com:org/repo.git',
+                            prefixIcon: const Icon(Icons.link),
+                            suffixIcon: _urlCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed:
+                                        _saving ? null : () => _urlCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _refCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Git ref (optional)',
+                            hintText: 'branch / tag / commit SHA',
+                            prefixIcon: const Icon(Icons.alt_route),
+                            suffixIcon: _refCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed:
+                                        _saving ? null : () => _refCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _tokenCtrl,
+                          enabled: !_saving,
+                          obscureText: !_showToken,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Access token (optional)',
+                            hintText: 'Only needed for private repos',
+                            prefixIcon: const Icon(Icons.key_outlined),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: _showToken ? 'Hide' : 'Show',
+                                  onPressed: _saving
+                                      ? null
+                                      : () => setState(
+                                            () => _showToken = !_showToken,
+                                          ),
+                                  icon: Icon(
+                                    _showToken
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                ),
+                                if (_tokenCtrl.text.trim().isNotEmpty)
+                                  IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _tokenCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _packagesDirsCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Packages dirs (optional)',
+                            hintText: 'e.g. packages, modules',
+                            helperText:
+                                'Comma-separated repo-relative dirs. Each dir is scanned as <dir>/*/lib.',
+                            prefixIcon: const Icon(Icons.folder_outlined),
+                            suffixIcon: _packagesDirsCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _packagesDirsCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                ExpansionPanel(
+                  canTapOnHeader: true,
+                  backgroundColor: palette.surface2,
+                  isExpanded: _expandedPanelIndex == 1,
+                  headerBuilder: (context, expanded) {
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        'Crashlytics resources',
+                        style: theme.labelLarge?.copyWith(
+                          color: palette.textSecondary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Required for fetching Crashlytics',
+                        style: theme.bodySmall?.copyWith(
+                          color: palette.textMuted,
+                        ),
+                      ),
+                    );
+                  },
+                  body: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _firebaseProjectIdCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Firebase project ID',
+                            hintText: 'e.g. my-firebase-project',
+                            helperText:
+                                'GCP / Firebase project id used for Crashlytics queries.',
+                            prefixIcon: const Icon(Icons.cloud_outlined),
+                            suffixIcon: _firebaseProjectIdCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _firebaseProjectIdCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed: _saving || _gcpCredsUploading
+                                ? null
+                                : _pickAndUploadGcpCredentials,
+                            icon: _gcpCredsUploading
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: palette.textSecondary,
+                                    ),
+                                  )
+                                : const Icon(Icons.key_outlined),
+                            label: Text(
+                              _gcpCredsUploading
+                                  ? 'Uploading credentials…'
+                                  : 'Upload GCP service account JSON',
+                            ),
                           ),
                         ),
                         const SizedBox(height: 6),
+                        Text(
+                          'This must be a GCP service account key JSON (field "type", '
+                          'usually service_account), with access to your Crashlytics data. '
+                          'It is not the Android google-services.json from the Firebase console.',
+                          style: theme.bodySmall?.copyWith(
+                            color: palette.textMuted,
+                          ),
+                        ),
+                        if (_gcpCredsLastMessage != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            _gcpCredsLastMessage!,
+                            style: theme.bodySmall?.copyWith(
+                              color: _gcpCredsLastError
+                                  ? palette.danger
+                                  : palette.textSecondary,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          value: crashBackendValue,
+                          items: _crashBackendOptions
+                              .map(
+                                (v) => DropdownMenuItem<String>(
+                                  value: v,
+                                  child: Text(v),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: _saving
+                              ? null
+                              : (v) {
+                                  setState(() {
+                                    _crashBackendCtrl.text = (v ?? '').trim();
+                                    if (_crashBackendCtrl.text != 'bigquery') {
+                                      _bqDatasetCtrl.clear();
+                                      _bqAndroidTableCtrl.clear();
+                                      _bqIosTableCtrl.clear();
+                                    }
+                                  });
+                                },
+                          decoration: InputDecoration(
+                            labelText: 'Crashlytics backend',
+                            helperText: _debug
+                                ? 'Maps to CRASHLYTICS_FETCH_BACKEND.'
+                                : 'Where Crashlytics data is queried from.',
+                            prefixIcon: const Icon(Icons.cloud_sync_outlined),
+                          ),
+                        ),
+                        if (usesBigQuery) ...[
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _bqDatasetCtrl,
+                            enabled: !_saving,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: 'BigQuery dataset',
+                              hintText: 'firebase_crashlytics',
+                              helperText: _debug
+                                  ? 'BQ_DATASET'
+                                  : 'Dataset name that contains Crashlytics tables.',
+                              prefixIcon:
+                                  const Icon(Icons.table_chart_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _bqAndroidTableCtrl,
+                            enabled: !_saving,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: 'Crashlytics Android table',
+                              hintText: 'my_android_table',
+                              helperText: _debug
+                                  ? 'BQ_CRASHLYTICS_ANDROID_TABLE'
+                                  : 'Table name for Android crashes.',
+                              prefixIcon: const Icon(Icons.table_rows_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _bqIosTableCtrl,
+                            enabled: !_saving,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: 'Crashlytics iOS table',
+                              hintText: 'my_ios_table',
+                              helperText: _debug
+                                  ? 'BQ_CRASHLYTICS_IOS_TABLE'
+                                  : 'Table name for iOS crashes.',
+                              prefixIcon: const Icon(Icons.table_rows_outlined),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 6),
-                  ],
+                  ),
+                ),
+                ExpansionPanel(
+                  canTapOnHeader: true,
+                  backgroundColor: palette.surface2,
+                  isExpanded: _expandedPanelIndex == 2,
+                  headerBuilder: (context, expanded) {
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        'Jira & repo status',
+                        style: theme.labelLarge?.copyWith(
+                          color: palette.textSecondary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Jira project key and clone/index status',
+                        style: theme.bodySmall?.copyWith(
+                          color: palette.textMuted,
+                        ),
+                      ),
+                    );
+                  },
+                  body: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (selectedKey.isNotEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: palette.surface1,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: palette.border.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Repo status',
+                                        style: theme.labelLarge?.copyWith(
+                                          color: palette.textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        headSha.isEmpty
+                                            ? 'Commit: —'
+                                            : 'Commit: ${headSha.substring(0, headSha.length < 12 ? headSha.length : 12)}',
+                                        style: theme.bodySmall?.copyWith(
+                                          color: palette.textMuted,
+                                        ),
+                                      ),
+                                      Text(
+                                        indexedSha.isEmpty
+                                            ? 'Indexed: —'
+                                            : 'Indexed: ${indexedSha.substring(0, indexedSha.length < 12 ? indexedSha.length : 12)}',
+                                        style: theme.bodySmall?.copyWith(
+                                          color: palette.textMuted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton.icon(
+                                  onPressed: (_saving || _refreshing)
+                                      ? null
+                                      : _refreshRepo,
+                                  icon: _refreshing
+                                      ? SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: palette.primary,
+                                          ),
+                                        )
+                                      : const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Refresh'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (selectedKey.isNotEmpty)
+                          const SizedBox(height: 10),
+                        TextField(
+                          controller: _jiraProjectKeyCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Jira project key (optional)',
+                            hintText: 'PROJ',
+                            helperText: _debug
+                                ? 'JIRA_PROJECT_KEY'
+                                : 'Used when creating Jira issues.',
+                            prefixIcon: const Icon(
+                              Icons.confirmation_number_outlined,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1055,9 +1197,10 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               _jiraProjectKeyCtrl.text.trim().isEmpty
                               ? null
                               : _jiraProjectKeyCtrl.text.trim(),
-                          gitlabProject: _gitlabProjectCtrl.text.trim().isEmpty
-                              ? null
-                              : _gitlabProjectCtrl.text.trim(),
+                          gitlabProject:
+                              deriveGitlabProjectPathFromRepoUrl(
+                                _urlCtrl.text.trim(),
+                              ),
                         );
                     if (!mounted) return;
                     nav.pop();

@@ -360,6 +360,7 @@ class _BaseUrlPopoverState extends ConsumerState<_BaseUrlPopover> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     return PopupMenuButton<void>(
+      enabled: false,
       tooltip: 'API base URL',
       position: PopupMenuPosition.under,
       color: palette.surface2,
