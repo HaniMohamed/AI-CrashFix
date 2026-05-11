@@ -1,4 +1,3 @@
-from app.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_URL
 from app.services.llm_providers.base import LLMProvider
 import time
 
@@ -10,20 +9,30 @@ except Exception:  # pragma: no cover
 
 class OpenAIProvider(LLMProvider):
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+    ):
         if OpenAI is None:
             raise RuntimeError("Missing dependency for OpenAI. Install `openai` to use the OpenAI provider.")
-        # Lazy-init client so backend can start without keys (UI/settings still usable).
+        self._api_key = (api_key or "").strip()
+        self._base_url = (base_url or "").strip() or None
+        self._model = (model or "").strip() or None
         self._client = None
 
     def call(self, system_prompt: str, user_prompt: str) -> str:
-        if not (OPENAI_API_KEY or "").strip():
+        if not self._api_key:
             raise RuntimeError("Missing OPENAI_API_KEY. Set it in Settings UI or environment to use OpenAI.")
         if self._client is None:
-            self._client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_URL)
+            url = self._base_url or "https://api.openai.com/v1"
+            self._client = OpenAI(api_key=self._api_key, base_url=url)
         time.sleep(2) # add one second delay
+        model = self._model or "gpt-4o-mini"
         response = self._client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

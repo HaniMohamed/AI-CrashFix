@@ -60,7 +60,8 @@ class SettingsResolver:
         return self._app_str("GOOGLE_APPLICATION_CREDENTIALS") or (cfg.GOOGLE_APPLICATION_CREDENTIALS or None)
 
     def effective_llm_provider(self) -> str:
-        return self._app_str("LLM_PROVIDER") or (cfg.LLM_PROVIDER or "gemini")
+        raw = self._app_str("LLM_PROVIDER") or (cfg.LLM_PROVIDER or "gemini")
+        return (raw or "gemini").strip().lower()
 
     def effective_openai(self) -> dict[str, Any]:
         return {

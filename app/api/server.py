@@ -442,6 +442,88 @@ async def get_repo_status(repo_key: str) -> Dict[str, Any]:
     ).model_dump()
 
 
+@app.get("/api/repos/{repo_key}/effective-config")
+async def get_repo_effective_config(repo_key: str) -> Dict[str, Any]:
+    """
+    Read-only merged view of Crashlytics, Jira, and GitLab settings for one repo.
+
+    Values follow precedence: repo row → global app_settings (SQLite) → .env.
+    Secrets are never returned; only booleans like ``has_jira_token``.
+    """
+    from app import config as cfg
+    from app.services.app_settings_store import AppSettingsStore
+    from app.services.settings_resolver import SettingsResolver
+
+    key = (repo_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="repo_key is required")
+    reg = RepoRegistryStore()
+    entry = reg.get_repo(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"repo_key={key!r} not found")
+
+    store = AppSettingsStore()
+    r = SettingsResolver()
+    crash = r.effective_crashlytics(repo_key=key)
+    jira = r.effective_jira(repo_key=key)
+    gl = r.effective_gitlab(repo_key=key)
+
+    def _store_str(sk: str) -> str | None:
+        v = store.get(k=sk)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+        return None
+
+    fp_repo = (entry.firebase_project_id or "").strip() or None
+    bq_project = fp_repo or _store_str("BQ_PROJECT_ID") or ((cfg.BQ_PROJECT_ID or "").strip() or None)
+    firebase_console = (
+        _store_str("FIREBASE_CONSOLE_PROJECT_ID")
+        or ((cfg.FIREBASE_CONSOLE_PROJECT_ID or "").strip() or None)
+    )
+    creds_path = r.effective_google_application_credentials()
+    android_default = _store_str("CRASHLYTICS_ANDROID_PACKAGE") or cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
+    ios_default = _store_str("CRASHLYTICS_IOS_BUNDLE_ID") or cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
+
+    return {
+        "repo": {
+            "repo_key": entry.repo_key,
+            "name": entry.name,
+            "repo_url": entry.repo_url,
+            "repo_ref": entry.repo_ref,
+            "packages_dirs": list(entry.packages_dirs or []),
+            "has_git_access_token": bool(entry.has_token),
+        },
+        "crashlytics": {
+            "supported_fetch_backends": ["bigquery", "cloud_logging"],
+            "effective_fetch_backend": crash.backend,
+            "effective_bq_dataset": crash.bq_dataset,
+            "effective_bq_android_table": crash.bq_android_table or None,
+            "effective_bq_ios_table": crash.bq_ios_table or None,
+            "firebase_project_id_on_repo": fp_repo,
+            "effective_bq_gcp_project_id": bq_project,
+            "firebase_console_project_id": firebase_console,
+            "has_gcp_service_account_json": bool(creds_path and str(creds_path).strip()),
+            "default_android_package_filter": (android_default or None),
+            "default_ios_bundle_id_filter": (ios_default or None),
+        },
+        "jira": {
+            "effective_server_url": jira.server_url,
+            "effective_email": jira.email,
+            "effective_verify_ssl": jira.verify_ssl,
+            "effective_project_key": jira.project_key,
+            "effective_issue_type": jira.issue_type,
+            "has_jira_token": bool(jira.token and str(jira.token).strip()),
+        },
+        "gitlab": {
+            "effective_server_url": gl.server_url,
+            "effective_verify_ssl": gl.verify_ssl,
+            "effective_project_path": gl.project,
+            "has_gitlab_token": bool(gl.token and str(gl.token).strip()),
+            "has_custom_ssl_ca_bundle": bool(gl.ca_bundle and str(gl.ca_bundle).strip()),
+        },
+    }
+
+
 @app.post("/api/repos/{repo_key}/refresh")
 async def refresh_repo(repo_key: str) -> Dict[str, Any]:
     key = (repo_key or "").strip()
@@ -665,7 +747,16 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
             return
         store.set(k=key, v=v)
 
-    set_if_present(req.llm, "provider", "LLM_PROVIDER")
+    if req.llm and "provider" in req.llm:
+        pv = req.llm.get("provider")
+        if pv is None:
+            store.set(k="LLM_PROVIDER", v=None)
+        elif isinstance(pv, str):
+            pl = pv.strip().lower()
+            if pl in ("gemini", "openai"):
+                store.set(k="LLM_PROVIDER", v=pl)
+            elif not pv.strip():
+                store.set(k="LLM_PROVIDER", v=None)
     set_if_present(req.llm, "openai_model", "OPENAI_MODEL")
     set_if_present(req.llm, "openai_url", "OPENAI_URL")
     set_if_present(req.llm, "openai_api_key", "OPENAI_API_KEY")

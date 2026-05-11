@@ -13,6 +13,8 @@ class Endpoints {
   static String repoByKey(String repoKey) => '$repos/$repoKey';
   static String repoStatus(String repoKey) => '${repoByKey(repoKey)}/status';
   static String repoRefresh(String repoKey) => '${repoByKey(repoKey)}/refresh';
+  static String repoEffectiveConfig(String repoKey) =>
+      '${repoByKey(repoKey)}/effective-config';
 
   static String crashById(String id) => '$crashes/$id';
 }

@@ -6,8 +6,8 @@ import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/backend_settings_provider.dart';
-import '../../core/providers/config_provider.dart';
-import '../../core/providers/health_provider.dart';
+import '../../core/providers/repo_effective_config_provider.dart';
+import '../../core/providers/repo_registry_provider.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/loading_shimmer.dart';
@@ -19,7 +19,6 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
-    final config = ref.watch(configProvider);
     final backendSettings = ref.watch(backendSettingsProvider);
     final settings = ref.watch(appSettingsProvider).requireValue;
 
@@ -39,59 +38,17 @@ class SettingsPage extends ConsumerWidget {
               Text('Settings', style: theme.displaySmall),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Backend config is read from .env at server startup. Edit the file and restart uvicorn to apply changes.',
+                'Theme is stored in the browser; the API base URL follows build/runtime defaults (not editable here). '
+                'LLM keys are saved on the server (SQLite) with .env fallback. '
+                'Crashlytics, Jira, and GitLab are configured per repo (read-only summary below for the selected repo).',
                 style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.xl),
               _ConnectionCard(settings: settings),
               const SizedBox(height: AppSpacing.lg),
-              Row(
-                children: [
-                  Text('Backend configuration', style: theme.headlineMedium),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () =>
-                        ref.read(configProvider.notifier).refresh(),
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Refresh',
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              config.when(
-                loading: () => Column(
-                  children: List.generate(
-                    3,
-                    (_) => const Padding(
-                      padding: EdgeInsets.only(bottom: AppSpacing.lg),
-                      child: ShimmerCard(height: 140),
-                    ),
-                  ),
-                ),
-                error: (e, _) => ErrorBanner(
-                  message: 'Failed to load /api/config: $e',
-                  onRetry: () => ref.read(configProvider.notifier).refresh(),
-                ),
-                data: (cfg) => Column(
-                  children: [
-                    _ConfigSection(
-                      title: 'LLM Provider',
-                      icon: Icons.auto_awesome,
-                      data: cfg.section('llm'),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    _ConfigSection(
-                      title: 'Crashlytics',
-                      icon: Icons.cloud_outlined,
-                      data: cfg.section('crashlytics'),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    _EditableJiraSection(async: backendSettings),
-                    const SizedBox(height: AppSpacing.lg),
-                    _EditableGitlabSection(async: backendSettings),
-                  ],
-                ),
-              ),
+              _EditableLlmSection(async: backendSettings),
+              const SizedBox(height: AppSpacing.lg),
+              const _RepoIntegrationPanel(),
             ],
           ),
         ),
@@ -100,52 +57,43 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-class _EditableBackendSettingsCard extends ConsumerStatefulWidget {
+class _EditableLlmSection extends ConsumerStatefulWidget {
   final AsyncValue<BackendSettingsState> async;
-  const _EditableBackendSettingsCard({required this.async});
+  const _EditableLlmSection({required this.async});
 
   @override
-  ConsumerState<_EditableBackendSettingsCard> createState() =>
-      _EditableBackendSettingsCardState();
+  ConsumerState<_EditableLlmSection> createState() => _EditableLlmSectionState();
 }
 
-class _EditableBackendSettingsCardState
-    extends ConsumerState<_EditableBackendSettingsCard> {
-  late final TextEditingController _jiraUrl;
-  late final TextEditingController _jiraToken;
-  late final TextEditingController _gitlabUrl;
-  late final TextEditingController _gitlabToken;
-  late final TextEditingController _openaiKey;
-  late final TextEditingController _googleKey;
-  String? _result;
+class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
+  late final TextEditingController _geminiModelCtrl;
+  late final TextEditingController _googleKeyCtrl;
+  late final TextEditingController _openaiUrlCtrl;
+  late final TextEditingController _openaiModelCtrl;
+  late final TextEditingController _openaiKeyCtrl;
+  String _provider = 'gemini';
+  bool _didSync = false;
   bool _saving = false;
+  String? _result;
 
   @override
   void initState() {
     super.initState();
-    _jiraUrl = TextEditingController();
-    _jiraToken = TextEditingController();
-    _gitlabUrl = TextEditingController();
-    _gitlabToken = TextEditingController();
-    _openaiKey = TextEditingController();
-    _googleKey = TextEditingController();
+    _geminiModelCtrl = TextEditingController();
+    _googleKeyCtrl = TextEditingController();
+    _openaiUrlCtrl = TextEditingController();
+    _openaiModelCtrl = TextEditingController();
+    _openaiKeyCtrl = TextEditingController();
   }
 
   @override
   void dispose() {
-    _jiraUrl.dispose();
-    _jiraToken.dispose();
-    _gitlabUrl.dispose();
-    _gitlabToken.dispose();
-    _openaiKey.dispose();
-    _googleKey.dispose();
+    _geminiModelCtrl.dispose();
+    _googleKeyCtrl.dispose();
+    _openaiUrlCtrl.dispose();
+    _openaiModelCtrl.dispose();
+    _openaiKeyCtrl.dispose();
     super.dispose();
-  }
-
-  void _syncFrom(BackendSettingsState s) {
-    _jiraUrl.text = (s.section('jira')['server_url'] ?? '').toString();
-    _gitlabUrl.text = (s.section('gitlab')['server_url'] ?? '').toString();
-    // Tokens/keys are not returned; keep empty.
   }
 
   @override
@@ -157,28 +105,33 @@ class _EditableBackendSettingsCardState
       child: widget.async.when(
         loading: () => const ShimmerCard(height: 220),
         error: (e, _) => ErrorBanner(
-          message: 'Failed to load editable settings: $e',
+          message: 'Failed to load LLM settings: $e',
           onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
         ),
         data: (s) {
-          _syncFrom(s);
-          final hasJira = s.section('jira')['has_token'] == true;
-          final hasGitlab = s.section('gitlab')['has_token'] == true;
-          final hasOpenai = s.section('llm')['has_openai_api_key'] == true;
-          final hasGoogle = s.section('llm')['has_google_api_key'] == true;
+          final llm = s.section('llm');
+          final hasGoogle = llm['has_google_api_key'] == true;
+          final hasOpenai = llm['has_openai_api_key'] == true;
+          if (!_didSync) {
+            _didSync = true;
+            final p = (llm['provider'] ?? 'gemini').toString().trim().toLowerCase();
+            _provider = p == 'openai' ? 'openai' : 'gemini';
+            _geminiModelCtrl.text = (llm['gemini_model'] ?? '').toString();
+            _openaiUrlCtrl.text = (llm['openai_url'] ?? '').toString();
+            _openaiModelCtrl.text = (llm['openai_model'] ?? '').toString();
+          }
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(Icons.tune, color: palette.primary),
+                  Icon(Icons.auto_awesome, color: palette.primary),
                   const SizedBox(width: AppSpacing.sm),
-                  Text('Editable backend settings', style: theme.headlineSmall),
+                  Text('LLM provider', style: theme.headlineSmall),
                   const Spacer(),
                   IconButton(
-                    onPressed: () =>
-                        ref.read(backendSettingsProvider.notifier).refresh(),
+                    onPressed: () => ref.read(backendSettingsProvider.notifier).refresh(),
                     icon: const Icon(Icons.refresh),
                     tooltip: 'Refresh',
                   ),
@@ -186,83 +139,64 @@ class _EditableBackendSettingsCardState
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Saved server-side (SQLite) with .env fallback. Secrets are not shown after saving.',
+                'Choose Gemini or OpenAI. Keys are not shown after save; enter a new key only to replace.',
                 style: theme.bodySmall?.copyWith(color: palette.textSecondary),
               ),
+              const SizedBox(height: AppSpacing.md),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'gemini', label: Text('Gemini')),
+                  ButtonSegment(value: 'openai', label: Text('OpenAI')),
+                ],
+                selected: {_provider},
+                onSelectionChanged: (next) {
+                  setState(() => _provider = next.first);
+                },
+              ),
               const SizedBox(height: AppSpacing.lg),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _jiraUrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Jira server URL',
-                      ),
-                    ),
+              if (_provider == 'gemini') ...[
+                TextField(
+                  controller: _geminiModelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Gemini model',
+                    hintText: 'gemini-2.5-flash',
                   ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: TextField(
-                      controller: _jiraToken,
-                      decoration: InputDecoration(
-                        labelText: 'Jira token',
-                        helperText: hasJira ? 'Token saved' : 'Not set',
-                      ),
-                      obscureText: true,
-                    ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _googleKeyCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Google API key',
+                    helperText: hasGoogle ? 'Key saved — leave blank to keep' : 'Not set',
                   ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _gitlabUrl,
-                      decoration: const InputDecoration(
-                        labelText: 'GitLab server URL',
-                      ),
-                    ),
+                  obscureText: true,
+                ),
+              ] else ...[
+                TextField(
+                  controller: _openaiUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'OpenAI base URL',
+                    hintText: 'https://api.openai.com/v1',
                   ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: TextField(
-                      controller: _gitlabToken,
-                      decoration: InputDecoration(
-                        labelText: 'GitLab token',
-                        helperText: hasGitlab ? 'Token saved' : 'Not set',
-                      ),
-                      obscureText: true,
-                    ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _openaiModelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Model name',
+                    hintText: 'gpt-4o-mini',
                   ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _openaiKey,
-                      decoration: InputDecoration(
-                        labelText: 'OpenAI API key',
-                        helperText: hasOpenai ? 'Key saved' : 'Not set',
-                      ),
-                      obscureText: true,
-                    ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _openaiKeyCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'OpenAI API key',
+                    helperText: hasOpenai ? 'Key saved — leave blank to keep' : 'Not set',
                   ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: TextField(
-                      controller: _googleKey,
-                      decoration: InputDecoration(
-                        labelText: 'Google API key (Gemini)',
-                        helperText: hasGoogle ? 'Key saved' : 'Not set',
-                      ),
-                      obscureText: true,
-                    ),
-                  ),
-                ],
-              ),
+                  obscureText: true,
+                ),
+              ],
               const SizedBox(height: AppSpacing.lg),
               Row(
                 children: [
@@ -275,41 +209,27 @@ class _EditableBackendSettingsCardState
                               _result = null;
                             });
                             try {
-                              await ref
-                                  .read(backendSettingsProvider.notifier)
-                                  .save({
-                                    'jira': {
-                                      'server_url': _jiraUrl.text.trim(),
-                                      if (_jiraToken.text.trim().isNotEmpty)
-                                        'token': _jiraToken.text.trim(),
-                                    },
-                                    'gitlab': {
-                                      'server_url': _gitlabUrl.text.trim(),
-                                      if (_gitlabToken.text.trim().isNotEmpty)
-                                        'token': _gitlabToken.text.trim(),
-                                    },
-                                    'llm': {
-                                      if (_openaiKey.text.trim().isNotEmpty)
-                                        'openai_api_key': _openaiKey.text
-                                            .trim(),
-                                      if (_googleKey.text.trim().isNotEmpty)
-                                        'google_api_key': _googleKey.text
-                                            .trim(),
-                                    },
-                                  });
+                              await ref.read(backendSettingsProvider.notifier).save({
+                                'llm': {
+                                  'provider': _provider,
+                                  'gemini_model': _geminiModelCtrl.text.trim(),
+                                  'openai_url': _openaiUrlCtrl.text.trim(),
+                                  'openai_model': _openaiModelCtrl.text.trim(),
+                                  if (_googleKeyCtrl.text.trim().isNotEmpty)
+                                    'google_api_key': _googleKeyCtrl.text.trim(),
+                                  if (_openaiKeyCtrl.text.trim().isNotEmpty)
+                                    'openai_api_key': _openaiKeyCtrl.text.trim(),
+                                },
+                              });
                               if (!mounted) return;
                               setState(() => _result = 'Saved.');
-                              _jiraToken.clear();
-                              _gitlabToken.clear();
-                              _openaiKey.clear();
-                              _googleKey.clear();
+                              _googleKeyCtrl.clear();
+                              _openaiKeyCtrl.clear();
                             } catch (e) {
                               if (!mounted) return;
                               setState(() => _result = e.toString());
                             } finally {
-                              if (mounted) {
-                                setState(() => _saving = false);
-                              }
+                              if (mounted) setState(() => _saving = false);
                             }
                           },
                     child: Text(_saving ? 'Saving…' : 'Save'),
@@ -319,277 +239,264 @@ class _EditableBackendSettingsCardState
                     Expanded(
                       child: Text(
                         _result!,
-                        style: theme.bodySmall?.copyWith(
-                          color: palette.textSecondary,
+                        style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RepoIntegrationPanel extends ConsumerWidget {
+  const _RepoIntegrationPanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final reg = ref.watch(repoRegistryProvider);
+
+    return reg.when(
+      loading: () => const GlassCard(
+        child: Padding(
+          padding: EdgeInsets.all(AppSpacing.lg),
+          child: ShimmerCard(height: 200),
+        ),
+      ),
+      error: (e, _) => ErrorBanner(
+        message: 'Failed to load repos: $e',
+        onRetry: () => ref.read(repoRegistryProvider.notifier).refresh(),
+      ),
+      data: (s) {
+        final active = s.active;
+        if (active == null || s.repos.isEmpty) {
+          return GlassCard(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Text(
+                'Add a repo and select it in the top bar (or Manage repos) to see '
+                'Crashlytics, Jira, and GitLab settings for that repo. Edit those values in Manage repos.',
+                style: theme.bodyMedium?.copyWith(color: palette.textSecondary),
+              ),
+            ),
+          );
+        }
+
+        final cfgAsync = ref.watch(repoEffectiveConfigProvider(active.repoKey));
+
+        return cfgAsync.when(
+          loading: () => const GlassCard(
+            child: Padding(
+              padding: EdgeInsets.all(AppSpacing.lg),
+              child: ShimmerCard(height: 320),
+            ),
+          ),
+          error: (e, _) => GlassCard(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: ErrorBanner(
+                message: 'Failed to load repo integration config: $e',
+                onRetry: () =>
+                    ref.invalidate(repoEffectiveConfigProvider(active.repoKey)),
+              ),
+            ),
+          ),
+          data: (payload) {
+            final repoMap = _asStringKeyMap(payload['repo']);
+            final crashMap = _asStringKeyMap(payload['crashlytics']);
+            final jiraMap = _asStringKeyMap(payload['jira']);
+            final gitlabMap = _asStringKeyMap(payload['gitlab']);
+
+            return GlassCard(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.hub_outlined, color: palette.primary),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            'Repo integrations (read-only)',
+                            style: theme.headlineSmall,
+                          ),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        IconButton(
+                          onPressed: () {
+                            ref.invalidate(
+                              repoEffectiveConfigProvider(active.repoKey),
+                            );
+                            ref.read(repoRegistryProvider.notifier).refresh();
+                          },
+                          icon: const Icon(Icons.refresh),
+                          tooltip: 'Refresh',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Effective values for “${active.name}”. Tokens are never shown—only whether they are set. '
+                      'Change these in Manage repos (and Crashlytics/GCP defaults via server .env or uploaded service account JSON).',
+                      style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _ReadonlyKvGroup(
+                      title: 'Repository',
+                      icon: Icons.folder_outlined,
+                      rows: repoMap,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _ReadonlyKvGroup(
+                      title: 'Crashlytics',
+                      icon: Icons.cloud_outlined,
+                      rows: crashMap,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _ReadonlyKvGroup(
+                      title: 'Jira',
+                      icon: Icons.confirmation_number_outlined,
+                      rows: jiraMap,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _ReadonlyKvGroup(
+                      title: 'GitLab',
+                      icon: Icons.merge_outlined,
+                      rows: gitlabMap,
                     ),
                   ],
-                ],
+                ),
               ),
-            ],
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
   }
 }
 
-class _EditableJiraSection extends ConsumerStatefulWidget {
-  final AsyncValue<BackendSettingsState> async;
-  const _EditableJiraSection({required this.async});
-
-  @override
-  ConsumerState<_EditableJiraSection> createState() => _EditableJiraSectionState();
+Map<String, dynamic> _asStringKeyMap(Object? raw) {
+  if (raw is! Map) return {};
+  return raw.map((k, v) => MapEntry(k.toString(), v));
 }
 
-class _EditableJiraSectionState extends ConsumerState<_EditableJiraSection> {
-  late final TextEditingController _urlCtrl;
-  late final TextEditingController _tokenCtrl;
-  bool _didSync = false;
-  bool _saving = false;
-  String? _result;
+class _ReadonlyKvGroup extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Map<String, dynamic> rows;
 
-  @override
-  void initState() {
-    super.initState();
-    _urlCtrl = TextEditingController();
-    _tokenCtrl = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _urlCtrl.dispose();
-    _tokenCtrl.dispose();
-    super.dispose();
-  }
+  const _ReadonlyKvGroup({
+    required this.title,
+    required this.icon,
+    required this.rows,
+  });
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
-
-    return GlassCard(
-      child: widget.async.when(
-        loading: () => const ShimmerCard(height: 180),
-        error: (e, _) => ErrorBanner(
-          message: 'Failed to load Jira settings: $e',
-          onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
+    final keys = rows.keys.toList()..sort();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 20, color: palette.primary),
+            const SizedBox(width: AppSpacing.sm),
+            Text(title, style: theme.titleMedium),
+          ],
         ),
-        data: (s) {
-          final jira = s.section('jira');
-          final hasToken = jira['has_token'] == true;
-          if (!_didSync) {
-            _didSync = true;
-            _urlCtrl.text = (jira['server_url'] ?? '').toString();
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.confirmation_number_outlined, color: palette.primary),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text('Jira', style: theme.headlineSmall),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => ref.read(backendSettingsProvider.notifier).refresh(),
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Refresh',
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _urlCtrl,
-                decoration: const InputDecoration(labelText: 'Server URL'),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _tokenCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Token',
-                  helperText: hasToken ? 'Token saved' : 'Not set',
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Row(
-                children: [
-                  FilledButton(
-                    onPressed: _saving
-                        ? null
-                        : () async {
-                            setState(() {
-                              _saving = true;
-                              _result = null;
-                            });
-                            try {
-                              await ref.read(backendSettingsProvider.notifier).save({
-                                'jira': {
-                                  'server_url': _urlCtrl.text.trim(),
-                                  if (_tokenCtrl.text.trim().isNotEmpty) 'token': _tokenCtrl.text.trim(),
-                                },
-                              });
-                              if (!mounted) return;
-                              setState(() => _result = 'Saved.');
-                              _tokenCtrl.clear();
-                            } catch (e) {
-                              if (!mounted) return;
-                              setState(() => _result = e.toString());
-                            } finally {
-                              if (mounted) setState(() => _saving = false);
-                            }
-                          },
-                    child: Text(_saving ? 'Saving…' : 'Save'),
-                  ),
-                  if (_result != null) ...[
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Text(
-                        _result!,
-                        style: theme.bodySmall?.copyWith(color: palette.textSecondary),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          );
-        },
-      ),
+        const SizedBox(height: AppSpacing.sm),
+        ...keys.map((k) => _ReadonlyIntegrationRow(k: k, value: rows[k])),
+      ],
     );
   }
 }
 
-class _EditableGitlabSection extends ConsumerStatefulWidget {
-  final AsyncValue<BackendSettingsState> async;
-  const _EditableGitlabSection({required this.async});
+class _ReadonlyIntegrationRow extends StatelessWidget {
+  final String k;
+  final Object? value;
 
-  @override
-  ConsumerState<_EditableGitlabSection> createState() => _EditableGitlabSectionState();
-}
-
-class _EditableGitlabSectionState extends ConsumerState<_EditableGitlabSection> {
-  late final TextEditingController _urlCtrl;
-  late final TextEditingController _tokenCtrl;
-  bool _didSync = false;
-  bool _saving = false;
-  String? _result;
-
-  @override
-  void initState() {
-    super.initState();
-    _urlCtrl = TextEditingController();
-    _tokenCtrl = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _urlCtrl.dispose();
-    _tokenCtrl.dispose();
-    super.dispose();
-  }
+  const _ReadonlyIntegrationRow({required this.k, this.value});
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
-
-    return GlassCard(
-      child: widget.async.when(
-        loading: () => const ShimmerCard(height: 180),
-        error: (e, _) => ErrorBanner(
-          message: 'Failed to load GitLab settings: $e',
-          onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
-        ),
-        data: (s) {
-          final gl = s.section('gitlab');
-          final hasToken = gl['has_token'] == true;
-          if (!_didSync) {
-            _didSync = true;
-            _urlCtrl.text = (gl['server_url'] ?? '').toString();
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.merge_outlined, color: palette.primary),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text('GitLab', style: theme.headlineSmall),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => ref.read(backendSettingsProvider.notifier).refresh(),
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Refresh',
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _urlCtrl,
-                decoration: const InputDecoration(labelText: 'Server URL'),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _tokenCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Token',
-                  helperText: hasToken ? 'Token saved' : 'Not set',
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Row(
-                children: [
-                  FilledButton(
-                    onPressed: _saving
-                        ? null
-                        : () async {
-                            setState(() {
-                              _saving = true;
-                              _result = null;
-                            });
-                            try {
-                              await ref.read(backendSettingsProvider.notifier).save({
-                                'gitlab': {
-                                  'server_url': _urlCtrl.text.trim(),
-                                  if (_tokenCtrl.text.trim().isNotEmpty) 'token': _tokenCtrl.text.trim(),
-                                },
-                              });
-                              if (!mounted) return;
-                              setState(() => _result = 'Saved.');
-                              _tokenCtrl.clear();
-                            } catch (e) {
-                              if (!mounted) return;
-                              setState(() => _result = e.toString());
-                            } finally {
-                              if (mounted) setState(() => _saving = false);
-                            }
-                          },
-                    child: Text(_saving ? 'Saving…' : 'Save'),
-                  ),
-                  if (_result != null) ...[
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Text(
-                        _result!,
-                        style: theme.bodySmall?.copyWith(color: palette.textSecondary),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          );
-        },
+    final label = k.replaceAll('_', ' ');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 220,
+            child: Text(
+              label,
+              style: theme.labelMedium?.copyWith(color: palette.textSecondary),
+            ),
+          ),
+          Expanded(child: _valueWidget(context, value)),
+        ],
       ),
+    );
+  }
+
+  Widget _valueWidget(BuildContext context, Object? v) {
+    final theme = Theme.of(context).textTheme;
+    final palette = context.palette;
+    if (v == null) {
+      return Text('—', style: theme.bodyMedium?.copyWith(color: palette.textMuted));
+    }
+    if (v is bool) {
+      final b = v;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: (b ? palette.success : palette.danger).withValues(alpha: 0.13),
+          border: Border.all(
+            color: (b ? palette.success : palette.danger).withValues(alpha: 0.4),
+          ),
+          borderRadius: AppRadii.all(AppRadii.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              b ? Icons.check : Icons.close,
+              size: 12,
+              color: b ? palette.success : palette.danger,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              b ? 'yes' : 'no',
+              style: theme.labelSmall?.copyWith(
+                color: b ? palette.success : palette.danger,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (v is List) {
+      final str = v.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).join(', ');
+      return Text(
+        str.isEmpty ? '—' : str,
+        style: theme.bodyMedium?.copyWith(color: palette.text),
+      );
+    }
+    final s = v.toString().trim();
+    return Text(
+      s.isEmpty ? '—' : s,
+      style: theme.bodyMedium?.copyWith(color: palette.text),
     );
   }
 }
@@ -603,29 +510,8 @@ class _ConnectionCard extends ConsumerStatefulWidget {
 }
 
 class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
-  late TextEditingController _ctrl;
   bool _testing = false;
   String? _testResult;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.settings.apiBaseUrl);
-  }
-
-  @override
-  void didUpdateWidget(covariant _ConnectionCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.settings.apiBaseUrl != widget.settings.apiBaseUrl) {
-      _ctrl.text = widget.settings.apiBaseUrl;
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -644,39 +530,28 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Where to reach the AI Crash Fix backend (saved locally in your browser).',
+            'API base URL is fixed by the app (e.g. dart-define or same-origin in release). '
+            'Use Test connection to verify the backend is reachable.',
             style: theme.bodySmall?.copyWith(color: palette.textSecondary),
           ),
           const SizedBox(height: AppSpacing.lg),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ctrl,
-                  decoration: const InputDecoration(
-                    labelText: 'API base URL',
-                    hintText: 'http://localhost:8000',
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              FilledButton(
-                onPressed: () {
-                  ref
-                      .read(appSettingsProvider.notifier)
-                      .setBaseUrl(_ctrl.text.trim());
-                  ref.invalidate(healthProvider);
-                  setState(() => _testResult = 'Saved.');
-                },
-                child: const Text('Save'),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.bolt, size: 16),
-                label: Text(_testing ? 'Testing…' : 'Test connection'),
-                onPressed: _testing ? null : _runTest,
-              ),
-            ],
+          Text(
+            'API base URL',
+            style: theme.labelLarge?.copyWith(color: palette.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          SelectableText(
+            widget.settings.apiBaseUrl,
+            style: theme.bodyLarge?.copyWith(
+              color: palette.text,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.bolt, size: 16),
+            label: Text(_testing ? 'Testing…' : 'Test connection'),
+            onPressed: _testing ? null : _runTest,
           ),
           if (_testResult != null) ...[
             const SizedBox(height: AppSpacing.md),
@@ -727,110 +602,5 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     } finally {
       setState(() => _testing = false);
     }
-  }
-}
-
-class _ConfigSection extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Map<String, dynamic> data;
-  const _ConfigSection({
-    required this.title,
-    required this.icon,
-    required this.data,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context).textTheme;
-    final palette = context.palette;
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: palette.primary),
-              const SizedBox(width: AppSpacing.sm),
-              Text(title, style: theme.headlineSmall),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          if (data.isEmpty)
-            Text(
-              'No values configured.',
-              style: theme.bodyMedium?.copyWith(color: palette.textMuted),
-            )
-          else
-            ...data.entries.map((e) => _Row(k: e.key, v: e.value)),
-        ],
-      ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  final String k;
-  final Object? v;
-  const _Row({required this.k, this.v});
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final theme = Theme.of(context).textTheme;
-
-    Widget value;
-    if (v is bool) {
-      final b = v as bool;
-      value = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: (b ? palette.success : palette.danger).withValues(alpha: 0.13),
-          border: Border.all(
-            color: (b ? palette.success : palette.danger).withValues(
-              alpha: 0.4,
-            ),
-          ),
-          borderRadius: AppRadii.all(AppRadii.pill),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              b ? Icons.check : Icons.close,
-              size: 12,
-              color: b ? palette.success : palette.danger,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              b ? 'set' : 'not set',
-              style: theme.labelSmall?.copyWith(
-                color: b ? palette.success : palette.danger,
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      final str = v == null || v.toString().isEmpty ? '—' : v.toString();
-      value = Text(str, style: theme.bodyMedium?.copyWith(color: palette.text));
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 200,
-            child: Text(
-              k.replaceAll('_', ' '),
-              style: theme.labelMedium?.copyWith(color: palette.textSecondary),
-            ),
-          ),
-          Expanded(child: value),
-        ],
-      ),
-    );
   }
 }
