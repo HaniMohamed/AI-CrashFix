@@ -72,6 +72,7 @@ def _initial_state_for_crash(
     bq_dataset = None
     bq_crashlytics_android_table = None
     bq_crashlytics_ios_table = None
+    issue_type = None
     if (repo_key or "").strip():
         try:
             from app.services.repo_registry_store import RepoRegistryStore
@@ -84,6 +85,7 @@ def _initial_state_for_crash(
                 bq_dataset = entry.bq_dataset
                 bq_crashlytics_android_table = entry.bq_android_table
                 bq_crashlytics_ios_table = entry.bq_ios_table
+                issue_type = entry.jira_issue_type
         except Exception:
             pass
     return {
@@ -97,6 +99,7 @@ def _initial_state_for_crash(
         "repo_key": repo_key,
         "firebase_project_id": firebase_project_id,
         "jira_project_key": jira_project_key,
+        "issue_type": issue_type,
         "gitlab_project": gitlab_project,
         "crashlytics_fetch_backend": crashlytics_fetch_backend,
         "bq_dataset": bq_dataset,

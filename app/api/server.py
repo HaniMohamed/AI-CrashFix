@@ -141,6 +141,22 @@ class RepoUpsertRequest(BaseModel):
         None,
         description="Optional: per-repo Jira project key override.",
     )
+    jira_server_url: Optional[str] = Field(
+        None,
+        description="Optional: per-repo Jira base URL (e.g. https://jira.example.com/).",
+    )
+    jira_email: Optional[str] = Field(
+        None,
+        description="Optional: Jira account email for Basic auth with API token.",
+    )
+    jira_token: Optional[str] = Field(
+        None,
+        description="Optional: Jira API token (or PAT). Stored server-side; never returned.",
+    )
+    jira_issue_type: Optional[str] = Field(
+        None,
+        description="Optional: Jira issue type name (e.g. Bug).",
+    )
     gitlab_project: Optional[str] = Field(
         None,
         description="Optional: per-repo GitLab project override (namespace/project).",
@@ -279,6 +295,10 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             bq_android_table=req.bq_crashlytics_android_table,
             bq_ios_table=req.bq_crashlytics_ios_table,
             jira_project_key=req.jira_project_key,
+            jira_server_url=req.jira_server_url,
+            jira_email=req.jira_email,
+            jira_token=req.jira_token,
+            jira_issue_type=req.jira_issue_type,
             gitlab_project=req.gitlab_project,
         )
         # Build the symbol index on first add/update so stacktrace mapping is reliable
@@ -528,6 +548,8 @@ async def get_config() -> Dict[str, Any]:
             "project_key": cfg.JIRA_PROJECT_KEY,
             "verify_ssl": cfg.JIRA_VERIFY_SSL,
             "has_token": bool(cfg.JIRA_TOKEN),
+            "email": cfg.JIRA_EMAIL,
+            "issue_type": cfg.JIRA_ISSUE_TYPE,
         },
         "gitlab": {
             "server_url": cfg.GITLAB_SERVER_URL,
@@ -570,9 +592,9 @@ async def get_settings() -> Dict[str, Any]:
             return True
         return bool(env_val)
 
-    # NOTE: repo-scoped fields are intentionally excluded here:
-    # - CRASHLYTICS_FETCH_BACKEND, BQ_DATASET, BQ_CRASHLYTICS_*_TABLE
-    # - JIRA_PROJECT_KEY, GITLAB_PROJECT
+    # NOTE: repo-scoped fields are intentionally excluded here for *defaults*:
+    # - CRASHLYTICS_FETCH_BACKEND, BQ_DATASET, BQ_CRASHLYTICS_*_TABLE, GITLAB_PROJECT
+    # Per-repo Jira overrides (server, email, token, project, issue type) live on each repo row.
     return {
         "updated_at": store.get_updated_at(),
         "llm": {
@@ -602,6 +624,9 @@ async def get_settings() -> Dict[str, Any]:
             "server_url": eff_str("JIRA_SERVER_URL", cfg.JIRA_SERVER_URL),
             "verify_ssl": eff_str("JIRA_VERIFY_SSL", cfg.JIRA_VERIFY_SSL),
             "has_token": eff_secret("JIRA_TOKEN", cfg.JIRA_TOKEN),
+            "email": eff_str("JIRA_EMAIL", cfg.JIRA_EMAIL),
+            "issue_type": eff_str("JIRA_ISSUE_TYPE", cfg.JIRA_ISSUE_TYPE),
+            "project_key": eff_str("JIRA_PROJECT_KEY", cfg.JIRA_PROJECT_KEY),
         },
         "gitlab": {
             "server_url": eff_str("GITLAB_SERVER_URL", cfg.GITLAB_SERVER_URL),
@@ -656,6 +681,9 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     set_if_present(req.jira, "server_url", "JIRA_SERVER_URL")
     set_if_present(req.jira, "verify_ssl", "JIRA_VERIFY_SSL")
     set_if_present(req.jira, "token", "JIRA_TOKEN")
+    set_if_present(req.jira, "email", "JIRA_EMAIL")
+    set_if_present(req.jira, "issue_type", "JIRA_ISSUE_TYPE")
+    set_if_present(req.jira, "project_key", "JIRA_PROJECT_KEY")
 
     set_if_present(req.gitlab, "server_url", "GITLAB_SERVER_URL")
     set_if_present(req.gitlab, "verify_ssl", "GITLAB_VERIFY_SSL")

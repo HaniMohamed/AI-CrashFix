@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/theme/spacing.dart';
 import '../../core/providers/analytics_provider.dart';
 import '../../core/providers/crashes_provider.dart';
+import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
-import '../dashboard/dashboard_page.dart';
+import '../dashboard/widgets/hero_header.dart';
 import 'sidebar.dart';
 import 'topbar.dart';
 import 'repo_manage_dialog.dart';
@@ -67,6 +69,106 @@ class _AppShellState extends ConsumerState<AppShell> {
     final repoAsync = ref.watch(repoRegistryProvider);
     final hasRepos = repoAsync.valueOrNull?.repos.isNotEmpty == true;
 
+    Widget shellWithTopbar({
+      required Widget body,
+      required bool absorbSidebar,
+    }) {
+      final wide = MediaQuery.sizeOf(context).width >= 720;
+      return PopScope(
+        canPop: false,
+        child: Scaffold(
+          body: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (wide)
+                absorbSidebar
+                    ? AbsorbPointer(child: AppSidebar(currentPath: '/', collapsed: false))
+                    : AppSidebar(currentPath: '/', collapsed: false),
+              Expanded(
+                child: Column(
+                  children: [
+                    AppTopbar(onToggleSidebar: () {}),
+                    Expanded(child: body),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // While repo registry is loading, do not mount dashboard (avoids analytics JSON errors).
+    if (repoAsync.isLoading) {
+      return shellWithTopbar(
+        absorbSidebar: true,
+        body: AbsorbPointer(
+          absorbing: true,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'Loading repositories…',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Wrong API URL / offline: show retry instead of a broken dashboard (hasValue is false).
+    if (repoAsync.hasError) {
+      return shellWithTopbar(
+        absorbSidebar: false,
+        body: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Could not load repositories',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    '${repoAsync.error}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    'Check the API base URL in the top bar (must point at the Python '
+                    'backend, e.g. http://localhost:8000), then retry. '
+                    'After the API responds, you can add your first repo in the dialog.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  FilledButton.icon(
+                    onPressed: () {
+                      ref.invalidate(repoRegistryProvider);
+                      ref.invalidate(healthProvider);
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     // Hard gate: if no repos configured, keep the user in onboarding and block navigation,
     // even if they opened the app via a deep link.
     if (repoAsync.hasValue && !hasRepos) {
@@ -95,34 +197,34 @@ class _AppShellState extends ConsumerState<AppShell> {
         }
       });
 
-      // Keep the app UI (dashboard) as the background so the dialog doesn't sit on a blank/black page.
-      // Block ALL background interaction until a repo is added.
-      return PopScope(
-        canPop: false,
-        child: Stack(
-          children: [
-            AbsorbPointer(
-              absorbing: true,
-              child: Scaffold(
-                body: Row(
-                  children: [
-                    // Show the normal chrome, but disable it via AbsorbPointer.
-                    if (MediaQuery.sizeOf(context).width >= 720)
-                      AppSidebar(currentPath: '/', collapsed: false),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          AppTopbar(onToggleSidebar: () {}),
-                          const Expanded(child: DashboardPage()),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+      // Do not mount DashboardPage here: it watches analytics and would show JSON/HTML errors
+      // while the API is misconfigured. Hero + copy only; repo dialog carries the real work.
+      return shellWithTopbar(
+        absorbSidebar: true,
+        body: AbsorbPointer(
+          absorbing: true,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xxl,
+              AppSpacing.xl,
+              AppSpacing.xxl,
+              AppSpacing.xxxl,
             ),
-            const ModalBarrier(dismissible: false, color: Colors.transparent),
-          ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const HeroHeader(),
+                const SizedBox(height: AppSpacing.xl),
+                Text(
+                  'Add your first repository using the dialog above. '
+                  'If the API URL is wrong, use the field at the top of that dialog.',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }

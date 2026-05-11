@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/providers/analytics_provider.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/config_provider.dart';
+import '../../core/providers/health_provider.dart';
+import '../../core/models/repo_entry.dart';
 import '../../core/providers/repo_registry_provider.dart';
 
 /// `namespace/project` path for the GitLab API, derived from a normal git remote URL.
@@ -59,6 +63,10 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _bqDatasetCtrl;
   late final TextEditingController _bqAndroidTableCtrl;
   late final TextEditingController _bqIosTableCtrl;
+  late final TextEditingController _jiraServerUrlCtrl;
+  late final TextEditingController _jiraEmailCtrl;
+  late final TextEditingController _jiraTokenCtrl;
+  late final TextEditingController _jiraIssueTypeCtrl;
   late final TextEditingController _jiraProjectKeyCtrl;
 
   bool _saving = false;
@@ -66,12 +74,15 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   /// Accordion: at most one panel expanded; `0` = repository (default), `1` = Crashlytics, `2` = integrations.
   int? _expandedPanelIndex = 0;
   bool _showToken = false;
+  bool _showJiraToken = false;
   String? _error;
   String? _editingRepoKey;
   Map<String, dynamic>? _repoStatus;
   bool _gcpCredsUploading = false;
   String? _gcpCredsLastMessage;
   bool _gcpCredsLastError = false;
+  TextEditingController? _onboardingApiUrlCtrl;
+  bool _onboardingApiUrlSeeded = false;
 
   static const _crashBackendOptions = <String>['cloud_logging', 'bigquery'];
   static const bool _debug = kDebugMode;
@@ -89,7 +100,14 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl = TextEditingController();
     _bqAndroidTableCtrl = TextEditingController();
     _bqIosTableCtrl = TextEditingController();
+    _jiraServerUrlCtrl = TextEditingController();
+    _jiraEmailCtrl = TextEditingController();
+    _jiraTokenCtrl = TextEditingController();
+    _jiraIssueTypeCtrl = TextEditingController(text: 'Bug');
     _jiraProjectKeyCtrl = TextEditingController();
+    if (!widget.allowClose) {
+      _onboardingApiUrlCtrl = TextEditingController();
+    }
 
     void onEdit() {
       if (!mounted) return;
@@ -108,7 +126,34 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl.addListener(onEdit);
     _bqAndroidTableCtrl.addListener(onEdit);
     _bqIosTableCtrl.addListener(onEdit);
+    _jiraServerUrlCtrl.addListener(onEdit);
+    _jiraEmailCtrl.addListener(onEdit);
+    _jiraTokenCtrl.addListener(onEdit);
+    _jiraIssueTypeCtrl.addListener(onEdit);
     _jiraProjectKeyCtrl.addListener(onEdit);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.allowClose || _onboardingApiUrlSeeded) return;
+    final c = _onboardingApiUrlCtrl;
+    if (c == null) return;
+    final u = ref.read(appSettingsProvider).valueOrNull?.apiBaseUrl;
+    if (u != null && u.isNotEmpty) {
+      c.text = u;
+    }
+    _onboardingApiUrlSeeded = true;
+  }
+
+  Future<void> _applyForcedApiUrl() async {
+    final c = _onboardingApiUrlCtrl;
+    if (c == null) return;
+    setState(() => _error = null);
+    await ref.read(appSettingsProvider.notifier).setBaseUrl(c.text);
+    ref.invalidate(repoRegistryProvider);
+    ref.invalidate(analyticsProvider);
+    ref.invalidate(healthProvider);
   }
 
   String? _validate() {
@@ -147,17 +192,16 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     return null;
   }
 
-  void _prefillFromRepo(dynamic r) {
-    // dynamic to avoid importing the model directly; `r` is a RepoEntry.
+  void _prefillFromRepo(RepoEntry r) {
     setState(() {
       _error = null;
-      _editingRepoKey = (r.repoKey ?? '').toString();
-      _nameCtrl.text = (r.name ?? '').toString();
-      _urlCtrl.text = (r.repoUrl ?? '').toString();
+      _editingRepoKey = r.repoKey;
+      _nameCtrl.text = r.name;
+      _urlCtrl.text = r.repoUrl;
       _refCtrl.text = (r.repoRef ?? '').toString();
       _firebaseProjectIdCtrl.text = (r.firebaseProjectId ?? '').toString();
       _tokenCtrl.text = '';
-      final dirs = (r.packagesDirs as List?) ?? const [];
+      final dirs = r.packagesDirs;
       _packagesDirsCtrl.text = dirs
           .map((e) => e.toString())
           .where((e) => e.trim().isNotEmpty)
@@ -166,6 +210,11 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _bqDatasetCtrl.text = (r.bqDataset ?? '').toString();
       _bqAndroidTableCtrl.text = (r.bqCrashlyticsAndroidTable ?? '').toString();
       _bqIosTableCtrl.text = (r.bqCrashlyticsIosTable ?? '').toString();
+      _jiraServerUrlCtrl.text = (r.jiraServerUrl ?? '').toString();
+      _jiraEmailCtrl.text = (r.jiraEmail ?? '').toString();
+      _jiraTokenCtrl.text = '';
+      _jiraIssueTypeCtrl.text =
+          (r.jiraIssueType ?? '').trim().isEmpty ? 'Bug' : r.jiraIssueType!.trim();
       _jiraProjectKeyCtrl.text = (r.jiraProjectKey ?? '').toString();
       _expandedPanelIndex = 0;
     });
@@ -280,6 +329,10 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl.clear();
     _bqAndroidTableCtrl.clear();
     _bqIosTableCtrl.clear();
+    _jiraServerUrlCtrl.clear();
+    _jiraEmailCtrl.clear();
+    _jiraTokenCtrl.clear();
+    _jiraIssueTypeCtrl.text = 'Bug';
     _jiraProjectKeyCtrl.clear();
   }
 
@@ -295,7 +348,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl.dispose();
     _bqAndroidTableCtrl.dispose();
     _bqIosTableCtrl.dispose();
+    _jiraServerUrlCtrl.dispose();
+    _jiraEmailCtrl.dispose();
+    _jiraTokenCtrl.dispose();
+    _jiraIssueTypeCtrl.dispose();
     _jiraProjectKeyCtrl.dispose();
+    _onboardingApiUrlCtrl?.dispose();
     super.dispose();
   }
 
@@ -317,6 +375,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
             .trim();
 
     final isNarrow = MediaQuery.sizeOf(context).width < 900;
+    final dialogMaxHeight = MediaQuery.sizeOf(context).height * 0.75;
     final selectedKey = (_editingRepoKey ?? '').trim();
 
     Widget repoListPanel() {
@@ -498,7 +557,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                       .toString()
                                       .trim()
                                       .isNotEmpty ||
-                                  r.hasToken == true) ...[
+                                  r.hasToken == true ||
+                                  r.hasJiraToken ||
+                                  (r.jiraServerUrl ?? '')
+                                      .toString()
+                                      .trim()
+                                      .isNotEmpty) ...[
                                 const SizedBox(height: 8),
                                 Wrap(
                                   spacing: 8,
@@ -527,6 +591,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                     if (r.hasToken == true)
                                       _Chip(
                                         label: 'Token saved',
+                                        palette: palette,
+                                        theme: theme,
+                                      ),
+                                    if (r.hasJiraToken)
+                                      _Chip(
+                                        label: 'Jira token saved',
                                         palette: palette,
                                         theme: theme,
                                       ),
@@ -943,13 +1013,13 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
-                        'Jira & repo status',
+                        'Jira integration',
                         style: theme.labelLarge?.copyWith(
                           color: palette.textSecondary,
                         ),
                       ),
                       subtitle: Text(
-                        'Jira project key and clone/index status',
+                        'Jira connection, issue defaults, and repo index status',
                         style: theme.bodySmall?.copyWith(
                           color: palette.textMuted,
                         ),
@@ -961,6 +1031,145 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        TextField(
+                          controller: _jiraServerUrlCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Jira server URL',
+                            hintText: 'https://jira.example.com/',
+                            helperText: _debug
+                                ? 'JIRA_SERVER_URL'
+                                : 'Base URL of your Jira instance.',
+                            prefixIcon: const Icon(Icons.link_outlined),
+                            suffixIcon: _jiraServerUrlCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _jiraServerUrlCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _jiraEmailCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Jira email (optional)',
+                            hintText: 'user@company.com',
+                            helperText: _debug
+                                ? 'JIRA_EMAIL'
+                                : 'Use with API token (Basic auth). Leave empty for Bearer token only.',
+                            prefixIcon: const Icon(Icons.email_outlined),
+                            suffixIcon: _jiraEmailCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _jiraEmailCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _jiraTokenCtrl,
+                          enabled: !_saving,
+                          obscureText: !_showJiraToken,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Jira API token (optional)',
+                            hintText: 'Not shown after save',
+                            helperText: _debug
+                                ? 'JIRA_TOKEN'
+                                : 'Stored on the server only. Leave blank to keep an existing token.',
+                            prefixIcon: const Icon(Icons.key_outlined),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: _showJiraToken ? 'Hide' : 'Show',
+                                  onPressed: _saving
+                                      ? null
+                                      : () => setState(
+                                            () =>
+                                                _showJiraToken = !_showJiraToken,
+                                          ),
+                                  icon: Icon(
+                                    _showJiraToken
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                ),
+                                if (_jiraTokenCtrl.text.trim().isNotEmpty)
+                                  IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _jiraTokenCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _jiraProjectKeyCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Jira project key',
+                            hintText: 'PROJ',
+                            helperText: _debug
+                                ? 'JIRA_PROJECT_KEY'
+                                : 'Project where new issues are created.',
+                            prefixIcon: const Icon(
+                              Icons.confirmation_number_outlined,
+                            ),
+                            suffixIcon: _jiraProjectKeyCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _jiraProjectKeyCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _jiraIssueTypeCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Jira issue type',
+                            hintText: 'Bug',
+                            helperText: _debug
+                                ? 'JIRA_ISSUE_TYPE'
+                                : 'Must match an issue type name in your Jira project.',
+                            prefixIcon: const Icon(Icons.category_outlined),
+                            suffixIcon: _jiraIssueTypeCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Reset to Bug',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => setState(
+                                              () => _jiraIssueTypeCtrl.text =
+                                                  'Bug',
+                                            ),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         if (selectedKey.isNotEmpty)
                           Container(
                             width: double.infinity,
@@ -1027,23 +1236,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               ],
                             ),
                           ),
-                        if (selectedKey.isNotEmpty)
-                          const SizedBox(height: 10),
-                        TextField(
-                          controller: _jiraProjectKeyCtrl,
-                          enabled: !_saving,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            labelText: 'Jira project key (optional)',
-                            hintText: 'PROJ',
-                            helperText: _debug
-                                ? 'JIRA_PROJECT_KEY'
-                                : 'Used when creating Jira issues.',
-                            prefixIcon: const Icon(
-                              Icons.confirmation_number_outlined,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -1087,65 +1279,108 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       title: Text('Manage repositories', style: theme.titleLarge),
       content: SizedBox(
         width: isNarrow ? 720 : 1040,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final useTwoCols = constraints.maxWidth >= 920;
-            final maxHeight = MediaQuery.sizeOf(context).height * 0.75;
-
-            if (!useTwoCols) {
-              return ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxHeight),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      repoListPanel(),
-                      const SizedBox(height: 16),
-                      Divider(
-                        height: 1,
-                        color: palette.border.withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      detailsPanel(),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            return ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxHeight),
-              child: Row(
+        height: dialogMaxHeight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!widget.allowClose && _onboardingApiUrlCtrl != null) ...[
+              Text(
+                'API base URL',
+                style: theme.labelLarge?.copyWith(color: palette.textSecondary),
+              ),
+              const SizedBox(height: 6),
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: 420,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: repoListPanel(),
-                      ),
-                    ),
-                  ),
-                  VerticalDivider(
-                    width: 32,
-                    thickness: 1,
-                    color: palette.border.withValues(alpha: 0.55),
-                  ),
                   Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.only(left: 4),
-                        child: detailsPanel(),
+                    child: TextField(
+                      controller: _onboardingApiUrlCtrl!,
+                      decoration: const InputDecoration(
+                        hintText: 'http://localhost:8000',
+                        prefixIcon: Icon(Icons.dns_outlined),
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _saving ? null : _applyForcedApiUrl,
+                    child: const Text('Apply'),
                   ),
                 ],
               ),
-            );
-          },
+              const SizedBox(height: 8),
+              Text(
+                'Must be the Python backend (serves /api/health), not the Flutter web dev port.',
+                style: theme.bodySmall?.copyWith(color: palette.textMuted),
+              ),
+              Divider(
+                height: 24,
+                color: palette.border.withValues(alpha: 0.35),
+              ),
+            ],
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final useTwoCols = constraints.maxWidth >= 920;
+                  final maxHeight = constraints.maxHeight;
+
+                  if (!useTwoCols) {
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: maxHeight),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            repoListPanel(),
+                            const SizedBox(height: 16),
+                            Divider(
+                              height: 1,
+                              color: palette.border.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            detailsPanel(),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 420,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: repoListPanel(),
+                            ),
+                          ),
+                        ),
+                        VerticalDivider(
+                          width: 32,
+                          thickness: 1,
+                          color: palette.border.withValues(alpha: 0.55),
+                        ),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: detailsPanel(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
       actions: [
@@ -1197,6 +1432,20 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               _jiraProjectKeyCtrl.text.trim().isEmpty
                               ? null
                               : _jiraProjectKeyCtrl.text.trim(),
+                          jiraServerUrl:
+                              _jiraServerUrlCtrl.text.trim().isEmpty
+                              ? null
+                              : _jiraServerUrlCtrl.text.trim(),
+                          jiraEmail: _jiraEmailCtrl.text.trim().isEmpty
+                              ? null
+                              : _jiraEmailCtrl.text.trim(),
+                          jiraToken: _jiraTokenCtrl.text.trim().isEmpty
+                              ? null
+                              : _jiraTokenCtrl.text.trim(),
+                          jiraIssueType:
+                              _jiraIssueTypeCtrl.text.trim().isEmpty
+                              ? null
+                              : _jiraIssueTypeCtrl.text.trim(),
                           gitlabProject:
                               deriveGitlabProjectPathFromRepoUrl(
                                 _urlCtrl.text.trim(),

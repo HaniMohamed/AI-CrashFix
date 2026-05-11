@@ -19,9 +19,11 @@ class EffectiveCrashlyticsConfig:
 @dataclass(frozen=True)
 class EffectiveJiraConfig:
     server_url: str | None
+    email: str | None
     verify_ssl: str | None
     token: str | None
     project_key: str | None
+    issue_type: str | None
 
 
 @dataclass(frozen=True)
@@ -103,12 +105,23 @@ class SettingsResolver:
         )
 
     def effective_jira(self, *, repo_key: str | None) -> EffectiveJiraConfig:
-        repo = self._repos.get_repo((repo_key or "").strip()) if (repo_key or "").strip() else None
+        rk = (repo_key or "").strip()
+        repo = self._repos.get_repo(rk) if rk else None
+        repo_token = self._repos.get_jira_token(rk) if rk else None
+        issue_default = (cfg.JIRA_ISSUE_TYPE or "Bug").strip() or "Bug"
+        it_raw = (repo.jira_issue_type if repo else None) or self._app_str("JIRA_ISSUE_TYPE") or issue_default
+        it_norm = (it_raw or "Bug").strip() or "Bug"
         return EffectiveJiraConfig(
-            server_url=self._app_str("JIRA_SERVER_URL") or cfg.JIRA_SERVER_URL,
+            server_url=(repo.jira_server_url if repo else None)
+            or self._app_str("JIRA_SERVER_URL")
+            or cfg.JIRA_SERVER_URL,
+            email=(repo.jira_email if repo else None) or self._app_str("JIRA_EMAIL") or cfg.JIRA_EMAIL,
             verify_ssl=self._app_str("JIRA_VERIFY_SSL") or cfg.JIRA_VERIFY_SSL,
-            token=self._app_secret("JIRA_TOKEN") or cfg.JIRA_TOKEN,
-            project_key=(repo.jira_project_key if repo else None) or cfg.JIRA_PROJECT_KEY,
+            token=repo_token or self._app_secret("JIRA_TOKEN") or cfg.JIRA_TOKEN,
+            project_key=(repo.jira_project_key if repo else None)
+            or self._app_str("JIRA_PROJECT_KEY")
+            or cfg.JIRA_PROJECT_KEY,
+            issue_type=it_norm,
         )
 
     def effective_gitlab(self, *, repo_key: str | None) -> EffectiveGitlabConfig:

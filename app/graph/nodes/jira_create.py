@@ -58,6 +58,7 @@ def jira_create(state):
         project_key,
         issue_type,
         mock=bool(state.get("mock")),
+        repo_key=(state.get("repo_key") or "").strip() or None,
     )
     state["jira_issue_id"] = issue.get("id")
     cid = state.get("crash_id")

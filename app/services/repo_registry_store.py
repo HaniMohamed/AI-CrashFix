@@ -46,6 +46,10 @@ class RepoEntry:
     bq_dataset: str | None
     bq_android_table: str | None
     bq_ios_table: str | None
+    jira_server_url: str | None
+    jira_email: str | None
+    has_jira_token: bool
+    jira_issue_type: str | None
     jira_project_key: str | None
     gitlab_project: str | None
     created_at: str
@@ -179,6 +183,14 @@ class RepoRegistryStore:
                 conn.execute("ALTER TABLE repos ADD COLUMN jira_project_key TEXT")
             if "gitlab_project" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN gitlab_project TEXT")
+            if "jira_server_url" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_server_url TEXT")
+            if "jira_email" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_email TEXT")
+            if "jira_token" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_token TEXT")
+            if "jira_issue_type" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_issue_type TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_state (
@@ -224,6 +236,10 @@ class RepoRegistryStore:
         bq_android_table: str | None = None,
         bq_ios_table: str | None = None,
         jira_project_key: str | None = None,
+        jira_server_url: str | None = None,
+        jira_email: str | None = None,
+        jira_token: str | None = None,
+        jira_issue_type: str | None = None,
         gitlab_project: str | None = None,
     ) -> RepoEntry:
         url = (repo_url or "").strip()
@@ -242,6 +258,10 @@ class RepoRegistryStore:
         at = (bq_android_table or "").strip() or None
         it = (bq_ios_table or "").strip() or None
         jira_pk = (jira_project_key or "").strip() or None
+        jira_url = (jira_server_url or "").strip() or None
+        jira_em = (jira_email or "").strip() or None
+        jira_tok = (jira_token or "").strip() or None
+        jira_it = (jira_issue_type or "").strip() or None
         gl_proj = (gitlab_project or "").strip() or None
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
@@ -253,10 +273,10 @@ class RepoRegistryStore:
                 INSERT INTO repos(
                   repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, packages_dirs,
                   crashlytics_fetch_backend, bq_dataset, bq_android_table, bq_ios_table,
-                  jira_project_key, gitlab_project,
+                  jira_project_key, jira_server_url, jira_email, jira_token, jira_issue_type, gitlab_project,
                   created_at, updated_at, last_selected_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(repo_key) DO UPDATE SET
                   name = excluded.name,
                   repo_url = excluded.repo_url,
@@ -269,6 +289,10 @@ class RepoRegistryStore:
                   bq_android_table = excluded.bq_android_table,
                   bq_ios_table = excluded.bq_ios_table,
                   jira_project_key = excluded.jira_project_key,
+                  jira_server_url = excluded.jira_server_url,
+                  jira_email = excluded.jira_email,
+                  jira_token = COALESCE(excluded.jira_token, repos.jira_token),
+                  jira_issue_type = excluded.jira_issue_type,
                   gitlab_project = excluded.gitlab_project,
                   updated_at = excluded.updated_at
                 """,
@@ -285,6 +309,10 @@ class RepoRegistryStore:
                     at,
                     it,
                     jira_pk,
+                    jira_url,
+                    jira_em,
+                    jira_tok,
+                    jira_it,
                     gl_proj,
                     now,
                     now,
@@ -324,6 +352,27 @@ class RepoRegistryStore:
         if not s:
             return None
         # Guard against accidental stringification of null-like values.
+        if s.lower() in {"none", "null"}:
+            return None
+        return s
+
+    def get_jira_token(self, repo_key: str) -> str | None:
+        key = (repo_key or "").strip()
+        if not key:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT jira_token FROM repos WHERE repo_key = ?",
+                (key,),
+            ).fetchone()
+        if not row:
+            return None
+        v = row[0]
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
         if s.lower() in {"none", "null"}:
             return None
         return s
@@ -458,6 +507,14 @@ class RepoRegistryStore:
             if "bq_android_table" in row.keys() and row["bq_android_table"]
             else None,
             bq_ios_table=row["bq_ios_table"] if "bq_ios_table" in row.keys() and row["bq_ios_table"] else None,
+            jira_server_url=row["jira_server_url"]
+            if "jira_server_url" in row.keys() and row["jira_server_url"]
+            else None,
+            jira_email=row["jira_email"] if "jira_email" in row.keys() and row["jira_email"] else None,
+            has_jira_token=bool(row["jira_token"]) if "jira_token" in row.keys() else False,
+            jira_issue_type=row["jira_issue_type"]
+            if "jira_issue_type" in row.keys() and row["jira_issue_type"]
+            else None,
             jira_project_key=row["jira_project_key"]
             if "jira_project_key" in row.keys() and row["jira_project_key"]
             else None,

@@ -38,10 +38,18 @@ class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
     const fromDefine = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (fromDefine.isNotEmpty) return fromDefine;
     if (kIsWeb) {
-      // When served by the backend (packaged app), default to same origin so
-      // dynamic ports work without manual configuration.
       final origin = Uri.base.origin.trim();
-      if (origin.isNotEmpty) return origin;
+      if (origin.isNotEmpty) {
+        // Release/profile web (e.g. FastAPI static files, macOS launcher on a random
+        // free port): the API is same-origin as this page — use it.
+        //
+        // Debug web (`flutter run -d chrome`): the app is served from the Flutter
+        // tool on an arbitrary port, so same-origin would hit the wrong server.
+        if (kDebugMode) {
+          return 'http://localhost:8000';
+        }
+        return origin;
+      }
     }
     return 'http://localhost:8000';
   }

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import base64
 import json
 import ssl
 import urllib.error
 import urllib.request
 from typing import Any
 
-from app.config import JIRA_PROJECT_KEY, JIRA_SERVER_URL, JIRA_TOKEN, JIRA_VERIFY_SSL
+from app.services.settings_resolver import EffectiveJiraConfig, SettingsResolver
 
 
 def _parse_bool(value: Any, default: bool = True) -> bool:
@@ -22,21 +23,26 @@ def _parse_bool(value: Any, default: bool = True) -> bool:
     return default
 
 
-def _jira_base_url() -> str:
-    base = (JIRA_SERVER_URL or "").strip()
+def _jira_base_url(eff: EffectiveJiraConfig) -> str:
+    base = (eff.server_url or "").strip()
     if not base:
-        raise RuntimeError("Missing Jira base URL. Set JIRA_SERVER_URL.")
+        raise RuntimeError("Missing Jira base URL. Set JIRA_SERVER_URL or repo Jira server URL.")
     return base.rstrip("/")
 
 
-def _jira_auth_header() -> str:
-    if not JIRA_TOKEN:
-        raise RuntimeError("Missing Jira token. Set JIRA_TOKEN.")
-    return f"Bearer {JIRA_TOKEN}"
+def _jira_auth_header(eff: EffectiveJiraConfig) -> str:
+    token = (eff.token or "").strip()
+    if not token:
+        raise RuntimeError("Missing Jira token. Set JIRA_TOKEN or repo Jira token.")
+    email = (eff.email or "").strip()
+    if email:
+        raw = f"{email}:{token}".encode("utf-8")
+        return "Basic " + base64.b64encode(raw).decode("ascii")
+    return f"Bearer {token}"
 
 
-def _jira_ssl_context() -> ssl.SSLContext | None:
-    verify = _parse_bool(JIRA_VERIFY_SSL, default=True)
+def _jira_ssl_context(eff: EffectiveJiraConfig) -> ssl.SSLContext | None:
+    verify = _parse_bool(eff.verify_ssl, default=True)
     if verify:
         return None
     return ssl._create_unverified_context()  # noqa: SLF001
@@ -46,25 +52,28 @@ def create_jira_issue(
     summary: str,
     description: str,
     project_key: str | None,
-    issue_type: str,
+    issue_type: str | None,
     *,
     mock: bool = False,
+    repo_key: str | None = None,
 ) -> dict[str, Any]:
     """
     Create a Jira issue via REST API.
 
-    Uses:
-    - JIRA_SERVER_URL + JIRA_TOKEN + JIRA_PROJECT_KEY (from app.config)
+    Connection settings are resolved for ``repo_key`` (repo row → app settings → .env).
+    Jira Cloud / Server API tokens typically use Basic auth (email + token); otherwise Bearer.
     """
+    eff = SettingsResolver().effective_jira(repo_key=(repo_key or "").strip() or None)
+    itype = (issue_type or eff.issue_type or "Bug").strip() or "Bug"
+    project = (project_key or eff.project_key or "").strip()
 
     if mock:
-        return mock_create_jira_issue(summary, description, project_key, issue_type)
+        return mock_create_jira_issue(summary, description, project, itype)
 
-    project = (project_key or JIRA_PROJECT_KEY or "").strip()
     if not project:
-        raise RuntimeError("Missing Jira project key. Pass project_key or set JIRA_PROJECT_KEY.")
+        raise RuntimeError("Missing Jira project key. Set per-repo project key or JIRA_PROJECT_KEY.")
 
-    base_url = _jira_base_url()
+    base_url = _jira_base_url(eff)
     url = f"{base_url}/rest/api/2/issue"
 
     payload: dict[str, Any] = {
@@ -72,7 +81,7 @@ def create_jira_issue(
             "project": {"key": project},
             "summary": summary,
             "description": description,
-            "issuetype": {"name": issue_type},
+            "issuetype": {"name": itype},
         }
     }
 
@@ -82,14 +91,14 @@ def create_jira_issue(
         data=data,
         method="POST",
         headers={
-            "Authorization": _jira_auth_header(),
+            "Authorization": _jira_auth_header(eff),
             "Accept": "application/json",
             "Content-Type": "application/json",
         },
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=30, context=_jira_ssl_context()) as resp:
+        with urllib.request.urlopen(req, timeout=30, context=_jira_ssl_context(eff)) as resp:
             raw = resp.read() or b"{}"
             try:
                 return json.loads(raw.decode("utf-8"))
@@ -101,7 +110,10 @@ def create_jira_issue(
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Jira request failed: {exc}") from exc
 
-def mock_create_jira_issue(summary: str, description: str, project_key: str | None, issue_type: str) -> dict[str, Any]:
+
+def mock_create_jira_issue(
+    summary: str, description: str, project_key: str | None, issue_type: str
+) -> dict[str, Any]:
     return {
         "id": "DE-XXXX",
         "key": "DE-XXXX",
