@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-python -m PyInstaller "${PYINSTALLER_EXTRA[@]}" packaging/pyinstaller/backend.spec
+python -m PyInstaller "${PYINSTALLER_EXTRA[@]+"${PYINSTALLER_EXTRA[@]}"}" packaging/pyinstaller/backend.spec
 
 echo
 echo "Built backend bundle at: dist/ai_crash_fix_backend/"

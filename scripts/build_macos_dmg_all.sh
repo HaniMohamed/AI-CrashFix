@@ -4,16 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-BACKEND_PYINSTALLER_OPTS=()
+# Optional flags kept for backward compatibility; Step 2 always uses PyInstaller --noconfirm.
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --noconfirm)
-      BACKEND_PYINSTALLER_OPTS+=(--noconfirm)
+    --noconfirm|-y)
       shift
       ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: $0 [--noconfirm]" >&2
+      echo "Usage: $0 [--noconfirm|-y]" >&2
       exit 2
       ;;
   esac
@@ -83,7 +82,7 @@ popd >/dev/null
 echo
 
 echo "==> Step 2: Build backend (PyInstaller)"
-./scripts/build_backend_pyinstaller.sh "${BACKEND_PYINSTALLER_OPTS[@]}"
+./scripts/build_backend_pyinstaller.sh --noconfirm
 [[ -d "dist/ai_crash_fix_backend" ]] || fail "Missing dist/ai_crash_fix_backend (PyInstaller output)"
 [[ -x "dist/ai_crash_fix_backend/ai_crash_fix_backend" ]] || fail "Missing backend executable dist/ai_crash_fix_backend/ai_crash_fix_backend"
 echo
