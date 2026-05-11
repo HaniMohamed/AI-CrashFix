@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
+  <!-- Template-style glyph: black on transparent (menu bar tinting). -->
+  <circle cx="26" cy="36" r="11" fill="#000000"/>
+  <path
+    d="M 40 36 L 56 36 M 50 30 L 56 36 L 50 42"
+    fill="none"
+    stroke="#000000"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

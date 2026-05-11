@@ -9,7 +9,21 @@ if ! command -v python >/dev/null 2>&1; then
   exit 1
 fi
 
-python -m PyInstaller packaging/pyinstaller/backend.spec
+PYINSTALLER_EXTRA=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --noconfirm|-y)
+      PYINSTALLER_EXTRA+=(--noconfirm)
+      shift
+      ;;
+    *)
+      echo "Usage: $0 [--noconfirm|-y]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+python -m PyInstaller "${PYINSTALLER_EXTRA[@]}" packaging/pyinstaller/backend.spec
 
 echo
 echo "Built backend bundle at: dist/ai_crash_fix_backend/"

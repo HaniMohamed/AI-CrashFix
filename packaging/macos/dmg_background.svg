@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="320" viewBox="0 0 680 320" role="img" aria-label="">
+  <!-- Minimal installer chrome: flat panel + drag hint arrow only (no branding artwork). -->
+  <rect width="680" height="320" rx="12" fill="#EBEBEB"/>
+  <!-- Arrow between ~left third (app) and ~right third (Applications); Finder scales this behind icons. -->
+  <g fill="none" stroke="#6E6E6E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 248 168 H 378"/>
+    <path d="M 354 148 L 382 168 L 354 188"/>
+  </g>
+</svg>

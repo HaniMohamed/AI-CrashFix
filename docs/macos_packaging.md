@@ -49,6 +49,8 @@ Output:
 
 ### App icon (optional but recommended)
 
+`./scripts/build_macos_dmg_all.sh` regenerates `packaging/macos/AppIcon.icns` from `frontend/web/favicon.svg` when the favicon is newer than the existing `.icns`, so the DMG and app keep the current icon.
+
 #### From the existing favicon.svg (recommended)
 
 ```bash
@@ -125,4 +127,14 @@ codesign --force --deep --sign "Developer ID Application: <Your Org>" "dist/maco
 
 If you distribute outside the org or want the smoothest first-run experience,
 also notarize the DMG/app.
+
+## DMG "installer UI" customization
+
+`./scripts/build_dmg.sh` creates a compact drag-to-install DMG window:
+- sets window size and icon positions (app on the left, `Applications` on the right)
+- applies a minimal neutral background from `packaging/macos/dmg_background.svg` (flat panel + arrow hint only)
+
+Notes:
+- The background is rasterized via macOS Quick Look (`qlmanage`) during the DMG build.
+- If customization fails (e.g. in a headless environment), the script still produces a valid DMG, just without the customized window/background.
 

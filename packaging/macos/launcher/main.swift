@@ -325,12 +325,32 @@ final class QuitAction: NSObject {
   }
 }
 
+/// PNG bundled as `Contents/Resources/MenuBarIcon.png` (see `menubar_icon.svg` + `build_macos_app.sh`).
+func loadMenuBarTemplateIcon() -> NSImage? {
+  guard let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") else { return nil }
+  guard let img = NSImage(contentsOf: url) else { return nil }
+  img.isTemplate = true
+  img.size = NSSize(width: 18, height: 18)
+  return img
+}
+
 func installMenuBar(getBaseUrl: @escaping () -> String, terminateBackend: @escaping () -> Void) {
   let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-  statusItem.button?.title = "AI"
+  if let icon = loadMenuBarTemplateIcon() {
+    statusItem.button?.image = icon
+    statusItem.button?.title = ""
+  } else {
+    statusItem.button?.image = nil
+    statusItem.button?.title = "AI-CrashFix"
+  }
   let menu = NSMenu()
   let openAction = OpenUiAction(getBaseUrl: getBaseUrl)
   let quitAction = QuitAction(terminateBackend: terminateBackend)
+  // add app name as title on top of menu
+  let appNameItem = NSMenuItem(title: "AI Crash Fix", action: nil, keyEquivalent: "")
+  appNameItem.isEnabled = false
+  appNameItem.target = nil
+  menu.addItem(appNameItem)
   let openItem = NSMenuItem(title: "Open UI", action: #selector(OpenUiAction.run), keyEquivalent: "o")
   openItem.target = openAction
   let quitItem = NSMenuItem(title: "Quit", action: #selector(QuitAction.run), keyEquivalent: "q")

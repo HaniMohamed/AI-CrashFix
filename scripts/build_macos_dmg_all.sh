@@ -4,6 +4,21 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+BACKEND_PYINSTALLER_OPTS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --noconfirm)
+      BACKEND_PYINSTALLER_OPTS+=(--noconfirm)
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo "Usage: $0 [--noconfirm]" >&2
+      exit 2
+      ;;
+  esac
+done
+
 APP_NAME="AI Crash Fix.app"
 APP_PATH="dist/macos/${APP_NAME}"
 
@@ -26,17 +41,18 @@ need_cmd flutter
 need_cmd swiftc
 need_cmd hdiutil
 
-# Generate the app icon (use the existing favicon.svg by default).
-#
-# If you want a different icon, pre-create packaging/macos/AppIcon.icns before running
-# this script and it will be used as-is.
-if [[ -f "frontend/web/favicon.svg" ]] && [[ ! -f "packaging/macos/AppIcon.icns" ]]; then
-  need_cmd qlmanage
-  need_cmd iconutil
-  need_cmd sips
-  echo "==> Generating AppIcon.icns from frontend/web/favicon.svg"
-  ./scripts/macos_icon_from_svg.sh "frontend/web/favicon.svg"
-  echo
+# App icon: regenerate from favicon when missing or favicon is newer (avoids stale lightning bolt).
+ICNS="packaging/macos/AppIcon.icns"
+FAVICON="frontend/web/favicon.svg"
+if [[ -f "${FAVICON}" ]]; then
+  if [[ ! -f "${ICNS}" ]] || [[ "${FAVICON}" -nt "${ICNS}" ]]; then
+    need_cmd qlmanage
+    need_cmd iconutil
+    need_cmd sips
+    echo "==> Generating AppIcon.icns from ${FAVICON}"
+    ./scripts/macos_icon_from_svg.sh "${FAVICON}"
+    echo
+  fi
 fi
 
 # Locate ripgrep to bundle.
@@ -67,7 +83,7 @@ popd >/dev/null
 echo
 
 echo "==> Step 2: Build backend (PyInstaller)"
-./scripts/build_backend_pyinstaller.sh
+./scripts/build_backend_pyinstaller.sh "${BACKEND_PYINSTALLER_OPTS[@]}"
 [[ -d "dist/ai_crash_fix_backend" ]] || fail "Missing dist/ai_crash_fix_backend (PyInstaller output)"
 [[ -x "dist/ai_crash_fix_backend/ai_crash_fix_backend" ]] || fail "Missing backend executable dist/ai_crash_fix_backend/ai_crash_fix_backend"
 echo
