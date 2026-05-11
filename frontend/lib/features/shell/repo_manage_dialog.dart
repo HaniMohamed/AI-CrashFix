@@ -3,13 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/endpoints.dart';
-import '../../core/providers/analytics_provider.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/config_provider.dart';
-import '../../core/providers/health_provider.dart';
 import '../../core/models/repo_entry.dart';
 import '../../core/providers/repo_registry_provider.dart';
 
@@ -81,8 +78,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   bool _gcpCredsUploading = false;
   String? _gcpCredsLastMessage;
   bool _gcpCredsLastError = false;
-  TextEditingController? _onboardingApiUrlCtrl;
-  bool _onboardingApiUrlSeeded = false;
 
   static const _crashBackendOptions = <String>['cloud_logging', 'bigquery'];
   static const bool _debug = kDebugMode;
@@ -105,9 +100,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _jiraTokenCtrl = TextEditingController();
     _jiraIssueTypeCtrl = TextEditingController(text: 'Bug');
     _jiraProjectKeyCtrl = TextEditingController();
-    if (!widget.allowClose) {
-      _onboardingApiUrlCtrl = TextEditingController();
-    }
 
     void onEdit() {
       if (!mounted) return;
@@ -131,29 +123,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _jiraTokenCtrl.addListener(onEdit);
     _jiraIssueTypeCtrl.addListener(onEdit);
     _jiraProjectKeyCtrl.addListener(onEdit);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (widget.allowClose || _onboardingApiUrlSeeded) return;
-    final c = _onboardingApiUrlCtrl;
-    if (c == null) return;
-    final u = ref.read(appSettingsProvider).valueOrNull?.apiBaseUrl;
-    if (u != null && u.isNotEmpty) {
-      c.text = u;
-    }
-    _onboardingApiUrlSeeded = true;
-  }
-
-  Future<void> _applyForcedApiUrl() async {
-    final c = _onboardingApiUrlCtrl;
-    if (c == null) return;
-    setState(() => _error = null);
-    await ref.read(appSettingsProvider.notifier).setBaseUrl(c.text);
-    ref.invalidate(repoRegistryProvider);
-    ref.invalidate(analyticsProvider);
-    ref.invalidate(healthProvider);
   }
 
   String? _validate() {
@@ -353,7 +322,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _jiraTokenCtrl.dispose();
     _jiraIssueTypeCtrl.dispose();
     _jiraProjectKeyCtrl.dispose();
-    _onboardingApiUrlCtrl?.dispose();
     super.dispose();
   }
 
@@ -375,7 +343,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
             .trim();
 
     final isNarrow = MediaQuery.sizeOf(context).width < 900;
-    final dialogMaxHeight = MediaQuery.sizeOf(context).height * 0.75;
     final selectedKey = (_editingRepoKey ?? '').trim();
 
     Widget repoListPanel() {
@@ -1279,108 +1246,65 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       title: Text('Manage repositories', style: theme.titleLarge),
       content: SizedBox(
         width: isNarrow ? 720 : 1040,
-        height: dialogMaxHeight,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (!widget.allowClose && _onboardingApiUrlCtrl != null) ...[
-              Text(
-                'API base URL',
-                style: theme.labelLarge?.copyWith(color: palette.textSecondary),
-              ),
-              const SizedBox(height: 6),
-              Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final useTwoCols = constraints.maxWidth >= 920;
+            final maxHeight = MediaQuery.sizeOf(context).height * 0.75;
+
+            if (!useTwoCols) {
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      repoListPanel(),
+                      const SizedBox(height: 16),
+                      Divider(
+                        height: 1,
+                        color: palette.border.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(height: 16),
+                      detailsPanel(),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _onboardingApiUrlCtrl!,
-                      decoration: const InputDecoration(
-                        hintText: 'http://localhost:8000',
-                        prefixIcon: Icon(Icons.dns_outlined),
+                  SizedBox(
+                    width: 420,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: repoListPanel(),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _saving ? null : _applyForcedApiUrl,
-                    child: const Text('Apply'),
+                  VerticalDivider(
+                    width: 32,
+                    thickness: 1,
+                    color: palette.border.withValues(alpha: 0.55),
+                  ),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: detailsPanel(),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Must be the Python backend (serves /api/health), not the Flutter web dev port.',
-                style: theme.bodySmall?.copyWith(color: palette.textMuted),
-              ),
-              Divider(
-                height: 24,
-                color: palette.border.withValues(alpha: 0.35),
-              ),
-            ],
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final useTwoCols = constraints.maxWidth >= 920;
-                  final maxHeight = constraints.maxHeight;
-
-                  if (!useTwoCols) {
-                    return ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: maxHeight),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            repoListPanel(),
-                            const SizedBox(height: 16),
-                            Divider(
-                              height: 1,
-                              color: palette.border.withValues(alpha: 0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            detailsPanel(),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-
-                  return ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxHeight),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 420,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: repoListPanel(),
-                            ),
-                          ),
-                        ),
-                        VerticalDivider(
-                          width: 32,
-                          thickness: 1,
-                          color: palette.border.withValues(alpha: 0.55),
-                        ),
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsets.only(left: 4),
-                              child: detailsPanel(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
       actions: [
