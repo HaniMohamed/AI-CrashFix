@@ -20,20 +20,9 @@ if [[ -f "${ROOT_DIR}/packaging/macos/AppIcon.icns" ]]; then
   cp "${ROOT_DIR}/packaging/macos/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
 fi
 
-# Menu bar template icon (black on transparent PNG for NSImage.isTemplate)
-MENUBAR_SVG="${ROOT_DIR}/packaging/macos/menubar_icon.svg"
-if [[ -f "${MENUBAR_SVG}" ]] && command -v qlmanage >/dev/null 2>&1; then
-  TMP_DIR="${ROOT_DIR}/dist/.tmp-menubar-icon"
-  rm -rf "${TMP_DIR}"
-  mkdir -p "${TMP_DIR}"
-  if qlmanage -t -s 72 -o "${TMP_DIR}" "${MENUBAR_SVG}" >/dev/null 2>&1; then
-    PNG="$(ls -1 "${TMP_DIR}"/*.png 2>/dev/null | head -n 1 || true)"
-    if [[ -n "${PNG}" ]]; then
-      cp "${PNG}" "${APP_DIR}/Contents/Resources/MenuBarIcon.png"
-    fi
-  fi
-  rm -rf "${TMP_DIR}"
-fi
+# Menu bar icon is drawn in Swift (`makeMenuBarStatusIcon` in launcher/main.swift).
+# Optional reference asset only (not bundled into the .app by default):
+# packaging/macos/menubar_icon.svg
 
 # Build the launcher (no Xcode project required)
 swiftc \

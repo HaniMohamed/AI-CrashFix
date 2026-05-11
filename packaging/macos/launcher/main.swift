@@ -325,24 +325,41 @@ final class QuitAction: NSObject {
   }
 }
 
-/// PNG bundled as `Contents/Resources/MenuBarIcon.png` (see `menubar_icon.svg` + `build_macos_app.sh`).
-func loadMenuBarTemplateIcon() -> NSImage? {
-  guard let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") else { return nil }
-  guard let img = NSImage(contentsOf: url) else { return nil }
+/// Vector-drawn template icon (dot + arrow). Avoids bundled PNGs from `qlmanage`, which often break alpha
+/// and render as a solid black square when `isTemplate` is true.
+func makeMenuBarStatusIcon() -> NSImage {
+  let side: CGFloat = 18
+  let img = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+    NSColor.clear.setFill()
+    rect.fill()
+    NSColor.black.setFill()
+    NSColor.black.setStroke()
+    let dotRect = CGRect(x: 4, y: 6.5, width: 5, height: 5)
+    NSBezierPath(ovalIn: dotRect).fill()
+    let shaft = NSBezierPath()
+    shaft.move(to: CGPoint(x: 10.5, y: 9))
+    shaft.line(to: CGPoint(x: 15.25, y: 9))
+    shaft.lineWidth = 1.35
+    shaft.lineCapStyle = .round
+    shaft.stroke()
+    let head = NSBezierPath()
+    head.move(to: CGPoint(x: 14, y: 7.6))
+    head.line(to: CGPoint(x: 15.25, y: 9))
+    head.line(to: CGPoint(x: 14, y: 10.4))
+    head.lineWidth = 1.35
+    head.lineCapStyle = .round
+    head.lineJoinStyle = .round
+    head.stroke()
+    return true
+  }
   img.isTemplate = true
-  img.size = NSSize(width: 18, height: 18)
   return img
 }
 
 func installMenuBar(getBaseUrl: @escaping () -> String, terminateBackend: @escaping () -> Void) {
   let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-  if let icon = loadMenuBarTemplateIcon() {
-    statusItem.button?.image = icon
-    statusItem.button?.title = ""
-  } else {
-    statusItem.button?.image = nil
-    statusItem.button?.title = "AI-CrashFix"
-  }
+  statusItem.button?.image = makeMenuBarStatusIcon()
+  statusItem.button?.title = ""
   let menu = NSMenu()
   let openAction = OpenUiAction(getBaseUrl: getBaseUrl)
   let quitAction = QuitAction(terminateBackend: terminateBackend)

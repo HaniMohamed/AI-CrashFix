@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
-  <!-- Template-style glyph: black on transparent (menu bar tinting). -->
+<!-- Reference shape only; the menu bar image is drawn in launcher/main.swift (makeMenuBarStatusIcon). -->
   <circle cx="26" cy="36" r="11" fill="#000000"/>
   <path
     d="M 40 36 L 56 36 M 50 30 L 56 36 L 50 42"
