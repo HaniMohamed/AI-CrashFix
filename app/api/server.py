@@ -608,6 +608,12 @@ async def get_config() -> Dict[str, Any]:
             "openai_url": cfg.OPENAI_URL,
             "has_openai_api_key": bool(cfg.OPENAI_API_KEY),
             "has_google_api_key": bool(cfg.GOOGLE_API_KEY),
+            "gosi_brain_url": cfg.GOSI_BRAIN_URL,
+            "gosi_brain_model": cfg.GOSI_BRAIN_MODEL,
+            "gosi_brain_oauth_identity_domain_name": cfg.GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME,
+            "gosi_brain_temperature": cfg.GOSI_BRAIN_TEMPERATURE,
+            "has_gosi_brain_api_key": bool(cfg.GOSI_BRAIN_API_KEY),
+            "has_gosi_brain_authorization": bool(cfg.GOSI_BRAIN_AUTHORIZATION),
         },
         "repo": {
             "repo_root": cfg.REPO_ROOT,
@@ -656,8 +662,10 @@ async def get_settings() -> Dict[str, Any]:
     """
     from app import config as cfg
     from app.services.app_settings_store import AppSettingsStore
+    from app.services.settings_resolver import SettingsResolver
 
     store = AppSettingsStore()
+    gb = SettingsResolver().effective_gosi_brain()
 
     def eff_str(key: str, env_val: str | None) -> str | None:
         v = store.get(k=key)
@@ -686,6 +694,12 @@ async def get_settings() -> Dict[str, Any]:
             "has_openai_api_key": eff_secret("OPENAI_API_KEY", cfg.OPENAI_API_KEY),
             "gemini_model": eff_str("GEMINI_MODEL", cfg.GEMINI_MODEL),
             "has_google_api_key": eff_secret("GOOGLE_API_KEY", cfg.GOOGLE_API_KEY),
+            "gosi_brain_url": gb.get("url"),
+            "gosi_brain_model": gb.get("model"),
+            "gosi_brain_oauth_identity_domain_name": gb.get("oauth_domain"),
+            "gosi_brain_temperature": gb.get("temperature"),
+            "has_gosi_brain_api_key": bool((gb.get("api_key") or "").strip()),
+            "has_gosi_brain_authorization": bool((gb.get("authorization") or "").strip()),
         },
         "crashlytics": {
             "google_application_credentials": eff_str(
@@ -753,7 +767,7 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
             store.set(k="LLM_PROVIDER", v=None)
         elif isinstance(pv, str):
             pl = pv.strip().lower()
-            if pl in ("gemini", "openai"):
+            if pl in ("gemini", "openai", "gosi-brain"):
                 store.set(k="LLM_PROVIDER", v=pl)
             elif not pv.strip():
                 store.set(k="LLM_PROVIDER", v=None)
@@ -762,6 +776,12 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     set_if_present(req.llm, "openai_api_key", "OPENAI_API_KEY")
     set_if_present(req.llm, "gemini_model", "GEMINI_MODEL")
     set_if_present(req.llm, "google_api_key", "GOOGLE_API_KEY")
+    set_if_present(req.llm, "gosi_brain_url", "GOSI_BRAIN_URL")
+    set_if_present(req.llm, "gosi_brain_model", "GOSI_BRAIN_MODEL")
+    set_if_present(req.llm, "gosi_brain_oauth_identity_domain_name", "GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME")
+    set_if_present(req.llm, "gosi_brain_temperature", "GOSI_BRAIN_TEMPERATURE")
+    set_if_present(req.llm, "gosi_brain_api_key", "GOSI_BRAIN_API_KEY")
+    set_if_present(req.llm, "gosi_brain_authorization", "GOSI_BRAIN_AUTHORIZATION")
 
     set_if_present(req.crashlytics, "google_application_credentials", "GOOGLE_APPLICATION_CREDENTIALS")
     set_if_present(req.crashlytics, "bq_project_id", "BQ_PROJECT_ID")

@@ -58,9 +58,10 @@ AI Crash Fix supports three configuration sources:
 `MAIN_BRANCH` is used as the base branch when creating feature branches for PR/MR generation. In the UI, branch selection is represented by the repo’s `repo_ref`.
 
 #### LLM provider
-- **LLM_PROVIDER**: `gemini` (default) or `openai`
+- **LLM_PROVIDER**: `gemini` (default), `openai`, or `gosi-brain`
 - **GOOGLE_API_KEY** + **GEMINI_MODEL** (default model: `gemini-2.5-flash`)
 - **OPENAI_API_KEY** + **OPENAI_MODEL** (default model: `gpt-4o-mini`) + **OPENAI_URL** (optional)
+- **GOSI Brain** (when `LLM_PROVIDER=gosi-brain`): **GOSI_BRAIN_AUTHORIZATION** (full `Authorization` header value), **GOSI_BRAIN_API_KEY** (`x-apikey`), **GOSI_BRAIN_MODEL**, optional **GOSI_BRAIN_URL** (default `https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions`), **GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME** (default `MobileDomain`), **GOSI_BRAIN_TEMPERATURE** (0–1, default `0.7`), 
 
 #### Crashlytics (BigQuery)
 Used when you run without `--mock`.

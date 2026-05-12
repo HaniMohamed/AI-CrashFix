@@ -20,6 +20,17 @@ class LLMService:
         if name == "openai":
             o = resolver.effective_openai()
             return ("openai", o.get("api_key"), o.get("model"), o.get("url"))
+        if name == "gosi-brain":
+            gb = resolver.effective_gosi_brain()
+            return (
+                "gosi-brain",
+                gb.get("url"),
+                gb.get("model"),
+                gb.get("authorization"),
+                gb.get("api_key"),
+                gb.get("oauth_domain"),
+                gb.get("temperature"),
+            )
         g = resolver.effective_google()
         return ("gemini", g.get("api_key"), g.get("model"))
 
@@ -38,6 +49,18 @@ class LLMService:
                         api_key=o.get("api_key"),
                         base_url=o.get("url"),
                         model=o.get("model"),
+                    )
+                elif name == "gosi-brain":
+                    from app.services.llm_providers.gosi_brain_provider import GosiBrainProvider
+
+                    gb = resolver.effective_gosi_brain()
+                    self._provider = GosiBrainProvider(
+                        url=gb.get("url"),
+                        model=gb.get("model"),
+                        authorization=gb.get("authorization"),
+                        api_key=gb.get("api_key"),
+                        oauth_domain=gb.get("oauth_domain"),
+                        temperature=float(gb.get("temperature") or 0.7),
                     )
                 elif name == "gemini":
                     from app.services.llm_providers.gemini_provider import GeminiProvider

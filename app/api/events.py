@@ -42,6 +42,8 @@ _REDACTED_KEYS = frozenset(
         "jira_token",
         "gitlab_token",
         "authorization",
+        "gosi_brain_api_key",
+        "gosi_brain_authorization",
     )
 )
 

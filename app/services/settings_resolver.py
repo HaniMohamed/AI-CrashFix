@@ -76,6 +76,48 @@ class SettingsResolver:
             "model": self._app_str("GEMINI_MODEL") or cfg.GEMINI_MODEL,
         }
 
+    def _app_number(self, key: str) -> int | float | None:
+        v = self._app.get(k=key)
+        if isinstance(v, bool):
+            return None
+        if isinstance(v, int) and not isinstance(v, bool):
+            return v
+        if isinstance(v, float):
+            return v
+        if isinstance(v, str) and v.strip():
+            s = v.strip()
+            try:
+                if "." in s or "e" in s.lower():
+                    return float(s)
+                return int(s)
+            except ValueError:
+                return None
+        return None
+
+    def effective_gosi_brain(self) -> dict[str, Any]:
+        url = self._app_str("GOSI_BRAIN_URL") or cfg.GOSI_BRAIN_URL
+        model_store = self._app_str("GOSI_BRAIN_MODEL")
+        model = (model_store or (cfg.GOSI_BRAIN_MODEL or "") or "").strip() or None
+        oauth = (
+            self._app_str("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME")
+            or cfg.GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME
+        )
+        oauth = (oauth or "MobileDomain").strip() or "MobileDomain"
+        t_raw = self._app_number("GOSI_BRAIN_TEMPERATURE")
+        if isinstance(t_raw, (int, float)):
+            temperature = float(t_raw)
+        else:
+            temperature = float(cfg.GOSI_BRAIN_TEMPERATURE)
+    
+        return {
+            "url": (url or "").strip() or None,
+            "model": model,
+            "authorization": self._app_secret("GOSI_BRAIN_AUTHORIZATION") or cfg.GOSI_BRAIN_AUTHORIZATION,
+            "api_key": self._app_secret("GOSI_BRAIN_API_KEY") or cfg.GOSI_BRAIN_API_KEY,
+            "oauth_domain": oauth,
+            "temperature": temperature,
+        }
+
     def effective_crashlytics(self, *, repo_key: str | None) -> EffectiveCrashlyticsConfig:
         repo = self._repos.get_repo((repo_key or "").strip()) if (repo_key or "").strip() else None
         backend = (

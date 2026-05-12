@@ -71,7 +71,13 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
   late final TextEditingController _openaiUrlCtrl;
   late final TextEditingController _openaiModelCtrl;
   late final TextEditingController _openaiKeyCtrl;
+  late final TextEditingController _gosiUrlCtrl;
+  late final TextEditingController _gosiModelCtrl;
+  late final TextEditingController _gosiOauthDomainCtrl;
+  late final TextEditingController _gosiApiKeyCtrl;
+  late final TextEditingController _gosiAuthCtrl;
   String _provider = 'gemini';
+  double _gosiTemperature = 0.7;
   bool _didSync = false;
   bool _saving = false;
   String? _result;
@@ -84,6 +90,11 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
     _openaiUrlCtrl = TextEditingController();
     _openaiModelCtrl = TextEditingController();
     _openaiKeyCtrl = TextEditingController();
+    _gosiUrlCtrl = TextEditingController();
+    _gosiModelCtrl = TextEditingController();
+    _gosiOauthDomainCtrl = TextEditingController();
+    _gosiApiKeyCtrl = TextEditingController();
+    _gosiAuthCtrl = TextEditingController();
   }
 
   @override
@@ -93,6 +104,11 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
     _openaiUrlCtrl.dispose();
     _openaiModelCtrl.dispose();
     _openaiKeyCtrl.dispose();
+    _gosiUrlCtrl.dispose();
+    _gosiModelCtrl.dispose();
+    _gosiOauthDomainCtrl.dispose();
+    _gosiApiKeyCtrl.dispose();
+    _gosiAuthCtrl.dispose();
     super.dispose();
   }
 
@@ -103,7 +119,7 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
 
     return GlassCard(
       child: widget.async.when(
-        loading: () => const ShimmerCard(height: 220),
+        loading: () => const ShimmerCard(height: 320),
         error: (e, _) => ErrorBanner(
           message: 'Failed to load LLM settings: $e',
           onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
@@ -112,13 +128,26 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
           final llm = s.section('llm');
           final hasGoogle = llm['has_google_api_key'] == true;
           final hasOpenai = llm['has_openai_api_key'] == true;
+          final hasGosiApi = llm['has_gosi_brain_api_key'] == true;
+          final hasGosiAuth = llm['has_gosi_brain_authorization'] == true;
           if (!_didSync) {
             _didSync = true;
             final p = (llm['provider'] ?? 'gemini').toString().trim().toLowerCase();
-            _provider = p == 'openai' ? 'openai' : 'gemini';
+            if (p == 'openai') {
+              _provider = 'openai';
+            } else if (p == 'gosi-brain') {
+              _provider = 'gosi-brain';
+            } else {
+              _provider = 'gemini';
+            }
             _geminiModelCtrl.text = (llm['gemini_model'] ?? '').toString();
             _openaiUrlCtrl.text = (llm['openai_url'] ?? '').toString();
             _openaiModelCtrl.text = (llm['openai_model'] ?? '').toString();
+            _gosiUrlCtrl.text = (llm['gosi_brain_url'] ?? '').toString();
+            _gosiModelCtrl.text = (llm['gosi_brain_model'] ?? '').toString();
+            _gosiOauthDomainCtrl.text = (llm['gosi_brain_oauth_identity_domain_name'] ?? 'MobileDomain').toString();
+            final temp = llm['gosi_brain_temperature'];
+            _gosiTemperature = temp is num ? temp.toDouble().clamp(0.0, 1.0) : 0.7;
           }
 
           return Column(
@@ -139,7 +168,7 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Choose Gemini or OpenAI. Keys are not shown after save; enter a new key only to replace.',
+                'Choose Gemini, OpenAI, or GOSI Brain. Keys are not shown after save; enter a new value only to replace.',
                 style: theme.bodySmall?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -147,6 +176,7 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                 segments: const [
                   ButtonSegment(value: 'gemini', label: Text('Gemini')),
                   ButtonSegment(value: 'openai', label: Text('OpenAI')),
+                  ButtonSegment(value: 'gosi-brain', label: Text('GOSI Brain')),
                 ],
                 selected: {_provider},
                 onSelectionChanged: (next) {
@@ -171,7 +201,7 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                   ),
                   obscureText: true,
                 ),
-              ] else ...[
+              ] else if (_provider == 'openai') ...[
                 TextField(
                   controller: _openaiUrlCtrl,
                   decoration: const InputDecoration(
@@ -196,6 +226,60 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                   ),
                   obscureText: true,
                 ),
+              ] else ...[
+                TextField(
+                  controller: _gosiUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'API URL',
+                    hintText: 'https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _gosiModelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Model name',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _gosiOauthDomainCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'OAuth identity domain name',
+                    hintText: 'MobileDomain',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Temperature (creativity): ${_gosiTemperature.toStringAsFixed(2)}',
+                  style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                ),
+                Slider(
+                  value: _gosiTemperature,
+                  min: 0,
+                  max: 1,
+                  divisions: 20,
+                  label: _gosiTemperature.toStringAsFixed(2),
+                  onChanged: (v) => setState(() => _gosiTemperature = v),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _gosiAuthCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Authorization header value',
+                    helperText: hasGosiAuth ? 'Saved — leave blank to keep' : 'Not set',
+                  ),
+                  obscureText: true,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _gosiApiKeyCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'API key (x-apikey)',
+                    helperText: hasGosiApi ? 'Key saved — leave blank to keep' : 'Not set',
+                  ),
+                  obscureText: true,
+                ),
               ],
               const SizedBox(height: AppSpacing.lg),
               Row(
@@ -215,16 +299,26 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                                   'gemini_model': _geminiModelCtrl.text.trim(),
                                   'openai_url': _openaiUrlCtrl.text.trim(),
                                   'openai_model': _openaiModelCtrl.text.trim(),
+                                  'gosi_brain_url': _gosiUrlCtrl.text.trim(),
+                                  'gosi_brain_model': _gosiModelCtrl.text.trim(),
+                                  'gosi_brain_oauth_identity_domain_name': _gosiOauthDomainCtrl.text.trim(),
+                                  'gosi_brain_temperature': _gosiTemperature,
                                   if (_googleKeyCtrl.text.trim().isNotEmpty)
                                     'google_api_key': _googleKeyCtrl.text.trim(),
                                   if (_openaiKeyCtrl.text.trim().isNotEmpty)
                                     'openai_api_key': _openaiKeyCtrl.text.trim(),
+                                  if (_gosiApiKeyCtrl.text.trim().isNotEmpty)
+                                    'gosi_brain_api_key': _gosiApiKeyCtrl.text.trim(),
+                                  if (_gosiAuthCtrl.text.trim().isNotEmpty)
+                                    'gosi_brain_authorization': _gosiAuthCtrl.text.trim(),
                                 },
                               });
                               if (!mounted) return;
                               setState(() => _result = 'Saved.');
                               _googleKeyCtrl.clear();
                               _openaiKeyCtrl.clear();
+                              _gosiApiKeyCtrl.clear();
+                              _gosiAuthCtrl.clear();
                             } catch (e) {
                               if (!mounted) return;
                               setState(() => _result = e.toString());

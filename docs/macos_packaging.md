@@ -18,7 +18,7 @@ Git is assumed to be present on dev Macs (Xcode Command Line Tools).
 
 If you need to launch `AI Crash Fix.app` from another macOS app (e.g. Flutter) and pass LLM configuration at startup, you can use `open --args`.
 
-The launcher maps these args into the backend environment variables (`LLM_PROVIDER`, `OPENAI_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY`, etc.).
+The launcher maps these args into the backend environment variables (`LLM_PROVIDER`, `OPENAI_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY`, `GOSI_BRAIN_URL`, `GOSI_BRAIN_MODEL`, `GOSI_BRAIN_AUTHORIZATION`, `GOSI_BRAIN_API_KEY`, etc.).
 
 Example:
 
@@ -28,6 +28,17 @@ open -a "AI Crash Fix" --args \
   --openai-url "https://api.openai.com/v1" \
   --openai-model "gpt-4o-mini" \
   --openai-api-key "sk-REPLACE_ME"
+```
+
+GOSI Brain example:
+
+```bash
+open -a "AI Crash Fix" --args \
+  --llm-provider gosi-brain \
+  --gosi-brain-url "https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions" \
+  --gosi-brain-model "YOUR_MODEL" \
+  --gosi-brain-authorization "Bearer REPLACE_ME" \
+  --gosi-brain-api-key "REPLACE_ME"
 ```
 
 Notes:

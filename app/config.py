@@ -81,13 +81,29 @@ if _LOCAL_PACKAGES_DIR_RAW:
 else:
     LOCAL_PACKAGES_DIR = None
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # or "openai"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # or "openai" or "gosi-brain"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+# GOSI Brain (OpenAI-compatible chat/completions with custom headers)
+GOSI_BRAIN_URL = os.getenv(
+    "GOSI_BRAIN_URL",
+    "https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions",
+)
+GOSI_BRAIN_MODEL = os.getenv("GOSI_BRAIN_MODEL")
+GOSI_BRAIN_AUTHORIZATION = os.getenv("GOSI_BRAIN_AUTHORIZATION")
+GOSI_BRAIN_API_KEY = os.getenv("GOSI_BRAIN_API_KEY")
+GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME = os.getenv("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME", "MobileDomain")
+_GOSI_BRAIN_TEMP_RAW = (os.getenv("GOSI_BRAIN_TEMPERATURE") or "").strip()
+try:
+    GOSI_BRAIN_TEMPERATURE = float(_GOSI_BRAIN_TEMP_RAW) if _GOSI_BRAIN_TEMP_RAW else 0.7
+except ValueError:
+    GOSI_BRAIN_TEMPERATURE = 0.7
+
 
 
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")

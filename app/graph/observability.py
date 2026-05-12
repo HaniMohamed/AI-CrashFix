@@ -130,7 +130,14 @@ def summarize_state(state: Dict[str, Any], keys: Optional[Iterable[str]] = None)
     for k in keys:
         if k not in state:
             continue
-        if k.lower() in {"openai_api_key", "google_api_key", "jira_token", "authorization"}:
+        if k.lower() in {
+            "openai_api_key",
+            "google_api_key",
+            "jira_token",
+            "authorization",
+            "gosi_brain_api_key",
+            "gosi_brain_authorization",
+        }:
             out[k] = "<redacted>"
             continue
         out[k] = _shape(state.get(k))

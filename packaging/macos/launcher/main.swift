@@ -19,12 +19,18 @@ func usageAndExit(code: Int32) -> Never {
       open -a "AI Crash Fix" --args [options]
 
     Options (mapped to backend env vars):
-      --llm-provider <openai|gemini>     -> LLM_PROVIDER
+      --llm-provider <openai|gemini|gosi-brain>     -> LLM_PROVIDER
       --openai-url <url>                -> OPENAI_URL
       --openai-model <model>            -> OPENAI_MODEL
       --openai-api-key <key>            -> OPENAI_API_KEY
       --google-api-key <key>            -> GOOGLE_API_KEY
       --gemini-model <model>            -> GEMINI_MODEL
+      --gosi-brain-url <url>            -> GOSI_BRAIN_URL
+      --gosi-brain-model <model>        -> GOSI_BRAIN_MODEL
+      --gosi-brain-api-key <key>        -> GOSI_BRAIN_API_KEY
+      --gosi-brain-authorization <hdr>  -> GOSI_BRAIN_AUTHORIZATION
+      --gosi-brain-oauth-domain <name>  -> GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME
+      --gosi-brain-temperature <n>      -> GOSI_BRAIN_TEMPERATURE
 
     Advanced:
       --env KEY=VALUE                    -> sets arbitrary environment variable
@@ -48,6 +54,8 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
   let secretKeys: Set<String> = [
     "OPENAI_API_KEY",
     "GOOGLE_API_KEY",
+    "GOSI_BRAIN_API_KEY",
+    "GOSI_BRAIN_AUTHORIZATION",
   ]
 
   func set(_ envKey: String, _ value: String) {
@@ -91,6 +99,24 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
     case "--gemini-model":
       if let v = nextValue(&i, a) { set("GEMINI_MODEL", v) } else { usageAndExit(code: 2) }
 
+    case "--gosi-brain-url":
+      if let v = nextValue(&i, a) { set("GOSI_BRAIN_URL", v) } else { usageAndExit(code: 2) }
+
+    case "--gosi-brain-model":
+      if let v = nextValue(&i, a) { set("GOSI_BRAIN_MODEL", v) } else { usageAndExit(code: 2) }
+
+    case "--gosi-brain-api-key":
+      if let v = nextValue(&i, a) { set("GOSI_BRAIN_API_KEY", v) } else { usageAndExit(code: 2) }
+
+    case "--gosi-brain-authorization":
+      if let v = nextValue(&i, a) { set("GOSI_BRAIN_AUTHORIZATION", v) } else { usageAndExit(code: 2) }
+
+    case "--gosi-brain-oauth-domain":
+      if let v = nextValue(&i, a) { set("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME", v) } else { usageAndExit(code: 2) }
+
+    case "--gosi-brain-temperature":
+      if let v = nextValue(&i, a) { set("GOSI_BRAIN_TEMPERATURE", v) } else { usageAndExit(code: 2) }
+
     case "--env":
       if let kv = nextValue(&i, a) {
         if let eq = kv.firstIndex(of: "=") {
@@ -118,6 +144,18 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
         set("GOOGLE_API_KEY", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else if a.hasPrefix("--gemini-model=") {
         set("GEMINI_MODEL", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--gosi-brain-url=") {
+        set("GOSI_BRAIN_URL", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--gosi-brain-model=") {
+        set("GOSI_BRAIN_MODEL", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--gosi-brain-api-key=") {
+        set("GOSI_BRAIN_API_KEY", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--gosi-brain-authorization=") {
+        set("GOSI_BRAIN_AUTHORIZATION", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--gosi-brain-oauth-domain=") {
+        set("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--gosi-brain-temperature=") {
+        set("GOSI_BRAIN_TEMPERATURE", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else {
         unknown.append(a)
       }
