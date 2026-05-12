@@ -1,4 +1,3 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +8,7 @@ import '../../core/providers/api_provider.dart';
 import '../../core/providers/config_provider.dart';
 import '../../core/models/repo_entry.dart';
 import '../../core/providers/repo_registry_provider.dart';
+import '../../util/service_account_json_pick.dart';
 
 /// `namespace/project` path for the GitLab API, derived from a normal git remote URL.
 String? deriveGitlabProjectPathFromRepoUrl(String raw) {
@@ -211,21 +211,13 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   }
 
   Future<void> _pickAndUploadGcpCredentials() async {
-    setState(() {
-      _gcpCredsLastMessage = null;
-      _gcpCredsLastError = false;
-    });
-    final pick = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['json'],
-      withData: true,
-    );
+    final picked = await pickServiceAccountJsonFile();
     if (!mounted) return;
-    if (pick == null || pick.files.isEmpty) return;
-    final file = pick.files.single;
-    final bytes = file.bytes;
-    final name = file.name.trim().isEmpty ? 'credentials.json' : file.name.trim();
-    if (bytes == null || bytes.isEmpty) {
+    if (picked == null) return;
+
+    final bytes = picked.bytes;
+    final name = picked.name;
+    if (bytes.isEmpty) {
       setState(() {
         _gcpCredsLastMessage =
             'Could not read file (empty or unavailable on this platform).';
@@ -233,7 +225,11 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       });
       return;
     }
-    setState(() => _gcpCredsUploading = true);
+    setState(() {
+      _gcpCredsLastMessage = null;
+      _gcpCredsLastError = false;
+      _gcpCredsUploading = true;
+    });
     try {
       final api = ref.read(apiClientProvider);
       await api.postMultipartFile(
