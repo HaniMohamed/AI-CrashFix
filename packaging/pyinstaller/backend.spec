@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 # NOTE: PyInstaller executes spec files via `exec()` and does not guarantee `__file__`.
 # We require running the build from the repo root so we can resolve paths reliably.
@@ -19,9 +19,20 @@ PROJECT_ROOT = Path.cwd().resolve()
 
 hiddenimports = []
 hiddenimports += collect_submodules("app")
-hiddenimports += collect_submodules("psycopg")
+hiddenimports += [
+    "app.services.crash_store_postgres",
+    "psycopg",
+    "psycopg_binary",
+]
 
 datas = []
+binaries = []
+
+for package in ("psycopg", "psycopg_binary"):
+    pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package)
+    datas += pkg_datas
+    binaries += pkg_binaries
+    hiddenimports += pkg_hiddenimports
 
 # Bundle Flutter Web build output (served by FastAPI when frozen).
 # Expected path: frontend/build/web/index.html

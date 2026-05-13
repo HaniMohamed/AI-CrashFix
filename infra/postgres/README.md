@@ -14,11 +14,13 @@ docker compose up -d
 docker compose ps
 ```
 
-Connection URL for the app (replace host and password):
+Connection URL for the app on the same machine as Docker:
 
 ```text
-postgresql://ai_crash_fix:YOUR_PASSWORD@HOST:5432/ai_crash_fix
+postgresql://ai_crash_fix:YOUR_PASSWORD@localhost:5432/ai_crash_fix
 ```
+
+For teammates on other machines, use that host's LAN or Tailscale address instead of `localhost`.
 
 ## Network
 
