@@ -74,6 +74,21 @@ def ensure_postgres_schema(conn: psycopg.Connection) -> None:
     _schema_ready = True
 
 
+def check_postgres_crash_store(*, connect_timeout: int = 3) -> tuple[bool, str | None]:
+    """Return (ok, error_message) for the configured Postgres crash store."""
+    try:
+        url = _crash_db_url()
+    except ValueError as exc:
+        return False, str(exc)
+    try:
+        with psycopg.connect(url, connect_timeout=connect_timeout) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+    except Exception as exc:
+        return False, str(exc)
+    return True, None
+
+
 class PostgresCrashStore:
     """Postgres-backed crash pipeline store scoped by firebase project id."""
 

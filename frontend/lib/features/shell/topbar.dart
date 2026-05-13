@@ -282,12 +282,22 @@ class _HealthPill extends ConsumerWidget {
       label = 'API offline';
     } else {
       final ok = health.value?.ok == true;
-      dot = ok ? palette.success : palette.danger;
-      label = ok ? 'API healthy' : 'API offline';
+      final crashStoreUnhealthy = health.value?.crashStoreUnhealthy == true;
+      dot = ok && !crashStoreUnhealthy ? palette.success : palette.danger;
+      if (crashStoreUnhealthy) {
+        label = 'DB offline';
+      } else {
+        label = ok ? 'API healthy' : 'API offline';
+      }
     }
+    final tooltipDetail = health.value?.crashStoreUnhealthy == true
+        ? health.value?.crashStoreError
+        : null;
     return Tooltip(
-      message:
-          'Last check: ${health.value?.checkedAt.toLocal().toString().split('.').first ?? "—"}',
+      message: [
+        'Last check: ${health.value?.checkedAt.toLocal().toString().split('.').first ?? "—"}',
+        if (tooltipDetail != null && tooltipDetail.isNotEmpty) tooltipDetail,
+      ].join('\n'),
       child: InkWell(
         borderRadius: AppRadii.all(AppRadii.pill),
         onTap: () => ref.read(healthProvider.notifier).refresh(),

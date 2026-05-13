@@ -8,10 +8,35 @@ import 'api_provider.dart';
 class HealthState {
   final bool? ok;
   final String? error;
+  final String? crashStoreBackend;
+  final bool? crashStoreOk;
+  final String? crashStoreError;
   final DateTime checkedAt;
-  const HealthState({this.ok, this.error, required this.checkedAt});
+  const HealthState({
+    this.ok,
+    this.error,
+    this.crashStoreBackend,
+    this.crashStoreOk,
+    this.crashStoreError,
+    required this.checkedAt,
+  });
 
   bool get loading => ok == null && error == null;
+
+  bool get crashStoreUnhealthy =>
+      crashStoreBackend == 'postgres' && crashStoreOk == false;
+
+  String? get userFacingError {
+    if (crashStoreUnhealthy) {
+      return crashStoreError ??
+          'The shared Postgres crash store is unavailable. '
+          'Check that the database is running and AI_CRASH_FIX_CRASH_DB_URL is correct.';
+    }
+    if (ok == false) {
+      return error ?? 'The API is unavailable.';
+    }
+    return error;
+  }
 }
 
 class HealthNotifier extends AsyncNotifier<HealthState> {
@@ -36,8 +61,33 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
     final api = ref.read(apiClientProvider);
     try {
       final res = await api.getJson(Endpoints.health);
-      final ok = (res is Map && res['ok'] == true);
-      return HealthState(ok: ok, checkedAt: DateTime.now());
+      if (res is! Map) {
+        return HealthState(
+          ok: false,
+          error: 'Unexpected health response',
+          checkedAt: DateTime.now(),
+        );
+      }
+      final crashStore = res['crash_store'];
+      String? crashStoreBackend;
+      bool? crashStoreOk;
+      String? crashStoreError;
+      if (crashStore is Map) {
+        crashStoreBackend = crashStore['backend']?.toString();
+        crashStoreOk = crashStore['ok'] == true;
+        final rawError = crashStore['error'];
+        if (rawError != null && '$rawError'.trim().isNotEmpty) {
+          crashStoreError = '$rawError';
+        }
+      }
+      final ok = res['ok'] == true;
+      return HealthState(
+        ok: ok,
+        crashStoreBackend: crashStoreBackend,
+        crashStoreOk: crashStoreOk,
+        crashStoreError: crashStoreError,
+        checkedAt: DateTime.now(),
+      );
     } catch (e) {
       return HealthState(error: e.toString(), checkedAt: DateTime.now());
     }

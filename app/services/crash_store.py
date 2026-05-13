@@ -4,7 +4,7 @@ import os
 from typing import Protocol
 
 from app.config import AI_CRASH_FIX_CRASH_STORE_BACKEND
-from app.services.crash_store_postgres import PostgresCrashStore
+from app.services.crash_store_postgres import PostgresCrashStore, check_postgres_crash_store
 from app.services.crash_store_sqlite import SqliteCrashStore
 
 
@@ -61,6 +61,20 @@ def crash_store_backend_name() -> str:
 
 def uses_postgres_crash_store() -> bool:
     return crash_store_backend_name() == "postgres"
+
+
+def crash_store_health() -> dict[str, object]:
+    """Health payload for ``GET /api/health`` crash_store section."""
+    try:
+        backend = crash_store_backend_name()
+    except ValueError as exc:
+        return {"backend": "unknown", "ok": False, "error": str(exc)}
+
+    if backend == "postgres":
+        ok, error = check_postgres_crash_store()
+        return {"backend": backend, "ok": ok, "error": error}
+
+    return {"backend": backend, "ok": True, "error": None}
 
 
 def open_crash_store(

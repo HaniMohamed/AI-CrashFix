@@ -37,7 +37,7 @@ from starlette.staticfiles import StaticFiles
 from app.api.analytics import compute_analytics
 from app.api.events import ERROR, to_ndjson
 from app.api.runner import stream_run
-from app.services.crash_store import CrashStore, uses_postgres_crash_store
+from app.services.crash_store import CrashStore, crash_store_health, uses_postgres_crash_store
 from app.services.repo_registry_store import RepoRegistryStore
 
 
@@ -185,7 +185,11 @@ class RepoStatusResponse(BaseModel):
 
 @app.get("/api/health")
 async def health() -> Dict[str, Any]:
-    return {"ok": True}
+    crash_store = crash_store_health()
+    return {
+        "ok": bool(crash_store.get("ok")),
+        "crash_store": crash_store,
+    }
 
 
 @app.post("/api/runs")

@@ -67,6 +67,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
 
     final repoAsync = ref.watch(repoRegistryProvider);
+    final healthAsync = ref.watch(healthProvider);
     final hasRepos = repoAsync.valueOrNull?.repos.isNotEmpty == true;
 
     Widget shellWithTopbar({
@@ -93,6 +94,84 @@ class _AppShellState extends ConsumerState<AppShell> {
                 ),
               ),
             ],
+          ),
+        ),
+      );
+    }
+
+    if (healthAsync.isLoading) {
+      return shellWithTopbar(
+        absorbSidebar: true,
+        body: AbsorbPointer(
+          absorbing: true,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'Checking API and crash store…',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final health = healthAsync.valueOrNull;
+    if (healthAsync.hasError ||
+        health?.ok != true ||
+        health?.crashStoreUnhealthy == true) {
+      final title = health?.crashStoreUnhealthy == true
+          ? 'Shared crash database unavailable'
+          : 'Could not reach the API';
+      final detail = health?.userFacingError ?? '${healthAsync.error}';
+      return shellWithTopbar(
+        absorbSidebar: false,
+        body: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    detail,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    health?.crashStoreUnhealthy == true
+                        ? 'Start the team Postgres instance (see infra/postgres) and verify '
+                            'AI_CRASH_FIX_CRASH_DB_URL, then retry.'
+                        : 'Check the API base URL in the top bar (must point at the Python '
+                            'backend, e.g. http://localhost:8000), then retry.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  FilledButton.icon(
+                    onPressed: () {
+                      ref.invalidate(healthProvider);
+                      ref.invalidate(repoRegistryProvider);
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
