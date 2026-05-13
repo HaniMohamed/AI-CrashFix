@@ -45,6 +45,31 @@ Notes:
 - Passing API keys via `--args` can expose them in process listings. Prefer Keychain if this is a concern.
 - The launcher writes logs under `~/Library/Application Support/AI Crash Fix/` and will redact secrets in `launcher.log`.
 
+## Shared crash store (Postgres)
+
+The repo registry stays on local SQLite. Crash pipeline progress can use local SQLite (default) or a team Postgres database keyed by Firebase project id.
+
+Set via `.env`, `open --args`, or `--env KEY=VALUE`:
+
+- `AI_CRASH_FIX_CRASH_STORE_BACKEND` — `sqlite` (default) or `postgres`
+- `AI_CRASH_FIX_CRASH_DB_URL` — Postgres URL when backend is `postgres`
+
+Example:
+
+```bash
+open -a "AI Crash Fix" --args \
+  --crash-store-backend postgres \
+  --crash-db-url "postgresql://ai_crash_fix:PASSWORD@HOST:5432/ai_crash_fix"
+```
+
+Host Postgres with Docker Compose under [`infra/postgres/`](../infra/postgres/README.md). Import existing local SQLite crash DBs once with `scripts/migrate_crash_store_to_postgres.py` (`--dry-run` first).
+
+Manual verification:
+
+- Default SQLite: existing `db/*.db` files are untouched; batch dedup still works.
+- Postgres: two clients with the same Firebase project see the same crashes and `already_processed` skips.
+- Import: dry-run row counts match expectations; spot-check a known `crash_id` in Postgres.
+
 ## Build steps (on your machine)
 
 ### One-command build (recommended)

@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-crash-fix-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_crash_fix}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_crash_fix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ai_crash_fix_pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-ai_crash_fix} -d ${POSTGRES_DB:-ai_crash_fix}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ai_crash_fix_pgdata:

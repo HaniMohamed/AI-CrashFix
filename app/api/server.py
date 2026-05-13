@@ -37,7 +37,7 @@ from starlette.staticfiles import StaticFiles
 from app.api.analytics import compute_analytics
 from app.api.events import ERROR, to_ndjson
 from app.api.runner import stream_run
-from app.services.crash_store import CrashStore
+from app.services.crash_store import CrashStore, uses_postgres_crash_store
 from app.services.repo_registry_store import RepoRegistryStore
 
 
@@ -219,11 +219,7 @@ async def list_crashes(
     repo_key: Optional[str] = Query(None, description="Scope crashes to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
     key = _resolve_repo_key(repo_key)
-    project_id = None
-    if key:
-        entry = RepoRegistryStore().get_repo(key)
-        project_id = entry.firebase_project_id if entry else None
-    store = CrashStore(repo_key=key, project_id=project_id) if key else CrashStore(project_id=project_id)
+    store = _crash_store_for_repo_key(key)
     rows = store.list_crashes(
         status=status,
         limit=limit,
@@ -239,11 +235,7 @@ async def get_crash(
     repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
     key = _resolve_repo_key(repo_key)
-    project_id = None
-    if key:
-        entry = RepoRegistryStore().get_repo(key)
-        project_id = entry.firebase_project_id if entry else None
-    store = CrashStore(repo_key=key, project_id=project_id) if key else CrashStore(project_id=project_id)
+    store = _crash_store_for_repo_key(key)
     row = store.get_crash(crash_id, include_result=True)
     if row is None:
         raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
@@ -256,11 +248,7 @@ async def get_analytics(
     repo_key: Optional[str] = Query(None, description="Scope analytics to this repo_key (defaults to active repo)."),
 ) -> Dict[str, Any]:
     key = _resolve_repo_key(repo_key)
-    project_id = None
-    if key:
-        entry = RepoRegistryStore().get_repo(key)
-        project_id = entry.firebase_project_id if entry else None
-    store = CrashStore(repo_key=key, project_id=project_id) if key else CrashStore(project_id=project_id)
+    store = _crash_store_for_repo_key(key)
     return compute_analytics(store, use_cache=not no_cache)
 
 
@@ -332,7 +320,7 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             )
         # Create the per-repo crash DB immediately (schema included) so users see it
         # right after adding the repo (not only after starting a run).
-        CrashStore(repo_key=entry.repo_key, project_id=entry.firebase_project_id)
+        CrashStore(project_id=entry.firebase_project_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -368,13 +356,16 @@ async def delete_repo(repo_key: str, req: RepoDeleteRequest) -> Dict[str, Any]:
     if (req.confirm_name or "").strip() != (entry.name or "").strip():
         raise HTTPException(status_code=400, detail="confirm_name did not match repo name")
 
-    # Delete per-repo crash DB.
-    try:
-        crash_db = CrashStore(repo_key=repo_key, project_id=entry.firebase_project_id).db_path
-        if crash_db and os.path.exists(crash_db):
-            os.remove(crash_db)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete crash DB: {e}") from e
+    if not uses_postgres_crash_store():
+        try:
+            crash_db = CrashStore(
+                repo_key=repo_key,
+                project_id=entry.firebase_project_id,
+            ).db_path
+            if crash_db and os.path.exists(crash_db):
+                os.remove(crash_db)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete crash DB: {e}") from e
 
     # Delete cloned workspace directory (best-effort).
     try:
@@ -941,6 +932,19 @@ def _resolve_repo_key(explicit: str | None) -> str | None:
     if key:
         return key
     return RepoRegistryStore().get_active_repo_key()
+
+
+def _crash_store_for_repo_key(repo_key: str | None) -> CrashStore:
+    key = (repo_key or "").strip() or None
+    project_id = None
+    if key:
+        entry = RepoRegistryStore().get_repo(key)
+        project_id = entry.firebase_project_id if entry else None
+    if uses_postgres_crash_store():
+        return CrashStore(project_id=project_id)
+    if key:
+        return CrashStore(repo_key=key, project_id=project_id)
+    return CrashStore(project_id=project_id)
 
 
 def _run_repo_url(req: RunRequest) -> str | None:

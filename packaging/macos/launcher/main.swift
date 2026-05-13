@@ -31,6 +31,8 @@ func usageAndExit(code: Int32) -> Never {
       --gosi-brain-authorization <hdr>  -> GOSI_BRAIN_AUTHORIZATION
       --gosi-brain-oauth-domain <name>  -> GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME
       --gosi-brain-temperature <n>      -> GOSI_BRAIN_TEMPERATURE
+      --crash-store-backend <sqlite|postgres> -> AI_CRASH_FIX_CRASH_STORE_BACKEND
+      --crash-db-url <url>              -> AI_CRASH_FIX_CRASH_DB_URL
 
     Advanced:
       --env KEY=VALUE                    -> sets arbitrary environment variable
@@ -56,6 +58,7 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
     "GOOGLE_API_KEY",
     "GOSI_BRAIN_API_KEY",
     "GOSI_BRAIN_AUTHORIZATION",
+    "AI_CRASH_FIX_CRASH_DB_URL",
   ]
 
   func set(_ envKey: String, _ value: String) {
@@ -117,6 +120,12 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
     case "--gosi-brain-temperature":
       if let v = nextValue(&i, a) { set("GOSI_BRAIN_TEMPERATURE", v) } else { usageAndExit(code: 2) }
 
+    case "--crash-store-backend":
+      if let v = nextValue(&i, a) { set("AI_CRASH_FIX_CRASH_STORE_BACKEND", v) } else { usageAndExit(code: 2) }
+
+    case "--crash-db-url":
+      if let v = nextValue(&i, a) { set("AI_CRASH_FIX_CRASH_DB_URL", v) } else { usageAndExit(code: 2) }
+
     case "--env":
       if let kv = nextValue(&i, a) {
         if let eq = kv.firstIndex(of: "=") {
@@ -156,6 +165,10 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
         set("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else if a.hasPrefix("--gosi-brain-temperature=") {
         set("GOSI_BRAIN_TEMPERATURE", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--crash-store-backend=") {
+        set("AI_CRASH_FIX_CRASH_STORE_BACKEND", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--crash-db-url=") {
+        set("AI_CRASH_FIX_CRASH_DB_URL", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else {
         unknown.append(a)
       }

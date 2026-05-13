@@ -48,7 +48,7 @@ from app.graph.observability import (
     unregister_event_sink,
 )
 from app.graph.fix_generation_graph.nodes.fallback import FIX_VALIDATION_EXHAUSTED_PREFIX
-from app.services.crash_store import CrashStore
+from app.services.crash_store import CrashStore, uses_postgres_crash_store
 from app.services.crashlytics_service import CrashlyticsService
 
 
@@ -211,11 +211,15 @@ def stream_run(
         resolved_repo_root = (cfg.REPO_ROOT or "").strip() or None
         resolved_repo_key = None
 
-    crash_store = (
-        CrashStore(repo_key=resolved_repo_key, project_id=resolved_firebase_project_id)
-        if resolved_repo_key
-        else CrashStore(project_id=resolved_firebase_project_id)
-    )
+    if uses_postgres_crash_store():
+        crash_store = CrashStore(project_id=resolved_firebase_project_id)
+    elif resolved_repo_key:
+        crash_store = CrashStore(
+            repo_key=resolved_repo_key,
+            project_id=resolved_firebase_project_id,
+        )
+    else:
+        crash_store = CrashStore(project_id=resolved_firebase_project_id)
 
     # NOTE: Must be a thread-safe queue. Subgraph node events can be emitted while
     # `graph.stream(...)` is blocked inside a long-running node; we still want to

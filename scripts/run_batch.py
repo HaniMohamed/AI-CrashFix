@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.config import CRASHLYTICS_FETCH_BACKEND
+from app.config import BQ_PROJECT_ID, CRASHLYTICS_FETCH_BACKEND
 from app.graph.graph_builder import build_graph
 from app.services.crash_store import CrashStore
 from app.services.crashlytics_service import CrashlyticsService
@@ -70,7 +70,7 @@ def main() -> int:
     args = parser.parse_args()
 
     graph = build_graph()
-    crash_store = CrashStore()
+    crash_store = CrashStore(project_id=BQ_PROJECT_ID)
     service = CrashlyticsService(mock=args.mock)
 
     batch_state: dict[str, Any] = {}

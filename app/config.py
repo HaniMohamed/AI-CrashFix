@@ -142,3 +142,9 @@ GITLAB_SSL_CA_BUNDLE = os.getenv("GITLAB_SSL_CA_BUNDLE")
 
 AI_CRASH_FIX_GRAPH_LOG_LEVEL = os.getenv("AI_CRASH_FIX_GRAPH_LOG_LEVEL")
 AI_CRASH_FIX_GRAPH_LOG_STYLE = os.getenv("AI_CRASH_FIX_GRAPH_LOG_STYLE")
+
+# Crash pipeline store: "sqlite" (default, local files) or "postgres" (shared remote).
+AI_CRASH_FIX_CRASH_STORE_BACKEND = (
+    (os.getenv("AI_CRASH_FIX_CRASH_STORE_BACKEND") or "sqlite").strip().lower()
+)
+AI_CRASH_FIX_CRASH_DB_URL = (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip() or None

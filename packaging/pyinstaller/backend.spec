@@ -19,6 +19,7 @@ PROJECT_ROOT = Path.cwd().resolve()
 
 hiddenimports = []
 hiddenimports += collect_submodules("app")
+hiddenimports += collect_submodules("psycopg")
 
 datas = []
 

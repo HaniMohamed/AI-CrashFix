@@ -58,7 +58,7 @@ def _device_key(value: Any) -> str | None:
 
 def compute_analytics(store: CrashStore, *, use_cache: bool = True) -> Dict[str, Any]:
     """Return the aggregated dashboard payload."""
-    cache_key = store.db_path
+    cache_key = store.store_key
     now = time.monotonic()
 
     if use_cache:
