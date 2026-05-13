@@ -39,14 +39,14 @@ class SettingsPage extends ConsumerWidget {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Theme is stored in the browser; the API base URL follows build/runtime defaults (not editable here). '
-                'LLM keys are saved on the server (SQLite) with .env fallback. '
+                'LLM provider and keys are configured on the server (SQLite / .env); this page shows them read-only. '
                 'Crashlytics, Jira, and GitLab are configured per repo (read-only summary below for the selected repo).',
                 style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.xl),
               _ConnectionCard(settings: settings),
               const SizedBox(height: AppSpacing.lg),
-              _EditableLlmSection(async: backendSettings),
+              _ReadOnlyLlmSection(async: backendSettings),
               const SizedBox(height: AppSpacing.lg),
               const _RepoIntegrationPanel(),
             ],
@@ -57,15 +57,16 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-class _EditableLlmSection extends ConsumerStatefulWidget {
+class _ReadOnlyLlmSection extends ConsumerStatefulWidget {
   final AsyncValue<BackendSettingsState> async;
-  const _EditableLlmSection({required this.async});
+  const _ReadOnlyLlmSection({required this.async});
 
   @override
-  ConsumerState<_EditableLlmSection> createState() => _EditableLlmSectionState();
+  ConsumerState<_ReadOnlyLlmSection> createState() =>
+      _ReadOnlyLlmSectionState();
 }
 
-class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
+class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
   late final TextEditingController _geminiModelCtrl;
   late final TextEditingController _googleKeyCtrl;
   late final TextEditingController _openaiUrlCtrl;
@@ -79,8 +80,6 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
   String _provider = 'gemini';
   double _gosiTemperature = 0.7;
   bool _didSync = false;
-  bool _saving = false;
-  String? _result;
 
   @override
   void initState() {
@@ -132,7 +131,10 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
           final hasGosiAuth = llm['has_gosi_brain_authorization'] == true;
           if (!_didSync) {
             _didSync = true;
-            final p = (llm['provider'] ?? 'gemini').toString().trim().toLowerCase();
+            final p = (llm['provider'] ?? 'gemini')
+                .toString()
+                .trim()
+                .toLowerCase();
             if (p == 'openai') {
               _provider = 'openai';
             } else if (p == 'gosi-brain') {
@@ -145,9 +147,13 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
             _openaiModelCtrl.text = (llm['openai_model'] ?? '').toString();
             _gosiUrlCtrl.text = (llm['gosi_brain_url'] ?? '').toString();
             _gosiModelCtrl.text = (llm['gosi_brain_model'] ?? '').toString();
-            _gosiOauthDomainCtrl.text = (llm['gosi_brain_oauth_identity_domain_name'] ?? 'MobileDomain').toString();
+            _gosiOauthDomainCtrl.text =
+                (llm['gosi_brain_oauth_identity_domain_name'] ?? 'MobileDomain')
+                    .toString();
             final temp = llm['gosi_brain_temperature'];
-            _gosiTemperature = temp is num ? temp.toDouble().clamp(0.0, 1.0) : 0.7;
+            _gosiTemperature = temp is num
+                ? temp.toDouble().clamp(0.0, 1.0)
+                : 0.7;
           }
 
           return Column(
@@ -160,7 +166,8 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                   Text('LLM provider', style: theme.headlineSmall),
                   const Spacer(),
                   IconButton(
-                    onPressed: () => ref.read(backendSettingsProvider.notifier).refresh(),
+                    onPressed: () =>
+                        ref.read(backendSettingsProvider.notifier).refresh(),
                     icon: const Icon(Icons.refresh),
                     tooltip: 'Refresh',
                   ),
@@ -168,25 +175,31 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Choose Gemini, OpenAI, or GOSI Brain. Keys are not shown after save; enter a new value only to replace.',
+                'The active provider and credentials are configured on the server; secrets are never shown.',
                 style: theme.bodySmall?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.md),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'gemini', label: Text('Gemini')),
-                  ButtonSegment(value: 'openai', label: Text('OpenAI')),
-                  ButtonSegment(value: 'gosi-brain', label: Text('GOSI Brain')),
-                ],
-                selected: {_provider},
-                onSelectionChanged: (next) {
-                  setState(() => _provider = next.first);
-                },
+              ExcludeFocus(
+                child: IgnorePointer(
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'gemini', label: Text('Gemini')),
+                      ButtonSegment(value: 'openai', label: Text('OpenAI')),
+                      ButtonSegment(
+                        value: 'gosi-brain',
+                        label: Text('GOSI Brain'),
+                      ),
+                    ],
+                    selected: {_provider},
+                    onSelectionChanged: (_) {},
+                  ),
+                ),
               ),
               const SizedBox(height: AppSpacing.lg),
               if (_provider == 'gemini') ...[
                 TextField(
                   controller: _geminiModelCtrl,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     labelText: 'Gemini model',
                     hintText: 'gemini-2.5-flash',
@@ -195,15 +208,19 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _googleKeyCtrl,
+                  readOnly: true,
                   decoration: InputDecoration(
                     labelText: 'Google API key',
-                    helperText: hasGoogle ? 'Key saved — leave blank to keep' : 'Not set',
+                    helperText: hasGoogle
+                        ? 'Configured on server (value hidden)'
+                        : 'Not set',
                   ),
                   obscureText: true,
                 ),
               ] else if (_provider == 'openai') ...[
                 TextField(
                   controller: _openaiUrlCtrl,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     labelText: 'OpenAI base URL',
                     hintText: 'https://api.openai.com/v1',
@@ -212,6 +229,7 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _openaiModelCtrl,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     labelText: 'Model name',
                     hintText: 'gpt-4o-mini',
@@ -220,30 +238,35 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _openaiKeyCtrl,
+                  readOnly: true,
                   decoration: InputDecoration(
                     labelText: 'OpenAI API key',
-                    helperText: hasOpenai ? 'Key saved — leave blank to keep' : 'Not set',
+                    helperText: hasOpenai
+                        ? 'Configured on server (value hidden)'
+                        : 'Not set',
                   ),
                   obscureText: true,
                 ),
               ] else ...[
                 TextField(
                   controller: _gosiUrlCtrl,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     labelText: 'API URL',
-                    hintText: 'https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions',
+                    hintText:
+                        'https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions',
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiModelCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Model name',
-                  ),
+                  readOnly: true,
+                  decoration: const InputDecoration(labelText: 'Model name'),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiOauthDomainCtrl,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     labelText: 'OAuth identity domain name',
                     hintText: 'MobileDomain',
@@ -252,7 +275,9 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 Text(
                   'Temperature (creativity): ${_gosiTemperature.toStringAsFixed(2)}',
-                  style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                  style: theme.bodySmall?.copyWith(
+                    color: palette.textSecondary,
+                  ),
                 ),
                 Slider(
                   value: _gosiTemperature,
@@ -260,86 +285,33 @@ class _EditableLlmSectionState extends ConsumerState<_EditableLlmSection> {
                   max: 1,
                   divisions: 20,
                   label: _gosiTemperature.toStringAsFixed(2),
-                  onChanged: (v) => setState(() => _gosiTemperature = v),
+                  onChanged: null,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiAuthCtrl,
+                  readOnly: true,
                   decoration: InputDecoration(
                     labelText: 'Authorization header value',
-                    helperText: hasGosiAuth ? 'Saved — leave blank to keep' : 'Not set',
+                    helperText: hasGosiAuth
+                        ? 'Configured on server (value hidden)'
+                        : 'Not set',
                   ),
                   obscureText: true,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiApiKeyCtrl,
+                  readOnly: true,
                   decoration: InputDecoration(
                     labelText: 'API key (x-apikey)',
-                    helperText: hasGosiApi ? 'Key saved — leave blank to keep' : 'Not set',
+                    helperText: hasGosiApi
+                        ? 'Configured on server (value hidden)'
+                        : 'Not set',
                   ),
                   obscureText: true,
                 ),
               ],
-              const SizedBox(height: AppSpacing.lg),
-              Row(
-                children: [
-                  FilledButton(
-                    onPressed: _saving
-                        ? null
-                        : () async {
-                            setState(() {
-                              _saving = true;
-                              _result = null;
-                            });
-                            try {
-                              await ref.read(backendSettingsProvider.notifier).save({
-                                'llm': {
-                                  'provider': _provider,
-                                  'gemini_model': _geminiModelCtrl.text.trim(),
-                                  'openai_url': _openaiUrlCtrl.text.trim(),
-                                  'openai_model': _openaiModelCtrl.text.trim(),
-                                  'gosi_brain_url': _gosiUrlCtrl.text.trim(),
-                                  'gosi_brain_model': _gosiModelCtrl.text.trim(),
-                                  'gosi_brain_oauth_identity_domain_name': _gosiOauthDomainCtrl.text.trim(),
-                                  'gosi_brain_temperature': _gosiTemperature,
-                                  if (_googleKeyCtrl.text.trim().isNotEmpty)
-                                    'google_api_key': _googleKeyCtrl.text.trim(),
-                                  if (_openaiKeyCtrl.text.trim().isNotEmpty)
-                                    'openai_api_key': _openaiKeyCtrl.text.trim(),
-                                  if (_gosiApiKeyCtrl.text.trim().isNotEmpty)
-                                    'gosi_brain_api_key': _gosiApiKeyCtrl.text.trim(),
-                                  if (_gosiAuthCtrl.text.trim().isNotEmpty)
-                                    'gosi_brain_authorization': _gosiAuthCtrl.text.trim(),
-                                },
-                              });
-                              if (!mounted) return;
-                              setState(() => _result = 'Saved.');
-                              _googleKeyCtrl.clear();
-                              _openaiKeyCtrl.clear();
-                              _gosiApiKeyCtrl.clear();
-                              _gosiAuthCtrl.clear();
-                            } catch (e) {
-                              if (!mounted) return;
-                              setState(() => _result = e.toString());
-                            } finally {
-                              if (mounted) setState(() => _saving = false);
-                            }
-                          },
-                    child: Text(_saving ? 'Saving…' : 'Save'),
-                  ),
-                  if (_result != null) ...[
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Text(
-                        _result!,
-                        style: theme.bodySmall?.copyWith(color: palette.textSecondary),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
             ],
           );
         },
@@ -440,7 +412,9 @@ class _RepoIntegrationPanel extends ConsumerWidget {
                     Text(
                       'Effective values for “${active.name}”. Tokens are never shown—only whether they are set. '
                       'Change these in Manage repos (and Crashlytics/GCP defaults via server .env or uploaded service account JSON).',
-                      style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                      style: theme.bodySmall?.copyWith(
+                        color: palette.textSecondary,
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     _ReadonlyKvGroup(
@@ -548,7 +522,10 @@ class _ReadonlyIntegrationRow extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     final palette = context.palette;
     if (v == null) {
-      return Text('—', style: theme.bodyMedium?.copyWith(color: palette.textMuted));
+      return Text(
+        '—',
+        style: theme.bodyMedium?.copyWith(color: palette.textMuted),
+      );
     }
     if (v is bool) {
       final b = v;
@@ -557,7 +534,9 @@ class _ReadonlyIntegrationRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: (b ? palette.success : palette.danger).withValues(alpha: 0.13),
           border: Border.all(
-            color: (b ? palette.success : palette.danger).withValues(alpha: 0.4),
+            color: (b ? palette.success : palette.danger).withValues(
+              alpha: 0.4,
+            ),
           ),
           borderRadius: AppRadii.all(AppRadii.pill),
         ),
@@ -581,7 +560,10 @@ class _ReadonlyIntegrationRow extends StatelessWidget {
       );
     }
     if (v is List) {
-      final str = v.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).join(', ');
+      final str = v
+          .map((e) => e.toString())
+          .where((e) => e.trim().isNotEmpty)
+          .join(', ');
       return Text(
         str.isEmpty ? '—' : str,
         style: theme.bodyMedium?.copyWith(color: palette.text),
