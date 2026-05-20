@@ -46,12 +46,21 @@ class _LogsPageState extends ConsumerState<LogsPage>
   ScrollController _controllerFor(String source) =>
       source == 'launcher' ? _scrollLauncher : _scrollBackend;
 
+  /// Pin viewport to the newest lines after [SelectableText] layout completes.
   void _scrollToEnd(String source) {
     final c = _controllerFor(source);
-    if (!c.hasClients) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    void align() {
       if (!c.hasClients) return;
-      c.jumpTo(c.position.maxScrollExtent);
+      final max = c.position.maxScrollExtent;
+      if (c.offset != max) {
+        c.jumpTo(max);
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      align();
+      // Text layout often needs a second frame before maxScrollExtent is final.
+      WidgetsBinding.instance.addPostFrameCallback((_) => align());
     });
   }
 
@@ -100,12 +109,12 @@ class _LogsPageState extends ConsumerState<LogsPage>
                 _LogPanel(
                   source: 'backend',
                   scrollController: _scrollBackend,
-                  onContentUpdated: () => _scrollToEnd('backend'),
+                  onScrollToEnd: () => _scrollToEnd('backend'),
                 ),
                 _LogPanel(
                   source: 'launcher',
                   scrollController: _scrollLauncher,
-                  onContentUpdated: () => _scrollToEnd('launcher'),
+                  onScrollToEnd: () => _scrollToEnd('launcher'),
                 ),
               ],
             ),
@@ -119,12 +128,12 @@ class _LogsPageState extends ConsumerState<LogsPage>
 class _LogPanel extends ConsumerStatefulWidget {
   final String source;
   final ScrollController scrollController;
-  final VoidCallback onContentUpdated;
+  final VoidCallback onScrollToEnd;
 
   const _LogPanel({
     required this.source,
     required this.scrollController,
-    required this.onContentUpdated,
+    required this.onScrollToEnd,
   });
 
   @override
@@ -132,8 +141,6 @@ class _LogPanel extends ConsumerStatefulWidget {
 }
 
 class _LogPanelState extends ConsumerState<_LogPanel> {
-  String? _lastContentLen;
-
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -141,12 +148,12 @@ class _LogPanelState extends ConsumerState<_LogPanel> {
     final log = ref.watch(logViewerProvider(widget.source));
     final notifier = ref.read(logViewerProvider(widget.source).notifier);
 
-    if (log.followTail &&
-        !log.loading &&
-        log.content.length.toString() != _lastContentLen) {
-      _lastContentLen = log.content.length.toString();
-      widget.onContentUpdated();
-    }
+    ref.listen<LogViewerState>(logViewerProvider(widget.source), (prev, next) {
+      if (!next.followTail || next.loading) return;
+      if (prev == null || next.content != prev.content) {
+        widget.onScrollToEnd();
+      }
+    });
 
     // TabBarView children must expand; otherwise Column+Expanded gets zero height.
     return SizedBox.expand(
@@ -379,13 +386,21 @@ class _LogBody extends StatelessWidget {
       child: SingleChildScrollView(
         controller: scrollController,
         padding: const EdgeInsets.all(AppSpacing.md),
-        child: SelectableText(
-          log.content,
-          style: theme.bodySmall?.copyWith(
-            fontFamily: 'monospace',
-            height: 1.45,
-            color: palette.text,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SelectableText(
+              log.content,
+              style: theme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                height: 1.45,
+                color: palette.text,
+              ),
+            ),
+            // Anchor for tail-follow scroll alignment.
+            const SizedBox(height: 1),
+          ],
         ),
       ),
     );
