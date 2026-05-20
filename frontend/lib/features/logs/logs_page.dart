@@ -74,8 +74,7 @@ class _LogsPageState extends ConsumerState<LogsPage>
           const SizedBox(height: AppSpacing.sm),
           Text(
             'Backend and launcher output from the server data directory '
-            '(macOS: ~/Library/Application Support/AI Crash Fix/). '
-            'Read via the API so the web UI can tail files the launcher writes.',
+            '(macOS: ~/Library/Application Support/AI Crash Fix/).',
             style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -142,132 +141,153 @@ class _LogPanelState extends ConsumerState<_LogPanel> {
     final log = ref.watch(logViewerProvider(widget.source));
     final notifier = ref.read(logViewerProvider(widget.source).notifier);
 
-    if (log.followTail && log.content.length.toString() != _lastContentLen) {
+    if (log.followTail &&
+        !log.loading &&
+        log.content.length.toString() != _lastContentLen) {
       _lastContentLen = log.content.length.toString();
       widget.onContentUpdated();
     }
 
-    return GlassCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.md,
-              AppSpacing.lg,
-              AppSpacing.sm,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.source == 'backend'
-                            ? 'backend.log'
-                            : 'launcher.log',
-                        style: theme.titleMedium,
-                      ),
-                      if (log.path.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          log.path,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.bodySmall?.copyWith(
-                            color: palette.textMuted,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ],
-                      if (log.dataDir != null && log.dataDir!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Data dir: ${log.dataDir}',
-                          style: theme.labelSmall?.copyWith(
-                            color: palette.textMuted,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (log.available) ...[
-                  Text(
-                    _formatSize(log.size),
-                    style: theme.labelSmall?.copyWith(
-                      color: palette.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                ],
-                IconButton(
-                  tooltip: 'Refresh',
-                  onPressed: () => notifier.refresh(),
-                  icon: const Icon(Icons.refresh, size: 20),
-                ),
-                if (log.path.isNotEmpty)
-                  IconButton(
-                    tooltip: 'Copy path',
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: log.path));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Path copied')),
-                      );
-                    },
-                    icon: const Icon(Icons.copy_outlined, size: 20),
-                  ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: Wrap(
-              spacing: AppSpacing.lg,
-              runSpacing: AppSpacing.sm,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilterChip(
-                  label: const Text('Follow tail'),
-                  selected: log.followTail,
-                  onSelected: notifier.setFollowTail,
-                ),
-                FilterChip(
-                  label: const Text('Auto-refresh (2s)'),
-                  selected: log.autoRefresh,
-                  onSelected: notifier.setAutoRefresh,
-                ),
-                if (log.truncated)
-                  Chip(
-                    avatar: Icon(Icons.info_outline, size: 16, color: palette.warning),
-                    label: Text(
-                      'Showing last chunk only',
-                      style: theme.labelSmall,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Expanded(
-            child: Padding(
+    // TabBarView children must expand; otherwise Column+Expanded gets zero height.
+    return SizedBox.expand(
+      child: GlassCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.lg,
-                0,
+                AppSpacing.md,
                 AppSpacing.lg,
-                AppSpacing.lg,
+                AppSpacing.sm,
               ),
-              child: _LogBody(
-                log: log,
-                scrollController: widget.scrollController,
-                onRetry: () => notifier.refresh(),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.source == 'backend'
+                              ? 'backend.log'
+                              : 'launcher.log',
+                          style: theme.titleMedium,
+                        ),
+                        if (log.path.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            log.path,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.bodySmall?.copyWith(
+                              color: palette.textMuted,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                        if (log.dataDir != null && log.dataDir!.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Data dir: ${log.dataDir}',
+                            style: theme.labelSmall?.copyWith(
+                              color: palette.textMuted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (log.loading)
+                    Padding(
+                      padding: const EdgeInsets.only(right: AppSpacing.sm),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: palette.primary,
+                        ),
+                      ),
+                    )
+                  else if (log.available) ...[
+                    Text(
+                      _formatSize(log.size),
+                      style: theme.labelSmall?.copyWith(
+                        color: palette.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                  ],
+                  IconButton(
+                    tooltip: 'Refresh',
+                    onPressed: log.loading ? null : () => notifier.refresh(),
+                    icon: const Icon(Icons.refresh, size: 20),
+                  ),
+                  if (log.path.isNotEmpty)
+                    IconButton(
+                      tooltip: 'Copy path',
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: log.path));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Path copied')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy_outlined, size: 20),
+                    ),
+                ],
               ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Wrap(
+                spacing: AppSpacing.lg,
+                runSpacing: AppSpacing.sm,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  FilterChip(
+                    label: const Text('Follow tail'),
+                    selected: log.followTail,
+                    onSelected: log.loading ? null : notifier.setFollowTail,
+                  ),
+                  FilterChip(
+                    label: const Text('Auto-refresh (2s)'),
+                    selected: log.autoRefresh,
+                    onSelected: log.loading ? null : notifier.setAutoRefresh,
+                  ),
+                  if (log.truncated)
+                    Chip(
+                      avatar: Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: palette.warning,
+                      ),
+                      label: Text(
+                        'Showing last chunk only',
+                        style: theme.labelSmall,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                ),
+                child: _LogBody(
+                  log: log,
+                  scrollController: widget.scrollController,
+                  onRetry: () => notifier.refresh(),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -295,8 +315,38 @@ class _LogBody extends StatelessWidget {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
 
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.surface1,
+        borderRadius: AppRadii.all(AppRadii.md),
+        border: Border.all(color: palette.border.withValues(alpha: 0.6)),
+      ),
+      child: _inner(context, palette, theme),
+    );
+  }
+
+  Widget _inner(BuildContext context, AppPalette palette, TextTheme theme) {
+    if (log.loading && log.content.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: palette.primary),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Loading log…',
+              style: theme.bodyMedium?.copyWith(color: palette.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (log.message != null && log.message!.isNotEmpty && !log.available) {
-      return ErrorBanner(message: log.message!, onRetry: onRetry);
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: ErrorBanner(message: log.message!, onRetry: onRetry),
+      );
     }
 
     if (!log.available && log.content.isEmpty) {
@@ -305,7 +355,8 @@ class _LogBody extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.xl),
           child: Text(
             log.message ??
-                'Log file is not available yet. Start the macOS app or set AI_CRASH_FIX_DATA_DIR on the backend.',
+                'Log file is not available yet. Start the macOS app (writes backend.log and launcher.log) '
+                'or rebuild the backend so GET /api/logs/* is available.',
             textAlign: TextAlign.center,
             style: theme.bodyMedium?.copyWith(color: palette.textSecondary),
           ),
@@ -322,25 +373,18 @@ class _LogBody extends StatelessWidget {
       );
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.bg,
-        borderRadius: AppRadii.all(AppRadii.md),
-        border: Border.all(color: palette.border.withValues(alpha: 0.6)),
-      ),
-      child: Scrollbar(
+    return Scrollbar(
+      controller: scrollController,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
         controller: scrollController,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: SelectableText(
-            log.content,
-            style: theme.bodySmall?.copyWith(
-              fontFamily: 'monospace',
-              height: 1.45,
-              color: palette.text,
-            ),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: SelectableText(
+          log.content,
+          style: theme.bodySmall?.copyWith(
+            fontFamily: 'monospace',
+            height: 1.45,
+            color: palette.text,
           ),
         ),
       ),

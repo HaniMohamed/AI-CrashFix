@@ -20,6 +20,7 @@ class LogViewerState {
   final String? message;
   final bool followTail;
   final bool autoRefresh;
+  final bool loading;
 
   const LogViewerState({
     required this.source,
@@ -33,6 +34,7 @@ class LogViewerState {
     this.message,
     this.followTail = true,
     this.autoRefresh = true,
+    this.loading = true,
   });
 
   LogViewerState copyWith({
@@ -46,6 +48,7 @@ class LogViewerState {
     String? message,
     bool? followTail,
     bool? autoRefresh,
+    bool? loading,
     bool appendContent = false,
   }) {
     final merged = appendContent && content != null
@@ -63,6 +66,7 @@ class LogViewerState {
       message: message ?? this.message,
       followTail: followTail ?? this.followTail,
       autoRefresh: autoRefresh ?? this.autoRefresh,
+      loading: loading ?? this.loading,
     );
   }
 }
@@ -73,8 +77,10 @@ class LogViewerNotifier extends FamilyNotifier<LogViewerState, LogSource> {
   @override
   LogViewerState build(LogSource source) {
     ref.onDispose(_stopTimer);
-    Future.microtask(() => refresh());
-    _syncTimer();
+    Future.microtask(() async {
+      await refresh();
+      _syncTimer();
+    });
     return LogViewerState(source: source);
   }
 
@@ -96,6 +102,7 @@ class LogViewerNotifier extends FamilyNotifier<LogViewerState, LogSource> {
       source: arg,
       followTail: state.followTail,
       autoRefresh: state.autoRefresh,
+      loading: true,
     );
     await poll(fromStart: true);
   }
@@ -103,15 +110,25 @@ class LogViewerNotifier extends FamilyNotifier<LogViewerState, LogSource> {
   Future<void> poll({bool fromStart = false}) async {
     final api = ref.read(apiClientProvider);
     final offset = fromStart || !state.followTail ? 0 : state.nextOffset;
+    if (fromStart) {
+      state = state.copyWith(loading: true, message: null);
+    }
     try {
       final res = await api.getJson(
         Endpoints.logTail(arg),
         query: {
           'offset': offset,
-          'tail': state.followTail,
+          'tail': state.followTail ? 'true' : 'false',
         },
       );
-      if (res is! Map) return;
+      if (res is! Map) {
+        state = state.copyWith(
+          loading: false,
+          available: false,
+          message: 'Unexpected log API response (expected JSON object).',
+        );
+        return;
+      }
       final m = res.cast<String, dynamic>();
       final chunk = (m['content'] ?? '').toString();
       final append = !fromStart && state.followTail && offset > 0 && chunk.isNotEmpty;
@@ -125,9 +142,11 @@ class LogViewerNotifier extends FamilyNotifier<LogViewerState, LogSource> {
         available: m['available'] == true,
         truncated: m['truncated'] == true,
         message: m['message']?.toString(),
+        loading: false,
       );
     } catch (e) {
       state = state.copyWith(
+        loading: false,
         available: false,
         message: e.toString(),
       );
