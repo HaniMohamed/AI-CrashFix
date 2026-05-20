@@ -131,12 +131,35 @@ class LogViewerNotifier extends FamilyNotifier<LogViewerState, LogSource> {
       }
       final m = res.cast<String, dynamic>();
       final chunk = (m['content'] ?? '').toString();
+      final nextOffset = (m['next_offset'] as num?)?.toInt() ?? 0;
+      final fileSize = (m['size'] as num?)?.toInt() ?? 0;
+
+      // Tailing at EOF: backend returns empty content with available=true.
+      // Keep the lines we already have instead of wiping the viewer.
+      if (!fromStart &&
+          state.followTail &&
+          offset > 0 &&
+          chunk.isEmpty &&
+          state.content.isNotEmpty) {
+        state = state.copyWith(
+          nextOffset: nextOffset,
+          size: fileSize,
+          path: (m['path'] ?? '').toString(),
+          dataDir: m['data_dir']?.toString(),
+          available: m['available'] == true,
+          truncated: m['truncated'] == true,
+          message: m['message']?.toString(),
+          loading: false,
+        );
+        return;
+      }
+
       final append = !fromStart && state.followTail && offset > 0 && chunk.isNotEmpty;
       state = state.copyWith(
         content: chunk,
         appendContent: append,
-        nextOffset: (m['next_offset'] as num?)?.toInt() ?? 0,
-        size: (m['size'] as num?)?.toInt() ?? 0,
+        nextOffset: nextOffset,
+        size: fileSize,
         path: (m['path'] ?? '').toString(),
         dataDir: m['data_dir']?.toString(),
         available: m['available'] == true,
