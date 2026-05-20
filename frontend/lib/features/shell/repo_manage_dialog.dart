@@ -60,6 +60,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _bqDatasetCtrl;
   late final TextEditingController _bqAndroidTableCtrl;
   late final TextEditingController _bqIosTableCtrl;
+  late final TextEditingController _androidPackageCtrl;
+  late final TextEditingController _iosBundleIdCtrl;
   late final TextEditingController _jiraServerUrlCtrl;
   late final TextEditingController _jiraEmailCtrl;
   late final TextEditingController _jiraTokenCtrl;
@@ -95,6 +97,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl = TextEditingController();
     _bqAndroidTableCtrl = TextEditingController();
     _bqIosTableCtrl = TextEditingController();
+    _androidPackageCtrl = TextEditingController();
+    _iosBundleIdCtrl = TextEditingController();
     _jiraServerUrlCtrl = TextEditingController();
     _jiraEmailCtrl = TextEditingController();
     _jiraTokenCtrl = TextEditingController();
@@ -118,6 +122,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl.addListener(onEdit);
     _bqAndroidTableCtrl.addListener(onEdit);
     _bqIosTableCtrl.addListener(onEdit);
+    _androidPackageCtrl.addListener(onEdit);
+    _iosBundleIdCtrl.addListener(onEdit);
     _jiraServerUrlCtrl.addListener(onEdit);
     _jiraEmailCtrl.addListener(onEdit);
     _jiraTokenCtrl.addListener(onEdit);
@@ -179,6 +185,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _bqDatasetCtrl.text = (r.bqDataset ?? '').toString();
       _bqAndroidTableCtrl.text = (r.bqCrashlyticsAndroidTable ?? '').toString();
       _bqIosTableCtrl.text = (r.bqCrashlyticsIosTable ?? '').toString();
+      _androidPackageCtrl.text = (r.crashlyticsAndroidPackage ?? '').toString();
+      _iosBundleIdCtrl.text = (r.crashlyticsIosBundleId ?? '').toString();
       _jiraServerUrlCtrl.text = (r.jiraServerUrl ?? '').toString();
       _jiraEmailCtrl.text = (r.jiraEmail ?? '').toString();
       _jiraTokenCtrl.text = '';
@@ -294,6 +302,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl.clear();
     _bqAndroidTableCtrl.clear();
     _bqIosTableCtrl.clear();
+    _androidPackageCtrl.clear();
+    _iosBundleIdCtrl.clear();
     _jiraServerUrlCtrl.clear();
     _jiraEmailCtrl.clear();
     _jiraTokenCtrl.clear();
@@ -313,6 +323,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqDatasetCtrl.dispose();
     _bqAndroidTableCtrl.dispose();
     _bqIosTableCtrl.dispose();
+    _androidPackageCtrl.dispose();
+    _iosBundleIdCtrl.dispose();
     _jiraServerUrlCtrl.dispose();
     _jiraEmailCtrl.dispose();
     _jiraTokenCtrl.dispose();
@@ -919,6 +931,52 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                             prefixIcon: const Icon(Icons.cloud_sync_outlined),
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _androidPackageCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Android package name',
+                            hintText: 'com.example.app',
+                            helperText: _debug
+                                ? 'CRASHLYTICS_ANDROID_PACKAGE'
+                                : 'Default Android app id for Crashlytics console links when the export has no package.',
+                            prefixIcon: const Icon(Icons.android_outlined),
+                            suffixIcon: _androidPackageCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _androidPackageCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _iosBundleIdCtrl,
+                          enabled: !_saving,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'iOS bundle ID',
+                            hintText: 'com.example.app',
+                            helperText: _debug
+                                ? 'CRASHLYTICS_IOS_BUNDLE_ID'
+                                : 'Default iOS bundle id for Crashlytics console links when the export has no bundle.',
+                            prefixIcon: const Icon(Icons.phone_iphone_outlined),
+                            suffixIcon: _iosBundleIdCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _iosBundleIdCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
                         if (usesBigQuery) ...[
                           const SizedBox(height: 10),
                           TextField(
@@ -1348,6 +1406,14 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               _bqIosTableCtrl.text.trim().isEmpty
                               ? null
                               : _bqIosTableCtrl.text.trim(),
+                          crashlyticsAndroidPackage:
+                              _androidPackageCtrl.text.trim().isEmpty
+                              ? null
+                              : _androidPackageCtrl.text.trim(),
+                          crashlyticsIosBundleId:
+                              _iosBundleIdCtrl.text.trim().isEmpty
+                              ? null
+                              : _iosBundleIdCtrl.text.trim(),
                           jiraProjectKey:
                               _jiraProjectKeyCtrl.text.trim().isEmpty
                               ? null
@@ -1371,6 +1437,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 _urlCtrl.text.trim(),
                               ),
                         );
+                    if (!mounted) return;
+                    await ref.read(configProvider.notifier).refresh();
                     if (!mounted) return;
                     nav.pop();
                   } catch (e) {

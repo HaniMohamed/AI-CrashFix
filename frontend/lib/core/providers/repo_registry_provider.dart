@@ -148,6 +148,8 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     String? jiraToken,
     String? jiraIssueType,
     String? gitlabProject,
+    String? crashlyticsAndroidPackage,
+    String? crashlyticsIosBundleId,
   }) async {
     final api = ref.read(apiClientProvider);
     final res = await api.postJson(Endpoints.repos, body: {
@@ -176,6 +178,10 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
       if (jiraIssueType != null && jiraIssueType.trim().isNotEmpty)
         'jira_issue_type': jiraIssueType.trim(),
       if (gitlabProject != null && gitlabProject.trim().isNotEmpty) 'gitlab_project': gitlabProject.trim(),
+      if (crashlyticsAndroidPackage != null && crashlyticsAndroidPackage.trim().isNotEmpty)
+        'crashlytics_android_package': crashlyticsAndroidPackage.trim(),
+      if (crashlyticsIosBundleId != null && crashlyticsIosBundleId.trim().isNotEmpty)
+        'crashlytics_ios_bundle_id': crashlyticsIosBundleId.trim(),
     });
     final repoKey = (res is Map ? res['repo_key'] : null)?.toString().trim();
     await refresh();

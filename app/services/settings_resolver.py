@@ -14,6 +14,8 @@ class EffectiveCrashlyticsConfig:
     bq_dataset: str
     bq_android_table: str
     bq_ios_table: str
+    android_package_default: str | None
+    ios_bundle_id_default: str | None
 
 
 @dataclass(frozen=True)
@@ -140,11 +142,23 @@ class SettingsResolver:
             or self._app_str("BQ_CRASHLYTICS_IOS_TABLE")
             or cfg.BQ_CRASHLYTICS_IOS_TABLE
         )
+        android_pkg = (
+            (repo.crashlytics_android_package if repo else None)
+            or self._app_str("CRASHLYTICS_ANDROID_PACKAGE")
+            or cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
+        )
+        ios_bundle = (
+            (repo.crashlytics_ios_bundle_id if repo else None)
+            or self._app_str("CRASHLYTICS_IOS_BUNDLE_ID")
+            or cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
+        )
         return EffectiveCrashlyticsConfig(
             backend=(backend or "bigquery").strip().lower(),
             bq_dataset=(dataset or "firebase_crashlytics").strip(),
             bq_android_table=(android_table or "").strip(),
             bq_ios_table=(ios_table or "").strip(),
+            android_package_default=(android_pkg or "").strip() or None,
+            ios_bundle_id_default=(ios_bundle or "").strip() or None,
         )
 
     def effective_jira(self, *, repo_key: str | None) -> EffectiveJiraConfig:
@@ -168,12 +182,17 @@ class SettingsResolver:
         )
 
     def effective_gitlab(self, *, repo_key: str | None) -> EffectiveGitlabConfig:
+        from app.utils.gitlab_url import derive_gitlab_project_path_from_repo_url
+
         repo = self._repos.get_repo((repo_key or "").strip()) if (repo_key or "").strip() else None
+        gl_project = (repo.gitlab_project if repo else None) or None
+        if not gl_project and repo and repo.repo_url:
+            gl_project = derive_gitlab_project_path_from_repo_url(repo.repo_url)
         return EffectiveGitlabConfig(
             server_url=self._app_str("GITLAB_SERVER_URL") or cfg.GITLAB_SERVER_URL,
             verify_ssl=self._app_str("GITLAB_VERIFY_SSL") or cfg.GITLAB_VERIFY_SSL,
             token=self._app_secret("GITLAB_TOKEN") or cfg.GITLAB_TOKEN,
             ca_bundle=self._app_str("GITLAB_SSL_CA_BUNDLE") or cfg.GITLAB_SSL_CA_BUNDLE,
-            project=(repo.gitlab_project if repo else None) or cfg.GITLAB_PROJECT,
+            project=gl_project or cfg.GITLAB_PROJECT,
         )
 

@@ -52,6 +52,8 @@ class RepoEntry:
     jira_issue_type: str | None
     jira_project_key: str | None
     gitlab_project: str | None
+    crashlytics_android_package: str | None
+    crashlytics_ios_bundle_id: str | None
     created_at: str
     updated_at: str
     last_selected_at: str | None
@@ -191,6 +193,10 @@ class RepoRegistryStore:
                 conn.execute("ALTER TABLE repos ADD COLUMN jira_token TEXT")
             if "jira_issue_type" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN jira_issue_type TEXT")
+            if "crashlytics_android_package" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN crashlytics_android_package TEXT")
+            if "crashlytics_ios_bundle_id" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN crashlytics_ios_bundle_id TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_state (
@@ -241,6 +247,8 @@ class RepoRegistryStore:
         jira_token: str | None = None,
         jira_issue_type: str | None = None,
         gitlab_project: str | None = None,
+        crashlytics_android_package: str | None = None,
+        crashlytics_ios_bundle_id: str | None = None,
     ) -> RepoEntry:
         url = (repo_url or "").strip()
         if not url:
@@ -262,7 +270,11 @@ class RepoRegistryStore:
         jira_em = (jira_email or "").strip() or None
         jira_tok = (jira_token or "").strip() or None
         jira_it = (jira_issue_type or "").strip() or None
-        gl_proj = (gitlab_project or "").strip() or None
+        from app.utils.gitlab_url import derive_gitlab_project_path_from_repo_url
+
+        gl_proj = (gitlab_project or "").strip() or derive_gitlab_project_path_from_repo_url(url) or None
+        cl_android = (crashlytics_android_package or "").strip() or None
+        cl_ios = (crashlytics_ios_bundle_id or "").strip() or None
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
         now = datetime.utcnow().isoformat()
@@ -274,9 +286,10 @@ class RepoRegistryStore:
                   repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, packages_dirs,
                   crashlytics_fetch_backend, bq_dataset, bq_android_table, bq_ios_table,
                   jira_project_key, jira_server_url, jira_email, jira_token, jira_issue_type, gitlab_project,
+                  crashlytics_android_package, crashlytics_ios_bundle_id,
                   created_at, updated_at, last_selected_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(repo_key) DO UPDATE SET
                   name = excluded.name,
                   repo_url = excluded.repo_url,
@@ -294,6 +307,8 @@ class RepoRegistryStore:
                   jira_token = COALESCE(excluded.jira_token, repos.jira_token),
                   jira_issue_type = excluded.jira_issue_type,
                   gitlab_project = excluded.gitlab_project,
+                  crashlytics_android_package = excluded.crashlytics_android_package,
+                  crashlytics_ios_bundle_id = excluded.crashlytics_ios_bundle_id,
                   updated_at = excluded.updated_at
                 """,
                 (
@@ -314,6 +329,8 @@ class RepoRegistryStore:
                     jira_tok,
                     jira_it,
                     gl_proj,
+                    cl_android,
+                    cl_ios,
                     now,
                     now,
                 ),
@@ -519,6 +536,12 @@ class RepoRegistryStore:
             if "jira_project_key" in row.keys() and row["jira_project_key"]
             else None,
             gitlab_project=row["gitlab_project"] if "gitlab_project" in row.keys() and row["gitlab_project"] else None,
+            crashlytics_android_package=row["crashlytics_android_package"]
+            if "crashlytics_android_package" in row.keys() and row["crashlytics_android_package"]
+            else None,
+            crashlytics_ios_bundle_id=row["crashlytics_ios_bundle_id"]
+            if "crashlytics_ios_bundle_id" in row.keys() and row["crashlytics_ios_bundle_id"]
+            else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             last_selected_at=row["last_selected_at"] if row["last_selected_at"] else None,

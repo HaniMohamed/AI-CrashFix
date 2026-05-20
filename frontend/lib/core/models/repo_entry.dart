@@ -16,6 +16,8 @@ class RepoEntry {
   final String? jiraIssueType;
   final String? jiraProjectKey;
   final String? gitlabProject;
+  final String? crashlyticsAndroidPackage;
+  final String? crashlyticsIosBundleId;
 
   const RepoEntry({
     required this.repoKey,
@@ -35,6 +37,8 @@ class RepoEntry {
     this.jiraIssueType,
     this.jiraProjectKey,
     this.gitlabProject,
+    this.crashlyticsAndroidPackage,
+    this.crashlyticsIosBundleId,
   });
 
   factory RepoEntry.fromJson(Map<String, dynamic> j) => RepoEntry(
@@ -84,6 +88,14 @@ class RepoEntry {
         gitlabProject: (j['gitlab_project'] as String?)?.trim().isEmpty ?? true
             ? null
             : (j['gitlab_project'] as String?)?.trim(),
+        crashlyticsAndroidPackage:
+            (j['crashlytics_android_package'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (j['crashlytics_android_package'] as String?)?.trim(),
+        crashlyticsIosBundleId:
+            (j['crashlytics_ios_bundle_id'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (j['crashlytics_ios_bundle_id'] as String?)?.trim(),
       );
 }
 

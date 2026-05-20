@@ -161,6 +161,14 @@ class RepoUpsertRequest(BaseModel):
         None,
         description="Optional: per-repo GitLab project override (namespace/project).",
     )
+    crashlytics_android_package: Optional[str] = Field(
+        None,
+        description="Optional: Android package name for Crashlytics (CRASHLYTICS_ANDROID_PACKAGE).",
+    )
+    crashlytics_ios_bundle_id: Optional[str] = Field(
+        None,
+        description="Optional: iOS bundle id for Crashlytics (CRASHLYTICS_IOS_BUNDLE_ID).",
+    )
 
 
 class RepoSelectRequest(BaseModel):
@@ -292,6 +300,8 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             jira_token=req.jira_token,
             jira_issue_type=req.jira_issue_type,
             gitlab_project=req.gitlab_project,
+            crashlytics_android_package=req.crashlytics_android_package,
+            crashlytics_ios_bundle_id=req.crashlytics_ios_bundle_id,
         )
         # Build the symbol index on first add/update so stacktrace mapping is reliable
         # without requiring a manual refresh.
@@ -476,8 +486,8 @@ async def get_repo_effective_config(repo_key: str) -> Dict[str, Any]:
         or ((cfg.FIREBASE_CONSOLE_PROJECT_ID or "").strip() or None)
     )
     creds_path = r.effective_google_application_credentials()
-    android_default = _store_str("CRASHLYTICS_ANDROID_PACKAGE") or cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
-    ios_default = _store_str("CRASHLYTICS_IOS_BUNDLE_ID") or cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
+    android_default = crash.android_package_default
+    ios_default = crash.ios_bundle_id_default
 
     return {
         "repo": {
@@ -588,12 +598,30 @@ async def refresh_repo(repo_key: str) -> Dict[str, Any]:
 
 
 @app.get("/api/config")
-async def get_config() -> Dict[str, Any]:
+async def get_config(
+    repo_key: Optional[str] = Query(
+        None,
+        description="When set, merge per-repo Crashlytics and GitLab overrides into the snapshot.",
+    ),
+) -> Dict[str, Any]:
     """Read-only redacted snapshot of `app.config` (loaded from .env at startup).
 
     Secrets are never returned; callers get a `has_*` boolean indicator instead.
     """
     from app import config as cfg
+    from app.services.settings_resolver import SettingsResolver
+
+    crash_android = cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
+    crash_ios = cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
+    gitlab_project = cfg.GITLAB_PROJECT
+    rk = (repo_key or "").strip()
+    if rk:
+        r = SettingsResolver()
+        crash = r.effective_crashlytics(repo_key=rk)
+        gl = r.effective_gitlab(repo_key=rk)
+        crash_android = crash.android_package_default or crash_android
+        crash_ios = crash.ios_bundle_id_default or crash_ios
+        gitlab_project = gl.project or gitlab_project
 
     return {
         "llm": {
@@ -619,8 +647,8 @@ async def get_config() -> Dict[str, Any]:
             "backend": cfg.CRASHLYTICS_FETCH_BACKEND,
             "project_id": cfg.BQ_PROJECT_ID,
             "firebase_console_project_id": cfg.FIREBASE_CONSOLE_PROJECT_ID,
-            "android_package_default": cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT,
-            "ios_bundle_id_default": cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT,
+            "android_package_default": crash_android,
+            "ios_bundle_id_default": crash_ios,
             "dataset": cfg.BQ_DATASET,
             "android_table": cfg.BQ_CRASHLYTICS_ANDROID_TABLE,
             "ios_table": cfg.BQ_CRASHLYTICS_IOS_TABLE,
@@ -636,7 +664,7 @@ async def get_config() -> Dict[str, Any]:
         },
         "gitlab": {
             "server_url": cfg.GITLAB_SERVER_URL,
-            "project": cfg.GITLAB_PROJECT,
+            "project": gitlab_project,
             "verify_ssl": cfg.GITLAB_VERIFY_SSL,
             "has_token": bool(cfg.GITLAB_TOKEN),
             "ca_bundle_set": bool(cfg.GITLAB_SSL_CA_BUNDLE),

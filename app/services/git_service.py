@@ -135,10 +135,25 @@ def _repair_unified_diff_hunk_counts(text: str) -> str:
 
 
 class GitService:
-    def __init__(self, repo_root: str) -> None:
+    def __init__(self, repo_root: str, *, repo_key: str | None = None) -> None:
         if not repo_root or not str(repo_root).strip():
             raise ValueError("repo_root is required")
         self.repo_root = str(repo_root).strip()
+        self._repo_key = (repo_key or "").strip() or None
+        self._gitlab_project: str | None = None
+        self._gitlab_server_url: str | None = None
+        self._gitlab_token: str | None = None
+        self._gitlab_verify_ssl: str | None = None
+        self._gitlab_ssl_ca_bundle: str | None = None
+        if self._repo_key:
+            from app.services.settings_resolver import SettingsResolver
+
+            gl = SettingsResolver().effective_gitlab(repo_key=self._repo_key)
+            self._gitlab_project = (gl.project or "").strip() or None
+            self._gitlab_server_url = (gl.server_url or "").strip() or None
+            self._gitlab_token = (gl.token or "").strip() or None
+            self._gitlab_verify_ssl = (gl.verify_ssl or "").strip() or None
+            self._gitlab_ssl_ca_bundle = (gl.ca_bundle or "").strip() or None
 
     # -----------------------------
     # Low-level git helpers
@@ -176,7 +191,7 @@ class GitService:
         return default
 
     def _gitlab_api_base(self) -> str:
-        base = (GITLAB_SERVER_URL or "").strip()
+        base = (self._gitlab_server_url or GITLAB_SERVER_URL or "").strip()
         if not base:
             raise RuntimeError("Missing GitLab server URL. Set GITLAB_SERVER_URL.")
         base = base.rstrip("/")
@@ -185,13 +200,16 @@ class GitService:
         return f"{base}/api/v4"
 
     def _gitlab_project_id(self) -> str:
-        project = (GITLAB_PROJECT or "").strip()
+        project = (self._gitlab_project or GITLAB_PROJECT or "").strip()
         if not project:
-            raise RuntimeError("Missing GitLab project path. Set GITLAB_PROJECT (namespace/project).")
+            raise RuntimeError(
+                "Missing GitLab project path. Set GITLAB_PROJECT (namespace/project) "
+                "or add a repo whose remote URL is a GitLab project path."
+            )
         return urllib.parse.quote(project, safe="")
 
     def _gitlab_headers(self) -> dict[str, str]:
-        token = (GITLAB_TOKEN or "").strip()
+        token = (self._gitlab_token or GITLAB_TOKEN or "").strip()
         if not token:
             raise RuntimeError("Missing GitLab token. Set GITLAB_TOKEN.")
         return {
@@ -201,10 +219,12 @@ class GitService:
         }
 
     def _gitlab_ssl_context(self) -> ssl.SSLContext | None:
-        verify = self._parse_bool(GITLAB_VERIFY_SSL, default=True)
+        verify_raw = self._gitlab_verify_ssl if self._gitlab_verify_ssl is not None else GITLAB_VERIFY_SSL
+        verify = self._parse_bool(verify_raw, default=True)
+        ca_bundle = self._gitlab_ssl_ca_bundle or GITLAB_SSL_CA_BUNDLE
         if verify:
-            if GITLAB_SSL_CA_BUNDLE:
-                return ssl.create_default_context(cafile=GITLAB_SSL_CA_BUNDLE)
+            if ca_bundle:
+                return ssl.create_default_context(cafile=ca_bundle)
             return None
         return ssl._create_unverified_context()  # noqa: SLF001
 

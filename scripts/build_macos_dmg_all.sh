@@ -30,12 +30,30 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+resolve_build_python() {
+  if [[ -n "${PYTHON:-}" ]]; then
+    printf '%s\n' "${PYTHON}"
+    return 0
+  fi
+  if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
+    printf '%s\n' "${ROOT_DIR}/.venv/bin/python"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    command -v python
+    return 0
+  fi
+  return 1
+}
+
+BUILD_PYTHON="$(resolve_build_python || true)"
+[[ -n "${BUILD_PYTHON}" ]] || fail "python is required on the build machine. Create .venv or set PYTHON=/path/to/python"
+
 echo "==> Building AI Crash Fix DMG (all steps)"
 echo "Repo: ${ROOT_DIR}"
+echo "Using build Python: ${BUILD_PYTHON} ($("${BUILD_PYTHON}" -V 2>&1))"
 echo
 
-# Build-time prerequisites (teammates don't need these; only the release builder does).
-need_cmd python
 need_cmd flutter
 need_cmd swiftc
 need_cmd hdiutil

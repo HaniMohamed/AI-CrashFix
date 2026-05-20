@@ -6,6 +6,8 @@ class Endpoints {
   static const String crashes = '/api/crashes';
   static const String analytics = '/api/analytics';
   static const String config = '/api/config';
+  static String configForRepo(String repoKey) =>
+      '$config?repo_key=${Uri.encodeQueryComponent(repoKey)}';
   static const String googleCredentials = '/api/settings/google_credentials';
   static const String repos = '/api/repos';
   static const String activeRepo = '/api/repos/active';

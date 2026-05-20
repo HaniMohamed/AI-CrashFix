@@ -46,9 +46,13 @@ class CrashlyticsService:
 
             self._effective = SettingsResolver().effective_crashlytics(repo_key=repo_key)
             self._backend = _resolve_crashlytics_backend(self._effective.backend)
+            self._android_package_default = self._effective.android_package_default
+            self._ios_bundle_id_default = self._effective.ios_bundle_id_default
         except Exception:
             self._effective = None
             self._backend = _resolve_crashlytics_backend(CRASHLYTICS_FETCH_BACKEND)
+            self._android_package_default = CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
+            self._ios_bundle_id_default = CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
         self.project_id = (project_id or "").strip() or (BQ_PROJECT_ID or "").strip() or None
         self.client = None
         self._logging_client = None
@@ -602,10 +606,10 @@ class CrashlyticsService:
         plat_lower = (platform or "").strip().lower()
         if not app_identifier:
             if "ios" in plat_lower or plat_lower in ("apple", "ipados"):
-                bid = (CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT or "").strip()
+                bid = (getattr(self, "_ios_bundle_id_default", None) or CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT or "").strip()
                 app_identifier = bid or None
             else:
-                bid = (CRASHLYTICS_ANDROID_PACKAGE_DEFAULT or "").strip()
+                bid = (getattr(self, "_android_package_default", None) or CRASHLYTICS_ANDROID_PACKAGE_DEFAULT or "").strip()
                 app_identifier = bid or None
         console_app_id = self._crashlytics_console_app_id(platform, app_identifier)
         return {

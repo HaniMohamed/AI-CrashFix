@@ -4,10 +4,30 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-if ! command -v python >/dev/null 2>&1; then
-  echo "python is required on the build machine (not on teammate machines)."
+resolve_build_python() {
+  if [[ -n "${PYTHON:-}" ]]; then
+    printf '%s\n' "${PYTHON}"
+    return 0
+  fi
+  if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
+    printf '%s\n' "${ROOT_DIR}/.venv/bin/python"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    command -v python
+    return 0
+  fi
+  return 1
+}
+
+BUILD_PYTHON="$(resolve_build_python || true)"
+if [[ -z "${BUILD_PYTHON}" ]]; then
+  echo "python is required on the build machine (not on teammate machines)." >&2
+  echo "Create .venv in the repo root or set PYTHON=/path/to/python." >&2
   exit 1
 fi
+
+echo "Using build Python: ${BUILD_PYTHON} ($("${BUILD_PYTHON}" -V 2>&1))"
 
 PYINSTALLER_EXTRA=()
 while [[ $# -gt 0 ]]; do
@@ -23,9 +43,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-python -m pip install -r requirements.txt
+"${BUILD_PYTHON}" -m pip install -r requirements.txt
 
-python -m PyInstaller "${PYINSTALLER_EXTRA[@]+"${PYINSTALLER_EXTRA[@]}"}" packaging/pyinstaller/backend.spec
+"${BUILD_PYTHON}" -m PyInstaller "${PYINSTALLER_EXTRA[@]+"${PYINSTALLER_EXTRA[@]}"}" packaging/pyinstaller/backend.spec
 
 BUNDLE_DIR="dist/ai_crash_fix_backend/_internal"
 if [[ ! -d "${BUNDLE_DIR}" ]]; then
