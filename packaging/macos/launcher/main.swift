@@ -40,6 +40,8 @@ func usageAndExit(code: Int32) -> Never {
     Notes:
       - Passing API keys via --args can expose them in process listings.
       - The launcher will NOT print secrets to its log file.
+      - LLM and other UI-backed settings passed here are persisted on backend startup
+        and shown on the in-app Settings page (overriding previous saved values).
 
     Example:
       open -a "AI Crash Fix" --args --llm-provider openai --openai-model gpt-4o-mini --openai-url https://api.openai.com/v1 --openai-api-key $OPENAI_API_KEY
@@ -461,6 +463,9 @@ env["AI_CRASH_FIX_DATA_DIR"] = dataDir
 let parsed = parseLauncherEnvOverrides(CommandLine.arguments)
 for (k, v) in parsed.overrides {
   env[k] = v
+}
+if !parsed.overrides.isEmpty {
+  env["AI_CRASH_FIX_LAUNCH_ENV_KEYS"] = parsed.overrides.keys.sorted().joined(separator: ",")
 }
 // Let backend resolve its own storage layout; launcher only provides a shared base.
 proc.environment = env

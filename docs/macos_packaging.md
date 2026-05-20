@@ -44,6 +44,7 @@ open -a "AI Crash Fix" --args \
 Notes:
 - Passing API keys via `--args` can expose them in process listings. Prefer Keychain if this is a concern.
 - The launcher writes logs under `~/Library/Application Support/AI Crash Fix/` and will redact secrets in `launcher.log`.
+- LLM settings (and other keys editable via **Settings** / `POST /api/settings`) passed on launch are **persisted to SQLite** on backend startup and replace any previous saved values for those keys. The in-app Settings page then shows the launch configuration. Crash-store flags (`--crash-store-backend`, `--crash-db-url`) remain environment-only and are not shown on the Settings page.
 
 ## Shared crash store (Postgres)
 

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import os
@@ -38,7 +39,14 @@ from app.api.analytics import compute_analytics
 from app.api.events import ERROR, to_ndjson
 from app.api.runner import stream_run
 from app.services.crash_store import CrashStore, crash_store_health, uses_postgres_crash_store
+from app.services.launch_settings import persist_launch_env_overrides
 from app.services.repo_registry_store import RepoRegistryStore
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    persist_launch_env_overrides()
+    yield
 
 
 app = FastAPI(
@@ -48,6 +56,7 @@ app = FastAPI(
         "graph events as NDJSON and exposes the crash store for read-only access."
     ),
     version="0.1.0",
+    lifespan=_lifespan,
 )
 
 # Permissive CORS for local UI development. Tighten in production behind a
