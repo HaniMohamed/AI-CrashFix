@@ -49,6 +49,12 @@ const sidebarItems = <SidebarItem>[
     path: '/runs/live',
   ),
   SidebarItem(
+    label: 'Logs',
+    icon: Icons.article_outlined,
+    activeIcon: Icons.article,
+    path: '/logs',
+  ),
+  SidebarItem(
     label: 'Settings',
     icon: Icons.tune_outlined,
     activeIcon: Icons.tune,

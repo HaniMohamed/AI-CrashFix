@@ -200,6 +200,72 @@ async def health() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/logs/meta")
+async def get_logs_meta() -> Dict[str, Any]:
+    """Paths and availability for launcher/backend log files on the server."""
+    from app.services.log_files import read_log_chunk, resolve_data_dir, resolve_log_path
+
+    base = resolve_data_dir()
+    sources: Dict[str, Any] = {}
+    for src in ("backend", "launcher"):
+        path = resolve_log_path(src)
+        entry: Dict[str, Any] = {
+            "path": str(path) if path else None,
+            "available": bool(path and path.is_file()),
+        }
+        if path and path.is_file():
+            try:
+                entry["size"] = path.stat().st_size
+            except OSError:
+                entry["size"] = None
+        sources[src] = entry
+    return {"data_dir": str(base) if base else None, "sources": sources}
+
+
+@app.get("/api/logs/{source}")
+async def get_log_tail(
+    source: str,
+    offset: int = Query(0, ge=0, description="Byte offset to read from (use prior next_offset when tailing)."),
+    max_bytes: int = Query(
+        512_000,
+        ge=1024,
+        le=1_048_576,
+        description="Maximum bytes to return in one response.",
+    ),
+    tail: bool = Query(
+        True,
+        description="When offset is 0, return the last max_bytes (true) or first max_bytes (false).",
+    ),
+) -> Dict[str, Any]:
+    """
+    Read launcher or backend log text from the app data directory.
+
+    Log files are written by the macOS menu-bar launcher (``backend.log``,
+    ``launcher.log`` under ``AI_CRASH_FIX_DATA_DIR`` or Application Support).
+    """
+    from app.services.log_files import read_log_chunk
+
+    src = (source or "").strip().lower()
+    if src not in ("backend", "launcher"):
+        raise HTTPException(
+            status_code=400,
+            detail="source must be 'backend' or 'launcher'",
+        )
+    result = read_log_chunk(src, offset=offset, max_bytes=max_bytes, tail=tail)
+    return {
+        "source": result.source,
+        "path": result.path,
+        "data_dir": result.data_dir,
+        "available": result.available,
+        "size": result.size,
+        "offset": result.offset,
+        "next_offset": result.next_offset,
+        "content": result.content,
+        "truncated": result.truncated,
+        "message": result.message,
+    }
+
+
 @app.post("/api/runs")
 async def post_runs(req: RunRequest) -> StreamingResponse:
     if req.mode not in ("batch", "single"):

@@ -7,6 +7,7 @@ import '../features/dashboard/dashboard_page.dart';
 import '../features/mrs/generated_mrs_page.dart';
 import '../features/runs/new_run_page.dart';
 import '../features/runs/run_live_page.dart';
+import '../features/logs/logs_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/shell/app_shell.dart';
 
@@ -87,6 +88,11 @@ GoRouter createAppRouter() => GoRouter(
               path: '/mrs',
               pageBuilder: (_, _) =>
                   const NoTransitionPage(child: GeneratedMrsPage()),
+            ),
+            GoRoute(
+              path: '/logs',
+              pageBuilder: (_, _) =>
+                  const NoTransitionPage(child: LogsPage()),
             ),
             GoRoute(
               path: '/settings',

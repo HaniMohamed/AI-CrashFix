@@ -18,5 +18,8 @@ class Endpoints {
   static String repoEffectiveConfig(String repoKey) =>
       '${repoByKey(repoKey)}/effective-config';
 
+  static const String logsMeta = '/api/logs/meta';
+  static String logTail(String source) => '/api/logs/$source';
+
   static String crashById(String id) => '$crashes/$id';
 }

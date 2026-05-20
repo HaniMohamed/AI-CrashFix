@@ -44,8 +44,8 @@ def generate_pr_node(state: CrashState):
         jira = str(jira_issue_id).strip().upper() or "NOJIRA"
 
         repo_root = (state.get("repo_root") or cfg.REPO_ROOT or "").strip()
-        git = GitService(repo_root=repo_root, repo_key=repo_key)
         repo_key = (state.get("repo_key") or "").strip() or None
+        git = GitService(repo_root=repo_root, repo_key=repo_key)
         fpid = (state.get("firebase_project_id") or "").strip() or None
         crash_store = CrashStore(repo_key=repo_key, project_id=fpid)
 
