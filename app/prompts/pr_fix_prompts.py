@@ -1,3 +1,6 @@
+from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+
+
 def PR_SYSTEM_PROMPT():
     return """
     You are a senior software engineer writing professional GitHub pull requests for production crash fixes.
@@ -19,7 +22,7 @@ def PR_SYSTEM_PROMPT():
       "pr_body": "...",
       "commit_message": "..."
     }
-    """
+    """ + JSON_OUTPUT_SYSTEM_RULES
 
 
 def PR_FIX_PROMPT_INPUT(prompt_input):
@@ -60,4 +63,4 @@ def PR_FIX_PROMPT_INPUT(prompt_input):
       - ## Test plan (checklist)
     - The body must NOT paste huge code blocks unless essential; summarize and reference files instead.
     - Use concrete details from the input (exception, platform, root cause) to be specific.
-    """
+    """ + json_output_user_reminder()

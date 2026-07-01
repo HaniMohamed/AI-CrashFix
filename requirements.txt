@@ -1,4 +1,5 @@
 langgraph
+json-repair
 openai
 google-genai
 python-dotenv

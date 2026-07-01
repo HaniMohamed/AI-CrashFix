@@ -1,3 +1,6 @@
+from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+
+
 def SYSTEM_PROMPT():
     return """
     You are a senior staff engineer performing a code review for an AI-generated crash fix.
@@ -12,7 +15,7 @@ def SYSTEM_PROMPT():
     OUTPUT RULES:
     - Return JSON ONLY (no markdown, no backticks, no extra text).
     - Keep feedback actionable: point to exact missing info or specific changes needed.
-    """
+    """ + JSON_OUTPUT_SYSTEM_RULES
 
 
 def USER_PROMPT(prompt_input):
@@ -85,4 +88,4 @@ def USER_PROMPT(prompt_input):
         "Any clarifying questions about missing evidence (empty if none)."
       ]
     }}
-    """
+    """ + json_output_user_reminder()

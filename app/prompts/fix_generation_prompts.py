@@ -1,3 +1,6 @@
+from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+
+
 def SYSTEM_PROMPT():
     return """
     You are a senior software reliability engineer.
@@ -10,7 +13,7 @@ def SYSTEM_PROMPT():
     - If evidence is insufficient, explicitly say "insufficient evidence".
     - Every conclusion must be backed by provided stacktrace or code context.
     - The fix you propose must be expressed as a git-style unified diff (minimal hunks), suitable for `git apply` from repo root.
-    """
+    """ + JSON_OUTPUT_SYSTEM_RULES
     
 
 def USER_PROMPT(prompt_input):
@@ -99,5 +102,5 @@ def USER_PROMPT(prompt_input):
       "risk": "low|medium|high",
       "tests": ["Suggested test(s) or validation steps that can be run."]
     }}
-    """
+    """ + json_output_user_reminder()
 

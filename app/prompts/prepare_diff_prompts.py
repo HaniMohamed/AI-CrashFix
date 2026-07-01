@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+
 
 def PREPARE_DIFF_SYSTEM_PROMPT() -> str:
     return """
@@ -40,7 +42,7 @@ COMMON FAILURE MODES TO AVOID:
 - Incorrect file paths, wrong prefixes, or wrong line numbers.
 - Producing a "patch-like snippet" that is not a real unified diff.
 - Using CRLF or embedding literal `\\n` instead of real newlines.
-""".strip()
+""" + JSON_OUTPUT_SYSTEM_RULES
 
 
 def PREPARE_DIFF_USER_PROMPT(
@@ -77,5 +79,5 @@ OUTPUT RULES (repeat):
 - Return JSON ONLY.
 - "fix" must be a single unified diff (or "insufficient evidence").
 - Only touch files provided above.
-""".strip()
+""" + json_output_user_reminder()
 

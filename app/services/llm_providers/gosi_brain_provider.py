@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
@@ -77,8 +78,13 @@ class GosiBrainProvider(LLMProvider):
         }
 
         req = urllib.request.Request(self._url, data=body_json, headers=headers, method="POST")
+        # GOSI Brain is served behind an internal/self-signed certificate, so skip
+        # SSL verification for this request.
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=120, context=ssl_context) as resp:
                 status = int(getattr(resp, "status", None) or resp.getcode() or 0)
                 raw_bytes = resp.read()
                 raw = _read_response_text(resp, raw_bytes)

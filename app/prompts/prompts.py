@@ -1,3 +1,6 @@
+from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+
+
 def SYSTEM_PROMPT():
     return """
     You are a senior software reliability engineer.
@@ -12,7 +15,7 @@ def SYSTEM_PROMPT():
     - Every conclusion must be backed by provided stacktrace or code context.
 
     You must be precise, deterministic, and conservative.
-    """
+    """ + JSON_OUTPUT_SYSTEM_RULES
 
 def USER_PROMPT(prompt_input):
     return f"""
@@ -44,4 +47,4 @@ def USER_PROMPT(prompt_input):
     "fix_suggestion": "...",
     "risk_level": "low|medium|high"
     }}
-    """
+    """ + json_output_user_reminder()
