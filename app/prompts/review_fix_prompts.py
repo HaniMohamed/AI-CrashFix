@@ -1,4 +1,5 @@
 from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+from app.utils.prompt_budget import json_prompt
 
 
 def SYSTEM_PROMPT():
@@ -18,6 +19,18 @@ def SYSTEM_PROMPT():
     """ + JSON_OUTPUT_SYSTEM_RULES
 
 
+def _stacktrace_section(prompt_input) -> str:
+    include_raw = prompt_input.get("include_raw_stacktrace")
+    if include_raw is None:
+        include_raw = bool(prompt_input.get("stacktrace"))
+    if include_raw:
+        return f"""
+    ### STACKTRACE (raw)
+    {json_prompt(prompt_input.get("stacktrace"))}
+"""
+    return ""
+
+
 def USER_PROMPT(prompt_input):
     return f"""
     Please review the proposed crash fix.
@@ -30,15 +43,12 @@ def USER_PROMPT(prompt_input):
 
     ### EXCEPTION
     {prompt_input.get("exception")}
-
-    ### STACKTRACE (raw)
-    {prompt_input.get("stacktrace")}
-
+{_stacktrace_section(prompt_input)}
     ### STACKTRACE (mapped frames)
-    {prompt_input.get("mapped_frames")}
+    {json_prompt(prompt_input.get("mapped_frames"))}
 
     ### REPO CONTEXT (files/snippets already retrieved)
-    {prompt_input.get("repo_context")}
+    {json_prompt(prompt_input.get("repo_context"))}
 
     ### ROOT CAUSE (from analysis)
     {prompt_input.get("root_cause")}
@@ -50,10 +60,10 @@ def USER_PROMPT(prompt_input):
     {prompt_input.get("generated_fix")}
 
     ### DECLARED IMPACT
-    - impacted_files: {prompt_input.get("fix_impacted_files")}
+    - impacted_files: {json_prompt(prompt_input.get("fix_impacted_files"))}
     - rationale: {prompt_input.get("fix_rationale")}
     - risk: {prompt_input.get("fix_risk")}
-    - tests: {prompt_input.get("fix_tests")}
+    - tests: {json_prompt(prompt_input.get("fix_tests"))}
 
     ### ITERATION CONTEXT
     - iteration_count: {prompt_input.get("fix_iteration_count")}

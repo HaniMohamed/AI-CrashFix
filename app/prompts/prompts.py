@@ -1,4 +1,6 @@
 from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+from app.utils.llm_helpers import extract_top_commits
+from app.utils.prompt_budget import json_prompt
 
 
 def SYSTEM_PROMPT():
@@ -18,20 +20,26 @@ def SYSTEM_PROMPT():
     """ + JSON_OUTPUT_SYSTEM_RULES
 
 def USER_PROMPT(prompt_input):
+    repo_context = prompt_input.get("repo_context")
+    top_commits = prompt_input.get("top_commits")
+    if top_commits is None and repo_context:
+        top_commits = extract_top_commits(repo_context)
+    regression = prompt_input.get("regression_analysis") or repo_context
+
     return f"""
     Analyze this production crash and determine root cause.
 
     ### STACKTRACE FRAMES
-    {prompt_input["mapped_frames"]}
+    {json_prompt(prompt_input.get("mapped_frames"))}
 
     ### CODE CONTEXT
-    {prompt_input["repo_context"]}
+    {json_prompt(repo_context)}
 
     ### GIT REGRESSION ANALYSIS
-    {prompt_input["regression_analysis"]}
+    {json_prompt(regression)}
 
     ### TOP COMMITS
-    {prompt_input["top_commits"]}
+    {json_prompt(top_commits)}
 
     ---
 

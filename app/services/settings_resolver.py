@@ -111,6 +111,35 @@ class SettingsResolver:
         else:
             temperature = float(cfg.GOSI_BRAIN_TEMPERATURE)
     
+        max_bytes_raw = self._app_number("GOSI_BRAIN_MAX_REQUEST_BYTES")
+        if isinstance(max_bytes_raw, (int, float)) and max_bytes_raw > 0:
+            max_request_bytes = int(max_bytes_raw)
+        else:
+            max_request_bytes = int(cfg.GOSI_BRAIN_MAX_REQUEST_BYTES)
+
+        compaction = (
+            self._app_str("GOSI_BRAIN_PROMPT_COMPACTION") or cfg.GOSI_BRAIN_PROMPT_COMPACTION or "auto"
+        )
+        compaction = (compaction or "auto").strip().lower()
+
+        timeout_raw = self._app_number("GOSI_BRAIN_TIMEOUT")
+        if isinstance(timeout_raw, (int, float)) and timeout_raw > 0:
+            timeout = int(timeout_raw)
+        else:
+            timeout = int(cfg.GOSI_BRAIN_TIMEOUT)
+
+        connect_raw = self._app_number("GOSI_BRAIN_CONNECT_TIMEOUT")
+        if isinstance(connect_raw, (int, float)) and connect_raw > 0:
+            connect_timeout = int(connect_raw)
+        else:
+            connect_timeout = int(cfg.GOSI_BRAIN_CONNECT_TIMEOUT)
+
+        gzip_raw = self._app_str("GOSI_BRAIN_GZIP_REQUEST")
+        if gzip_raw is not None:
+            gzip_request = gzip_raw.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            gzip_request = bool(cfg.GOSI_BRAIN_GZIP_REQUEST)
+
         return {
             "url": (url or "").strip() or None,
             "model": model,
@@ -118,6 +147,11 @@ class SettingsResolver:
             "api_key": self._app_secret("GOSI_BRAIN_API_KEY") or cfg.GOSI_BRAIN_API_KEY,
             "oauth_domain": oauth,
             "temperature": temperature,
+            "max_request_bytes": max_request_bytes,
+            "prompt_compaction": compaction,
+            "timeout": timeout,
+            "connect_timeout": connect_timeout,
+            "gzip_request": gzip_request,
         }
 
     def effective_crashlytics(self, *, repo_key: str | None) -> EffectiveCrashlyticsConfig:

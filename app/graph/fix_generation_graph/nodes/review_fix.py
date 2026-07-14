@@ -2,6 +2,7 @@ from app.graph.state import CrashState
 from app.services.ai_service import LLMService
 from app.utils.llm_helpers import parse_json
 from app.prompts.review_fix_prompts import SYSTEM_PROMPT, USER_PROMPT
+from app.utils.prompt_budget import compact_crash_prompt_input
 
 def review_fix_node(state: CrashState):
     if not state.get("generated_fix"):
@@ -11,9 +12,15 @@ def review_fix_node(state: CrashState):
         return state
 
     llm = LLMService()
-    response = llm.call(
+
+    def compact_input(_state: CrashState, level: int):
+        return compact_crash_prompt_input(_state, level, include_previous_fix=True)
+
+    response = llm.call_with_prompt_budget(
         system_prompt=SYSTEM_PROMPT(),
-        user_prompt=USER_PROMPT(state),
+        build_user_prompt=USER_PROMPT,
+        prompt_input=state,
+        compact_input=compact_input,
     )
     parsed = parse_json(response)
 

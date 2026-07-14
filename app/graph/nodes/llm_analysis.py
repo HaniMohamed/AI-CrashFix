@@ -2,20 +2,21 @@ from app.services.ai_service import LLMService
 from app.services.crash_store import CrashStore
 
 from app.prompts.prompts import SYSTEM_PROMPT, USER_PROMPT
-from app.utils.llm_helpers import parse_json, extract_top_commits
+from app.utils.llm_helpers import parse_json
+from app.utils.prompt_budget import compact_analysis_prompt_input
+
 
 def llm_analysis(state):
     llm = LLMService()
-    prompt_input = {
-        "mapped_frames": state["mapped_frames"],
-        "repo_context": state["repo_context"],
-        "regression_analysis": state["repo_context"],
-        "top_commits": extract_top_commits(state["repo_context"])
-    }
 
-    response = llm.call(
+    def compact_input(_state, level: int):
+        return compact_analysis_prompt_input(_state, level)
+
+    response = llm.call_with_prompt_budget(
         system_prompt=SYSTEM_PROMPT(),
-        user_prompt=USER_PROMPT(prompt_input)
+        build_user_prompt=USER_PROMPT,
+        prompt_input=state,
+        compact_input=compact_input,
     )
 
     parsed = parse_json(response)

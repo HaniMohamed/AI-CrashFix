@@ -1,4 +1,5 @@
 from app.prompts.json_output import JSON_OUTPUT_SYSTEM_RULES, json_output_user_reminder
+from app.utils.prompt_budget import json_prompt
 
 
 def SYSTEM_PROMPT():
@@ -16,6 +17,27 @@ def SYSTEM_PROMPT():
     """ + JSON_OUTPUT_SYSTEM_RULES
     
 
+def _previous_fix_for_prompt(prompt_input) -> str | None:
+    prev = prompt_input.get("previous_generated_fix")
+    if prev is not None:
+        return prev
+    if prompt_input.get("include_previous_fix", True):
+        return prompt_input.get("generated_fix")
+    return None
+
+
+def _stacktrace_section(prompt_input) -> str:
+    include_raw = prompt_input.get("include_raw_stacktrace")
+    if include_raw is None:
+        include_raw = bool(prompt_input.get("stacktrace"))
+    if include_raw:
+        return f"""
+    ### STACKTRACE (raw)
+    {json_prompt(prompt_input.get("stacktrace"))}
+"""
+    return ""
+
+
 def USER_PROMPT(prompt_input):
     return f"""
     You are modifying an existing codebase (paths and snippets appear in REPO CONTEXT below).
@@ -30,15 +52,12 @@ def USER_PROMPT(prompt_input):
 
     ### EXCEPTION
     {prompt_input.get("exception")}
-
-    ### STACKTRACE (raw)
-    {prompt_input.get("stacktrace")}
-
+{_stacktrace_section(prompt_input)}
     ### STACKTRACE (mapped frames)
-    {prompt_input.get("mapped_frames")}
+    {json_prompt(prompt_input.get("mapped_frames"))}
 
     ### REPO CONTEXT (files/snippets already retrieved)
-    {prompt_input.get("repo_context")}
+    {json_prompt(prompt_input.get("repo_context"))}
 
     ### CURRENT ROOT CAUSE (from analysis)
     {prompt_input.get("root_cause")}
@@ -52,10 +71,10 @@ def USER_PROMPT(prompt_input):
     ### ITERATION CONTEXT
     - iteration_count: {prompt_input.get("fix_iteration_count")}
     - max_iterations: {prompt_input.get("fix_max_iterations")}
-    - previous_generated_fix: {prompt_input.get("generated_fix")}
+    - previous_generated_fix: {_previous_fix_for_prompt(prompt_input)}
     - review_feedback: {prompt_input.get("fix_review_feedback")}
-    - required_changes: {prompt_input.get("fix_required_changes")}
-    - reviewer_questions: {prompt_input.get("fix_review_questions")}
+    - required_changes: {json_prompt(prompt_input.get("fix_required_changes"))}
+    - reviewer_questions: {json_prompt(prompt_input.get("fix_review_questions"))}
 
     ---
 
@@ -103,4 +122,3 @@ def USER_PROMPT(prompt_input):
       "tests": ["Suggested test(s) or validation steps that can be run."]
     }}
     """ + json_output_user_reminder()
-

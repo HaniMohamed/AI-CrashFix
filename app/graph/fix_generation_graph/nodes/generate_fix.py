@@ -5,6 +5,7 @@ from app.services.ai_service import LLMService
 from app.services.crash_store import CrashStore
 from app.utils.fix_json import fix_corrupted_json
 from app.utils.llm_helpers import parse_json
+from app.utils.prompt_budget import compact_crash_prompt_input
 
 def _normalize_unified_diff_fix(fix: str | None) -> str | None:
     """Strip accidental markdown fences from the JSON 'fix' field."""
@@ -46,9 +47,19 @@ def _impacted_files_from_unified_diff(diff: str) -> list[str]:
 
 def generate_fix_node(state: CrashState):
     llm = LLMService()
-    response = llm.call(
+
+    def compact_input(_state: CrashState, level: int):
+        return compact_crash_prompt_input(
+            _state,
+            level,
+            include_previous_fix=(level < 2),
+        )
+
+    response = llm.call_with_prompt_budget(
         system_prompt=SYSTEM_PROMPT(),
-        user_prompt=USER_PROMPT(state)
+        build_user_prompt=USER_PROMPT,
+        prompt_input=state,
+        compact_input=compact_input,
     )
     cleaned_response = fix_corrupted_json(response)
     parsed = parse_json(cleaned_response)
