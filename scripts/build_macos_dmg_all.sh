@@ -49,16 +49,15 @@ resolve_build_python() {
 BUILD_PYTHON="$(resolve_build_python || true)"
 [[ -n "${BUILD_PYTHON}" ]] || fail "python is required on the build machine. Create .venv or set PYTHON=/path/to/python"
 
-echo "==> Building AI Crash Fix DMG (all steps)"
+echo "==> Building AI Crash Fix DMG (Flutter macOS + bundled backend)"
 echo "Repo: ${ROOT_DIR}"
 echo "Using build Python: ${BUILD_PYTHON} ($("${BUILD_PYTHON}" -V 2>&1))"
 echo
 
 need_cmd flutter
-need_cmd swiftc
 need_cmd hdiutil
 
-# App icon: regenerate from favicon when missing or favicon is newer (avoids stale lightning bolt).
+# App icon: regenerate from favicon when missing or favicon is newer.
 ICNS="packaging/macos/AppIcon.icns"
 FAVICON="frontend/web/favicon.svg"
 if [[ -f "${FAVICON}" ]]; then
@@ -72,10 +71,37 @@ if [[ -f "${FAVICON}" ]]; then
   fi
 fi
 
+# Sync Flutter AppIcon.appiconset from the same favicon (Dock icon).
+if [[ -f "${FAVICON}" ]]; then
+  ICONSET="frontend/macos/Runner/Assets.xcassets/AppIcon.appiconset"
+  NEED_SYNC=0
+  if [[ ! -f "${ICONSET}/app_icon_1024.png" ]] || [[ "${FAVICON}" -nt "${ICONSET}/app_icon_1024.png" ]]; then
+    NEED_SYNC=1
+  fi
+  if [[ "${NEED_SYNC}" -eq 1 ]]; then
+    need_cmd qlmanage
+    need_cmd sips
+    echo "==> Syncing Flutter AppIcon.appiconset from ${FAVICON}"
+    TMP_DIR="dist/.tmp-flutter-icons"
+    rm -rf "${TMP_DIR}"
+    mkdir -p "${TMP_DIR}"
+    qlmanage -t -s 1024 -o "${TMP_DIR}" "${FAVICON}" >/dev/null 2>&1 || fail "Failed to rasterize favicon"
+    PNG="$(ls -1 "${TMP_DIR}"/*.png 2>/dev/null | head -n 1 || true)"
+    [[ -n "${PNG}" ]] || fail "qlmanage did not produce a PNG"
+    mkdir -p "${ICONSET}"
+    sips -z 16 16 "${PNG}" --out "${ICONSET}/app_icon_16.png" >/dev/null
+    sips -z 32 32 "${PNG}" --out "${ICONSET}/app_icon_32.png" >/dev/null
+    sips -z 64 64 "${PNG}" --out "${ICONSET}/app_icon_64.png" >/dev/null
+    sips -z 128 128 "${PNG}" --out "${ICONSET}/app_icon_128.png" >/dev/null
+    sips -z 256 256 "${PNG}" --out "${ICONSET}/app_icon_256.png" >/dev/null
+    sips -z 512 512 "${PNG}" --out "${ICONSET}/app_icon_512.png" >/dev/null
+    sips -z 1024 1024 "${PNG}" --out "${ICONSET}/app_icon_1024.png" >/dev/null
+    rm -rf "${TMP_DIR}"
+    echo
+  fi
+fi
+
 # Locate ripgrep to bundle.
-# Priority:
-# - RG_PATH env var
-# - common Homebrew / system locations
 RG_PATH="${RG_PATH:-}"
 if [[ -z "${RG_PATH}" ]]; then
   for p in /opt/homebrew/bin/rg /usr/local/bin/rg /usr/bin/rg; do
@@ -91,38 +117,31 @@ fi
 echo "Using rg from: ${RG_PATH}"
 echo
 
-echo "==> Step 1: Build Flutter Web"
-pushd frontend >/dev/null
-flutter pub get
-flutter build web --release
-popd >/dev/null
-[[ -f "frontend/build/web/index.html" ]] || fail "Flutter build did not produce frontend/build/web/index.html"
+echo "==> Step 1: Build Flutter macOS (release)"
+./scripts/build_macos_app.sh
+[[ -d "${APP_PATH}" ]] || fail "Missing app bundle at ${APP_PATH}"
 echo
 
 echo "==> Step 2: Build backend (PyInstaller)"
+# Desktop UI is native Flutter — web assets are optional in the freeze.
 ./scripts/build_backend_pyinstaller.sh --noconfirm
 [[ -d "dist/ai_crash_fix_backend" ]] || fail "Missing dist/ai_crash_fix_backend (PyInstaller output)"
 [[ -x "dist/ai_crash_fix_backend/ai_crash_fix_backend" ]] || fail "Missing backend executable dist/ai_crash_fix_backend/ai_crash_fix_backend"
 echo
 
-echo "==> Step 3: Build macOS .app (launcher)"
-./scripts/build_macos_app.sh
-[[ -d "${APP_PATH}" ]] || fail "Missing app bundle at ${APP_PATH}"
-echo
-
-echo "==> Step 4: Bundle backend + rg into .app"
+echo "==> Step 3: Bundle backend + rg into .app"
+mkdir -p "${APP_PATH}/Contents/Resources/backend"
 mkdir -p "${APP_PATH}/Contents/Resources/bin"
 
-# Backend (onedir bundle)
-rm -rf "${APP_PATH}/Contents/Resources/bin/ai_crash_fix_backend"
-cp -R "dist/ai_crash_fix_backend" "${APP_PATH}/Contents/Resources/bin/ai_crash_fix_backend"
+rm -rf "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
+cp -R "dist/ai_crash_fix_backend" "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
 
-# ripgrep
 cp "${RG_PATH}" "${APP_PATH}/Contents/Resources/bin/rg"
-chmod +x "${APP_PATH}/Contents/Resources/bin/"*
+chmod +x "${APP_PATH}/Contents/Resources/bin/rg"
+chmod +x "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend" || true
 echo
 
-echo "==> Step 5: Build DMG"
+echo "==> Step 4: Build DMG"
 ./scripts/build_dmg.sh
 [[ -f "dist/AI-Crash-Fix.dmg" ]] || fail "Missing dist/AI-Crash-Fix.dmg"
 echo
@@ -130,4 +149,5 @@ echo
 echo "Done."
 echo "- App: ${APP_PATH}"
 echo "- DMG: dist/AI-Crash-Fix.dmg"
-
+echo
+echo "Closing the app window (or Quit) stops the embedded backend process."

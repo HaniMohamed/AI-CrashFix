@@ -1,34 +1,20 @@
 import 'dart:convert';
 
-import 'package:fetch_client/fetch_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import 'http_client_io.dart' if (dart.library.html) 'http_client_web.dart';
 
 /// Thin JSON wrapper around `package:http`.
 ///
-/// On Flutter web we use [FetchClient] so streaming responses (NDJSON) read
+/// On Flutter web we use FetchClient so streaming responses (NDJSON) read
 /// from the browser fetch ReadableStream. Off-web we use the default
 /// [http.Client] which already streams.
 class ApiClient {
   ApiClient({required this.baseUrl, http.Client? client})
-      : _client = client ?? _defaultClient();
+      : _client = client ?? createHttpClient();
 
   final String baseUrl;
   final http.Client _client;
-
-  static http.Client _defaultClient() {
-    if (kIsWeb) {
-      // IMPORTANT: `streamRequests: true` uses a duplex fetch body, which
-      // Chromium only allows over HTTP/2 or HTTP/3. Uvicorn (and most local
-      // dev servers) speak HTTP/1.1, so the browser throws
-      // `TypeError: Failed to fetch` on POST /api/runs.
-      //
-      // `streamRequests: false` still buffers only the *request* body (tiny
-      // JSON here); the *response* is still read as a stream, so NDJSON works.
-      return FetchClient(mode: RequestMode.cors, streamRequests: false);
-    }
-    return http.Client();
-  }
 
   Uri _uri(String path, [Map<String, dynamic>? query]) {
     final base = Uri.parse(baseUrl);

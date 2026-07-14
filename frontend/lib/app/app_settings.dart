@@ -40,17 +40,16 @@ class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
     if (kIsWeb) {
       final origin = Uri.base.origin.trim();
       if (origin.isNotEmpty) {
-        // Release/profile web (e.g. FastAPI static files, macOS launcher on a random
-        // free port): the API is same-origin as this page — use it.
-        //
-        // Debug web (`flutter run -d chrome`): the app is served from the Flutter
-        // tool on an arbitrary port, so same-origin would hit the wrong server.
+        // Release/profile web (e.g. FastAPI static files): API is same-origin.
+        // Debug web (`flutter run -d chrome`): Flutter tool port ≠ API.
         if (kDebugMode) {
           return 'http://localhost:8000';
         }
         return origin;
       }
     }
+    // Desktop / external backend default. When the macOS app embeds a backend,
+    // [apiClientProvider] prefers [BackendBoot.baseUrl] over this value.
     return 'http://localhost:8000';
   }
 

@@ -1,8 +1,10 @@
-# AI Crash Fix - Web UI
+# AI Crash Fix - Flutter UI
 
-A Flutter Web app that wraps the AI Crash Fix HTTP API. It is a dashboard,
-crash explorer, run launcher, live NDJSON consumer, and read-only settings
-viewer all in one.
+A Flutter app (web + macOS) that wraps the AI Crash Fix HTTP API. It is a dashboard,
+crash explorer, run launcher, live NDJSON consumer, and settings viewer.
+
+On macOS release builds the app can embed a PyInstaller backend and stop it on quit
+(see [`docs/macos_packaging.md`](../docs/macos_packaging.md)).
 
 ```
 frontend/

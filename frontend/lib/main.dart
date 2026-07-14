@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 
 import 'app/app.dart';
 import 'app/router.dart';
+import 'app/url_strategy_stub.dart'
+    if (dart.library.html) 'app/url_strategy_web.dart';
 
 void main() {
-  // Ensure `/#/path` deep links work on Flutter web.
-  setUrlStrategy(const HashUrlStrategy());
+  configureUrlStrategy();
   final router = createAppRouter();
   runApp(ProviderScope(child: AiCrashFixApp(router: router)));
 }

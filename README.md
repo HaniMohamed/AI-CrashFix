@@ -241,18 +241,18 @@ curl -N -X POST http://localhost:8000/api/runs \
 - Concurrent `POST /api/runs` calls are demuxed by tagging every event with
   the run's `run_id` and filtering at the sink boundary.
 
-### Frontend (Flutter web)
+### Frontend (Flutter web + macOS)
 
-A polished Flutter web app lives in [`frontend/`](frontend/). It talks to the
+A Flutter UI lives in [`frontend/`](frontend/). It talks to the
 HTTP API above (no backend imports), and exposes a dashboard, crash explorer,
 run trigger with full flag form, live NDJSON stream view, repo management, and
 an editable settings page (backend settings + secrets are stored server-side;
 secrets are not re-displayed after save).
 
 #### Prerequisites
-- Flutter SDK 3.24+ (Dart 3.10+) and Chrome.
+- Flutter SDK 3.24+ (Dart 3.10+) and Chrome (web) or Xcode (macOS).
 
-#### Run the dev server (against a local backend)
+#### Run the web UI (against a local backend)
 
 ```bash
 # 1) Start the API (in another shell):
@@ -266,9 +266,9 @@ flutter run -d chrome --web-port 5173 \
 ```
 
 The base URL is also editable from the topbar popover and persisted to
-`localStorage`, so `--dart-define` is optional.
+`localStorage` (web) / SharedPreferences (macOS), so `--dart-define` is optional.
 
-#### Production bundle
+#### Production web bundle
 
 ```bash
 cd frontend
@@ -276,8 +276,18 @@ flutter build web --release
 # Output: frontend/build/web/  (serve with any static server)
 ```
 
+#### Packaged macOS app (UI + embedded backend)
+
+```bash
+./scripts/build_macos_dmg_all.sh
+# → dist/macos/AI Crash Fix.app and dist/AI-Crash-Fix.dmg
+```
+
+Closing the app stops the embedded backend. Details:
+[`docs/macos_packaging.md`](docs/macos_packaging.md).
+
 The frontend assumes the backend's permissive CORS (already enabled in
-`app/api/server.py`). See [`frontend/README.md`](frontend/README.md) for the
+`app.api.server` / `app/api/server.py`). See [`frontend/README.md`](frontend/README.md) for the
 project structure and design tokens.
 
 ### Status model

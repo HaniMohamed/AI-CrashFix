@@ -6,64 +6,92 @@ Python/Flutter/ripgrep**.
 
 ## What gets bundled
 
-- **Launcher app**: starts backend on a free port and opens the browser UI
-- **Backend executable**: PyInstaller-built `ai_crash_fix_backend`
-- **Flutter Web assets**: `frontend/build/web/**` included into the backend bundle as `web/**`
-- **ripgrep**: shipped as `Contents/Resources/bin/rg` and used via `AI_CRASH_FIX_RG_PATH`
-- **Writable state**: stored under `~/Library/Application Support/AI Crash Fix/` (via `AI_CRASH_FIX_DATA_DIR`)
+- **Flutter macOS app** (Dock icon, native window) — UI is Flutter desktop, not a browser
+- **Backend executable**: PyInstaller-built `ai_crash_fix_backend` under
+  `Contents/Resources/backend/ai_crash_fix_backend/`
+- **ripgrep**: `Contents/Resources/bin/rg` (via `AI_CRASH_FIX_RG_PATH`)
+- **Writable state**: `~/Library/Application Support/AI Crash Fix/` (`AI_CRASH_FIX_DATA_DIR`)
+
+On launch the app picks a free loopback port, starts the embedded backend, waits
+for `/api/health`, then talks to it over HTTP. **Closing the last window or
+choosing Quit stops the backend** (SIGTERM, then SIGKILL if needed).
+
+There is **no menubar tray** and the UI does **not** open in Safari/Chrome.
 
 Git is assumed to be present on dev Macs (Xcode Command Line Tools).
 
-## Launching with runtime config (from another app)
+### Legacy tray + browser launcher
 
-If you need to launch `AI Crash Fix.app` from another macOS app (e.g. Flutter) and pass LLM configuration at startup, you can use `open --args`.
+`packaging/macos/launcher/` (Swift menubar / `LSUIElement`) is **unused** by the
+DMG pipeline. Prefer the Flutter macOS Runner. Keep the folder only as reference
+until you remove it.
 
-The launcher maps these args into the backend environment variables (`LLM_PROVIDER`, `OPENAI_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY`, `GOSI_BRAIN_URL`, `GOSI_BRAIN_MODEL`, `GOSI_BRAIN_AUTHORIZATION`, `GOSI_BRAIN_API_KEY`, etc.).
+## Bundle layout
 
-Example:
-
-```bash
-open -a "AI Crash Fix" --args \
-  --llm-provider openai \
-  --openai-url "https://api.openai.com/v1" \
-  --openai-model "gpt-4o-mini" \
-  --openai-api-key "sk-REPLACE_ME"
+```
+AI Crash Fix.app/
+  Contents/
+    MacOS/AI Crash Fix
+    Resources/
+      AppIcon.icns
+      backend/ai_crash_fix_backend/   # PyInstaller onedir
+      bin/rg
 ```
 
-GOSI Brain example:
+## Dev workflows
+
+**Web UI + external API (unchanged):**
 
 ```bash
-open -a "AI Crash Fix" --args \
-  --llm-provider gosi-brain \
-  --gosi-brain-url "https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions" \
-  --gosi-brain-model "YOUR_MODEL" \
-  --gosi-brain-authorization "Bearer REPLACE_ME" \
-  --gosi-brain-api-key "REPLACE_ME"
+uvicorn app.api.server:app --reload --port 8000
+cd frontend && flutter run -d chrome --web-port 5173 --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
-Notes:
-- Passing API keys via `--args` can expose them in process listings. Prefer Keychain if this is a concern.
-- The launcher writes logs under `~/Library/Application Support/AI Crash Fix/` and will redact secrets in `launcher.log`.
-- LLM settings (and other keys editable via **Settings** / `POST /api/settings`) passed on launch are **persisted to SQLite** on backend startup and replace any previous saved values for those keys. The in-app Settings page then shows the launch configuration. Crash-store flags (`--crash-store-backend`, `--crash-db-url`) remain environment-only and are not shown on the Settings page.
+**macOS UI + external API (no embedded backend):**
 
-## Shared crash store (Postgres)
+```bash
+uvicorn app.api.server:app --reload --port 8000
+cd frontend
+AI_CRASH_FIX_USE_EMBEDDED_BACKEND=0 flutter run -d macos \
+  --dart-define=API_BASE_URL=http://localhost:8000
+```
 
-The repo registry stays on local SQLite. Crash pipeline progress can use local SQLite (default) or a team Postgres database keyed by Firebase project id.
+Debug macOS runs without a staged binary automatically use the external API
+(`http://localhost:8000` / prefs) instead of failing.
 
-Set via `.env`, `open --args`, or `--env KEY=VALUE`:
+## Configuring LLM / crash store
+
+Prefer the in-app **Settings** page (persisted by the backend).
+
+For process environment overrides, launch the binary directly (so env is inherited):
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_URL="https://api.openai.com/v1"
+export OPENAI_MODEL="gpt-4o-mini"
+export OPENAI_API_KEY="sk-REPLACE_ME"
+open "dist/macos/AI Crash Fix.app"
+# or:
+# "./dist/macos/AI Crash Fix.app/Contents/MacOS/AI Crash Fix"
+```
+
+On recent macOS you can also pass env via `open`:
+
+```bash
+open --env LLM_PROVIDER=openai --env OPENAI_API_KEY=sk-REPLACE_ME -a "AI Crash Fix"
+```
+
+Crash store:
 
 - `AI_CRASH_FIX_CRASH_STORE_BACKEND` — `sqlite` (default) or `postgres`
 - `AI_CRASH_FIX_CRASH_DB_URL` — Postgres URL when backend is `postgres`
 
-Example:
+Host Postgres with Docker Compose under [`infra/postgres/`](../infra/postgres/README.md).
 
-```bash
-open -a "AI Crash Fix" --args \
-  --crash-store-backend postgres \
-  --crash-db-url "postgresql://ai_crash_fix:PASSWORD@HOST:5432/ai_crash_fix"
-```
+## Shared crash store (Postgres)
 
-Host Postgres with Docker Compose under [`infra/postgres/`](../infra/postgres/README.md). Import existing local SQLite crash DBs once with `scripts/migrate_crash_store_to_postgres.py` (`--dry-run` first).
+The repo registry stays on local SQLite. Crash pipeline progress can use local
+SQLite (default) or a team Postgres database keyed by Firebase project id.
 
 Manual verification:
 
@@ -82,76 +110,72 @@ Manual verification:
 ```
 
 Output:
+
+- `dist/macos/AI Crash Fix.app`
 - `dist/AI-Crash-Fix.dmg`
 
-### App icon (optional but recommended)
+### App icon
 
-`./scripts/build_macos_dmg_all.sh` regenerates `packaging/macos/AppIcon.icns` from `frontend/web/favicon.svg` when the favicon is newer than the existing `.icns`, so the DMG and app keep the current icon.
-
-#### From the existing favicon.svg (recommended)
+`./scripts/build_macos_dmg_all.sh` regenerates `packaging/macos/AppIcon.icns` and
+the Flutter `AppIcon.appiconset` from `frontend/web/favicon.svg` when the
+favicon is newer, so Dock/Finder keep the brand icon.
 
 ```bash
 ./scripts/macos_icon_from_svg.sh frontend/web/favicon.svg
 ```
 
-#### From a custom PNG
+Or from a custom 1024×1024 PNG:
 
-1) Provide a 1024×1024 PNG (transparent background recommended).
-2) Generate an `.icns`:
 ```bash
 ./scripts/macos_make_icns.sh path/to/icon_1024.png
 ```
-This writes `packaging/macos/AppIcon.icns`, and `./scripts/build_macos_app.sh` will automatically embed it into the `.app`.
 
-### 1) Build Flutter Web
+### Step-by-step
 
-```bash
-cd frontend
-flutter pub get
-flutter build web --release
-cd ..
-```
-
-### 2) Build backend bundle (PyInstaller)
-
-```bash
-./scripts/build_backend_pyinstaller.sh
-```
-
-Expected output:
-- `dist/ai_crash_fix_backend/ai_crash_fix_backend`
-
-### 3) Build the `.app` bundle (launcher)
+1) Flutter macOS release app:
 
 ```bash
 ./scripts/build_macos_app.sh
+# → dist/macos/AI Crash Fix.app
 ```
 
-This creates:
-- `dist/macos/AI Crash Fix.app`
+2) Backend (PyInstaller):
 
-### 4) Copy runtime binaries into the `.app`
+```bash
+./scripts/build_backend_pyinstaller.sh
+# → dist/ai_crash_fix_backend/ai_crash_fix_backend
+```
+
+Flutter **web** assets are optional in the freeze (native macOS UI does not need them).
+
+3) Inject backend + ripgrep:
 
 ```bash
 APP="dist/macos/AI Crash Fix.app"
-
-# backend (PyInstaller onedir bundle)
-rm -rf "$APP/Contents/Resources/bin/ai_crash_fix_backend"
-cp -R "dist/ai_crash_fix_backend" "$APP/Contents/Resources/bin/ai_crash_fix_backend"
-
-# ripgrep (provide your own binary)
+mkdir -p "$APP/Contents/Resources/backend" "$APP/Contents/Resources/bin"
+rm -rf "$APP/Contents/Resources/backend/ai_crash_fix_backend"
+cp -R "dist/ai_crash_fix_backend" "$APP/Contents/Resources/backend/ai_crash_fix_backend"
 cp "/opt/homebrew/bin/rg" "$APP/Contents/Resources/bin/rg"
-chmod +x "$APP/Contents/Resources/bin/"*
+chmod +x "$APP/Contents/Resources/bin/rg"
 ```
 
-### 5) Create the DMG
+4) DMG:
 
 ```bash
 ./scripts/build_dmg.sh
+# → dist/AI-Crash-Fix.dmg
 ```
 
-Output:
-- `dist/AI-Crash-Fix.dmg`
+## Lifecycle
+
+| Action | Backend |
+|--------|---------|
+| App launch | Spawn on free `127.0.0.1` port; wait for `/api/health` |
+| Quit / close last window | Swift `AppDelegate` SIGTERM/SIGKILL synchronously; Dart also stops; backend parent-PID watchdog exits if the UI process dies |
+| Debug without binary | Uses external API (`localhost:8000` / prefs) |
+
+Override binary path: `AI_CRASH_FIX_BACKEND_PATH`.  
+Disable embed: `AI_CRASH_FIX_USE_EMBEDDED_BACKEND=0`.
 
 ## Optional: codesigning (recommended)
 
@@ -168,10 +192,11 @@ also notarize the DMG/app.
 ## DMG "installer UI" customization
 
 `./scripts/build_dmg.sh` creates a compact drag-to-install DMG window:
+
 - sets window size and icon positions (app on the left, `Applications` on the right)
-- applies a minimal neutral background from `packaging/macos/dmg_background.svg` (flat panel + arrow hint only)
+- applies a minimal neutral background from `packaging/macos/dmg_background.svg`
 
 Notes:
+
 - The background is rasterized via macOS Quick Look (`qlmanage`) during the DMG build.
 - If customization fails (e.g. in a headless environment), the script still produces a valid DMG, just without the customized window/background.
-

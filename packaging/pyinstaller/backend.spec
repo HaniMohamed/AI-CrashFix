@@ -34,8 +34,9 @@ for package in ("psycopg", "psycopg_binary"):
     binaries += pkg_binaries
     hiddenimports += pkg_hiddenimports
 
-# Bundle Flutter Web build output (served by FastAPI when frozen).
-# Expected path: frontend/build/web/index.html
+# Bundle Flutter Web build output when present (optional).
+# Native macOS DMG ships Flutter UI separately; web assets are only needed if
+# you still serve the UI from FastAPI (browser / legacy tray launcher).
 web_root = PROJECT_ROOT / "frontend" / "build" / "web"
 if (web_root / "index.html").is_file():
     datas.append((str(web_root), "web"))

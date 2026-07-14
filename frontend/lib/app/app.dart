@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,13 +8,42 @@ import 'app_settings.dart';
 import '../core/providers/backend_process_provider.dart';
 import 'theme/app_theme.dart';
 
-class AiCrashFixApp extends ConsumerWidget {
+class AiCrashFixApp extends ConsumerStatefulWidget {
   final GoRouter router;
   const AiCrashFixApp({super.key, required this.router});
   const AiCrashFixApp.withRouter({super.key, required this.router});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AiCrashFixApp> createState() => _AiCrashFixAppState();
+}
+
+class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Best-effort: window/app teardown should already have stopped the backend.
+    unawaited(EmbeddedBackendLifecycle.stop());
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Quit / last window close on macOS: stop the bundled backend first.
+    if (state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      unawaited(EmbeddedBackendLifecycle.stop());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(appSettingsProvider);
     final backend = ref.watch(backendProcessProvider);
     return async.when(
@@ -40,8 +71,7 @@ class AiCrashFixApp extends ConsumerWidget {
                   Text('Could not load settings: $e'),
                   const SizedBox(height: 16),
                   FilledButton(
-                    onPressed: () =>
-                        ref.invalidate(appSettingsProvider),
+                    onPressed: () => ref.invalidate(appSettingsProvider),
                     child: const Text('Retry'),
                   ),
                 ],
@@ -51,8 +81,6 @@ class AiCrashFixApp extends ConsumerWidget {
         ),
       ),
       data: (settings) {
-        // Kept for backward compatibility: on web, this provider should never
-        // block initial paint.
         if (backend.isLoading) {
           return MaterialApp(
             title: 'AI Crash Fix',
@@ -78,7 +106,8 @@ class AiCrashFixApp extends ConsumerWidget {
                       Text('Backend bootstrap error: ${backend.error}'),
                       const SizedBox(height: 16),
                       FilledButton(
-                        onPressed: () => ref.invalidate(backendProcessProvider),
+                        onPressed: () =>
+                            ref.invalidate(backendProcessProvider),
                         child: const Text('Retry'),
                       ),
                     ],
@@ -94,7 +123,7 @@ class AiCrashFixApp extends ConsumerWidget {
           themeMode: settings.themeMode,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
-          routerConfig: router,
+          routerConfig: widget.router,
         );
       },
     );

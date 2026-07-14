@@ -3,6 +3,38 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
+import time
+
+
+def _start_parent_watchdog() -> None:
+    """Exit when the Flutter/parent process dies (covers Force Quit / missed SIGTERM)."""
+    raw = (os.environ.get("AI_CRASH_FIX_PARENT_PID") or "").strip()
+    if not raw:
+        return
+    try:
+        parent_pid = int(raw)
+    except ValueError:
+        return
+    if parent_pid <= 1:
+        return
+
+    def _watch() -> None:
+        while True:
+            time.sleep(0.75)
+            try:
+                # Signal 0: existence check. Raises if parent is gone.
+                os.kill(parent_pid, 0)
+            except ProcessLookupError:
+                os._exit(0)
+            except PermissionError:
+                # Process exists but we cannot signal it — treat as still alive.
+                continue
+            except OSError:
+                os._exit(0)
+
+    t = threading.Thread(target=_watch, name="parent-watchdog", daemon=True)
+    t.start()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = backend
     if args.crash_db_url:
         os.environ["AI_CRASH_FIX_CRASH_DB_URL"] = str(args.crash_db_url)
+
+    _start_parent_watchdog()
 
     # Import late so PyInstaller collects only what it needs.
     import uvicorn  # noqa: WPS433

@@ -1,39 +1,63 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Build the Flutter macOS release app and stage it at dist/macos/AI Crash Fix.app
+# (backend + rg are injected by build_macos_dmg_all.sh / callers).
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT_DIR}/dist/macos"
 APP_NAME="AI Crash Fix.app"
 APP_DIR="${OUT_DIR}/${APP_NAME}"
 
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 2
+  }
+}
+
+need_cmd flutter
+
 mkdir -p "${OUT_DIR}"
 rm -rf "${APP_DIR}"
 
-mkdir -p "${APP_DIR}/Contents/MacOS"
-mkdir -p "${APP_DIR}/Contents/Resources/bin"
+echo "==> flutter build macos --release"
+pushd "${ROOT_DIR}/frontend" >/dev/null
+flutter pub get
+flutter build macos --release
+popd >/dev/null
 
-# Info.plist
-cp "${ROOT_DIR}/packaging/macos/Info.plist" "${APP_DIR}/Contents/Info.plist"
+# Flutter places the product under build/macos/Build/Products/Release/
+SRC_APP=""
+for candidate in \
+  "${ROOT_DIR}/frontend/build/macos/Build/Products/Release/${APP_NAME}" \
+  "${ROOT_DIR}/frontend/build/macos/Build/Products/Release/AI Crash Fix.app"
+do
+  if [[ -d "${candidate}" ]]; then
+    SRC_APP="${candidate}"
+    break
+  fi
+done
 
-# Optional app icon
+# Fallback: any .app in Release Products
+if [[ -z "${SRC_APP}" ]]; then
+  SRC_APP="$(find "${ROOT_DIR}/frontend/build/macos/Build/Products/Release" -maxdepth 1 -name '*.app' -print -quit 2>/dev/null || true)"
+fi
+
+if [[ -z "${SRC_APP}" || ! -d "${SRC_APP}" ]]; then
+  echo "ERROR: Flutter macOS build did not produce an .app under frontend/build/macos/Build/Products/Release/" >&2
+  exit 1
+fi
+
+cp -R "${SRC_APP}" "${APP_DIR}"
+
+# Ensure Dock/Finder icon matches branding (Favicon → AppIcon.icns).
 if [[ -f "${ROOT_DIR}/packaging/macos/AppIcon.icns" ]]; then
+  mkdir -p "${APP_DIR}/Contents/Resources"
   cp "${ROOT_DIR}/packaging/macos/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
 fi
 
-# Menu bar icon is drawn in Swift (`makeMenuBarStatusIcon` in launcher/main.swift).
-# Optional reference asset only (not bundled into the .app by default):
-# packaging/macos/menubar_icon.svg
-
-# Build the launcher (no Xcode project required)
-swiftc \
-  -O \
-  -framework AppKit \
-  "${ROOT_DIR}/packaging/macos/launcher/main.swift" \
-  -o "${APP_DIR}/Contents/MacOS/AI_Crash_Fix"
-
-echo "Built launcher at: ${APP_DIR}/Contents/MacOS/AI_Crash_Fix"
+echo "Built Flutter macOS app at: ${APP_DIR}"
 echo
-echo "Next (after backend/web build steps):"
-echo "- copy backend binary to: ${APP_DIR}/Contents/Resources/bin/ai_crash_fix_backend"
-echo "- copy ripgrep to:       ${APP_DIR}/Contents/Resources/bin/rg"
-echo "- (optional) include icons under Contents/Resources"
+echo "Next: copy backend to Contents/Resources/backend/ and rg to Contents/Resources/bin/rg"
+echo "  (or run ./scripts/build_macos_dmg_all.sh)"
