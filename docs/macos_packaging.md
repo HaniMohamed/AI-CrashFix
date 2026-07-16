@@ -11,6 +11,11 @@ Python/Flutter/ripgrep**.
   `Contents/Resources/backend/ai_crash_fix_backend/`
 - **ripgrep**: `Contents/Resources/bin/rg` (via `AI_CRASH_FIX_RG_PATH`)
 - **Writable state**: `~/Library/Application Support/AI Crash Fix/` (`AI_CRASH_FIX_DATA_DIR`)
+  — same folder as the previous menubar launcher (repos, settings, crash DBs, clones)
+
+App Sandbox is **disabled** on purpose. A sandboxed build stores data under
+`~/Library/Containers/com.internal.aicrashfix/...` and looks like a fresh install
+with no repos.
 
 On launch the app picks a free loopback port, starts the embedded backend, waits
 for `/api/health`, then talks to it over HTTP. **Closing the last window or

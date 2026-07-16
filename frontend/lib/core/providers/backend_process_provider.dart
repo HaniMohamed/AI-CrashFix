@@ -245,7 +245,11 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
     final fromEnv =
         (Platform.environment['AI_CRASH_FIX_DATA_DIR'] ?? '').trim();
     if (fromEnv.isNotEmpty) return fromEnv;
-    final home = Platform.environment['HOME'] ?? '';
+
+    // Prefer the real user home — not a macOS App Sandbox container redirect.
+    // Sandboxed builds resolve HOME under ~/Library/Containers/<bundle-id>/...,
+    // which hides existing repos from previous non-sandboxed builds.
+    final home = _realUserHome();
     if (home.isEmpty) {
       return Directory.systemTemp.path;
     }
@@ -254,6 +258,23 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
       dir.createSync(recursive: true);
     }
     return dir.path;
+  }
+
+  /// Absolute home directory outside an App Sandbox container, when possible.
+  String _realUserHome() {
+    for (final key in ['AI_CRASH_FIX_REAL_HOME', 'HOME']) {
+      final raw = (Platform.environment[key] ?? '').trim();
+      if (raw.isEmpty) continue;
+      if (!raw.contains('/Library/Containers/')) return raw;
+    }
+    // Fall back: strip .../Library/Containers/<id>/Data from a container HOME.
+    final home = (Platform.environment['HOME'] ?? '').trim();
+    final marker = '/Library/Containers/';
+    final idx = home.indexOf(marker);
+    if (idx > 0) {
+      return home.substring(0, idx);
+    }
+    return home;
   }
 
   String? _resolveRgPath() {

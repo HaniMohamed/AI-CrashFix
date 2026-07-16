@@ -57,6 +57,23 @@ if [[ -f "${ROOT_DIR}/packaging/macos/AppIcon.icns" ]]; then
   cp "${ROOT_DIR}/packaging/macos/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
 fi
 
+# Guard: App Sandbox must be off so the app reads the same
+# ~/Library/Application Support/AI Crash Fix/ data as the legacy launcher.
+if command -v codesign >/dev/null 2>&1; then
+  ENTITLEMENTS_DUMP="$(mktemp)"
+  if codesign -d --entitlements :- "${APP_DIR}" >"${ENTITLEMENTS_DUMP}" 2>/dev/null; then
+    if grep -q "com.apple.security.app-sandbox" "${ENTITLEMENTS_DUMP}" && \
+       /usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" "${ENTITLEMENTS_DUMP}" 2>/dev/null | grep -qi "true"; then
+      rm -f "${ENTITLEMENTS_DUMP}"
+      echo "ERROR: Built app has App Sandbox enabled." >&2
+      echo "  Fix frontend/macos/Runner/Release.entitlements (app-sandbox=false) and rebuild." >&2
+      echo "  Sandbox hides existing repos under a Containers/ path." >&2
+      exit 1
+    fi
+  fi
+  rm -f "${ENTITLEMENTS_DUMP}"
+fi
+
 echo "Built Flutter macOS app at: ${APP_DIR}"
 echo
 echo "Next: copy backend to Contents/Resources/backend/ and rg to Contents/Resources/bin/rg"
