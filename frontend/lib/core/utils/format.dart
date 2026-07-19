@@ -39,6 +39,17 @@ class Fmt {
     return DateFormat('MMM d, y').format(dt.toLocal());
   }
 
+  /// Human-readable absolute datetime, e.g. ``Jul 19, 2026 · 3:20 PM``.
+  static String readableDateTime(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      return DateFormat('MMM d, y · h:mm a').format(dt);
+    } catch (_) {
+      return iso;
+    }
+  }
+
   static String shortDate(String iso) {
     try {
       return DateFormat('MMM d').format(DateTime.parse(iso));

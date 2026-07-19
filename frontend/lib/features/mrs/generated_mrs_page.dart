@@ -10,6 +10,7 @@ import '../../core/api/endpoints.dart';
 import '../../core/models/crash.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
+import '../../core/utils/format.dart';
 import '../../shared/widgets/error_banner.dart';
 
 /// Strips boilerplate prefixes and leading crash hashes so titles read like a headline.
@@ -247,6 +248,9 @@ class _MrCardState extends State<_MrCard> {
     final body = c.prBody;
     final statusLower = c.status.toLowerCase();
     final statusDone = statusLower == 'completed' || statusLower == 'done';
+    final whenIso = c.updatedAt ?? c.createdAt;
+    final whenLabel = Fmt.relative(whenIso);
+    final whenExact = Fmt.readableDateTime(whenIso);
 
     return Material(
       color: palette.surface2,
@@ -301,6 +305,55 @@ class _MrCardState extends State<_MrCard> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          if (whenLabel.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Tooltip(
+                              message: whenExact.isNotEmpty
+                                  ? 'Created $whenExact'
+                                  : whenLabel,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.schedule_rounded,
+                                    size: 15,
+                                    color: palette.textMuted,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      whenLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: palette.textSecondary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  if (whenExact.isNotEmpty &&
+                                      whenExact != whenLabel) ...[
+                                    Text(
+                                      '  ·  ',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: palette.textMuted,
+                                      ),
+                                    ),
+                                    Flexible(
+                                      child: Text(
+                                        whenExact,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: palette.textMuted,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
                           if (headline != rawTitle.trim()) ...[
                             const SizedBox(height: 4),
                             Tooltip(
