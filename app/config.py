@@ -175,6 +175,11 @@ JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 JIRA_EMAIL = os.getenv("JIRA_EMAIL")
 JIRA_ISSUE_TYPE = os.getenv("JIRA_ISSUE_TYPE", "Bug")
 JIRA_VERIFY_SSL = os.getenv("JIRA_VERIFY_SSL", "true")
+# auto | basic | bearer — Server/DC PATs need bearer; Cloud API tokens use basic (email+token).
+JIRA_AUTH = os.getenv("JIRA_AUTH", "auto")
+# Optional JSON object merged into issue create ``fields`` (custom required fields, etc.).
+# Example (DE Bug — Concerned DE Team): {"customfield_11404":{"value":"Individual App + Taqdeer"}}
+JIRA_CREATE_FIELDS = os.getenv("JIRA_CREATE_FIELDS")
 
 GITLAB_SERVER_URL = os.getenv("GITLAB_SERVER_URL")
 GITLAB_PROJECT = os.getenv("GITLAB_PROJECT")  # namespace/project

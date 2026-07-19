@@ -23,9 +23,13 @@ class EffectiveJiraConfig:
     server_url: str | None
     email: str | None
     verify_ssl: str | None
+    auth: str | None
     token: str | None
     project_key: str | None
     issue_type: str | None
+    create_fields_json: str | None
+    create_mode: str | None
+    parent_issue_key: str | None
 
 
 @dataclass(frozen=True)
@@ -240,17 +244,25 @@ class SettingsResolver:
         issue_default = (cfg.JIRA_ISSUE_TYPE or "Bug").strip() or "Bug"
         it_raw = (repo.jira_issue_type if repo else None) or self._app_str("JIRA_ISSUE_TYPE") or issue_default
         it_norm = (it_raw or "Bug").strip() or "Bug"
+        from app.services.repo_registry_store import normalize_jira_create_mode
+
         return EffectiveJiraConfig(
             server_url=(repo.jira_server_url if repo else None)
             or self._app_str("JIRA_SERVER_URL")
             or cfg.JIRA_SERVER_URL,
             email=(repo.jira_email if repo else None) or self._app_str("JIRA_EMAIL") or cfg.JIRA_EMAIL,
             verify_ssl=self._app_str("JIRA_VERIFY_SSL") or cfg.JIRA_VERIFY_SSL,
+            auth=self._app_str("JIRA_AUTH") or cfg.JIRA_AUTH,
             token=repo_token or self._app_secret("JIRA_TOKEN") or cfg.JIRA_TOKEN,
             project_key=(repo.jira_project_key if repo else None)
             or self._app_str("JIRA_PROJECT_KEY")
             or cfg.JIRA_PROJECT_KEY,
             issue_type=it_norm,
+            create_fields_json=(repo.jira_create_fields if repo else None)
+            or self._app_str("JIRA_CREATE_FIELDS")
+            or cfg.JIRA_CREATE_FIELDS,
+            create_mode=normalize_jira_create_mode(repo.jira_create_mode if repo else None),
+            parent_issue_key=(repo.jira_parent_issue_key if repo else None),
         )
 
     def effective_gitlab(self, *, repo_key: str | None) -> EffectiveGitlabConfig:

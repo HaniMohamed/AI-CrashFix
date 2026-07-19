@@ -33,6 +33,8 @@ _APP_SETTINGS_ENV_KEYS: frozenset[str] = frozenset(
         "CRASHLYTICS_IOS_BUNDLE_ID",
         "JIRA_SERVER_URL",
         "JIRA_VERIFY_SSL",
+        "JIRA_AUTH",
+        "JIRA_CREATE_FIELDS",
         "JIRA_TOKEN",
         "JIRA_EMAIL",
         "JIRA_ISSUE_TYPE",

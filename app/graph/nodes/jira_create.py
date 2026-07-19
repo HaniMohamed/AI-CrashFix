@@ -60,7 +60,9 @@ def jira_create(state):
         mock=bool(state.get("mock")),
         repo_key=(state.get("repo_key") or "").strip() or None,
     )
-    state["jira_issue_id"] = issue.get("id")
+    # Prefer browse key (DE-12345) over internal numeric id — used in branches, MRs, UI.
+    jira_key = (issue.get("key") or issue.get("id") or "").strip()
+    state["jira_issue_id"] = jira_key or None
     cid = state.get("crash_id")
     if cid and state.get("jira_issue_id"):
         repo_key = (state.get("repo_key") or "").strip() or None

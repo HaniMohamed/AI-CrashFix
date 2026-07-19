@@ -147,6 +147,9 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     String? jiraEmail,
     String? jiraToken,
     String? jiraIssueType,
+    String? jiraCreateFields,
+    String? jiraCreateMode,
+    String? jiraParentIssueKey,
     String? gitlabProject,
     String? crashlyticsAndroidPackage,
     String? crashlyticsIosBundleId,
@@ -177,6 +180,13 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
       if (jiraToken != null && jiraToken.trim().isNotEmpty) 'jira_token': jiraToken.trim(),
       if (jiraIssueType != null && jiraIssueType.trim().isNotEmpty)
         'jira_issue_type': jiraIssueType.trim(),
+      // Always persist (empty string clears the per-repo override).
+      'jira_create_fields': (jiraCreateFields ?? '').trim(),
+      'jira_create_mode':
+          ((jiraCreateMode ?? '').trim().isEmpty)
+              ? 'standalone'
+              : jiraCreateMode!.trim(),
+      'jira_parent_issue_key': (jiraParentIssueKey ?? '').trim(),
       if (gitlabProject != null && gitlabProject.trim().isNotEmpty) 'gitlab_project': gitlabProject.trim(),
       if (crashlyticsAndroidPackage != null && crashlyticsAndroidPackage.trim().isNotEmpty)
         'crashlytics_android_package': crashlyticsAndroidPackage.trim(),

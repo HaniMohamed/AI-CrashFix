@@ -71,6 +71,9 @@ class RepoEntry:
     has_jira_token: bool
     jira_issue_type: str | None
     jira_project_key: str | None
+    jira_create_fields: str | None
+    jira_create_mode: str | None
+    jira_parent_issue_key: str | None
     gitlab_project: str | None
     crashlytics_android_package: str | None
     crashlytics_ios_bundle_id: str | None
@@ -85,6 +88,13 @@ class RepoIndexStatus:
     indexed_sha: str | None
     last_indexed_at: str | None
     last_error: str | None
+
+
+def normalize_jira_create_mode(value: str | None) -> str:
+    mode = (value or "").strip().lower()
+    if mode in {"under_parent", "sub_issue", "subtask", "sub-bug", "child"}:
+        return "under_parent"
+    return "standalone"
 
 
 def normalize_packages_dirs(value: str | list[str] | None) -> list[str]:
@@ -229,6 +239,12 @@ class RepoRegistryStore:
                 conn.execute("ALTER TABLE repos ADD COLUMN jira_token TEXT")
             if "jira_issue_type" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN jira_issue_type TEXT")
+            if "jira_create_fields" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_create_fields TEXT")
+            if "jira_create_mode" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_create_mode TEXT")
+            if "jira_parent_issue_key" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN jira_parent_issue_key TEXT")
             if "crashlytics_android_package" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN crashlytics_android_package TEXT")
             if "crashlytics_ios_bundle_id" not in existing:
@@ -283,6 +299,9 @@ class RepoRegistryStore:
         jira_email: str | None = None,
         jira_token: str | None = None,
         jira_issue_type: str | None = None,
+        jira_create_fields: str | None = None,
+        jira_create_mode: str | None = None,
+        jira_parent_issue_key: str | None = None,
         gitlab_project: str | None = None,
         crashlytics_android_package: str | None = None,
         crashlytics_ios_bundle_id: str | None = None,
@@ -307,6 +326,9 @@ class RepoRegistryStore:
         jira_em = (jira_email or "").strip() or None
         jira_tok = (jira_token or "").strip() or None
         jira_it = (jira_issue_type or "").strip() or None
+        jira_cf = (jira_create_fields or "").strip() or None
+        jira_mode = normalize_jira_create_mode(jira_create_mode)
+        jira_parent = (jira_parent_issue_key or "").strip().upper() or None
         from app.utils.gitlab_url import derive_gitlab_project_path_from_repo_url
 
         gl_proj = (gitlab_project or "").strip() or derive_gitlab_project_path_from_repo_url(url) or None
@@ -322,11 +344,12 @@ class RepoRegistryStore:
                 INSERT INTO repos(
                   repo_key, name, repo_url, repo_ref, firebase_project_id, access_token, packages_dirs,
                   crashlytics_fetch_backend, bq_dataset, bq_android_table, bq_ios_table,
-                  jira_project_key, jira_server_url, jira_email, jira_token, jira_issue_type, gitlab_project,
+                  jira_project_key, jira_server_url, jira_email, jira_token, jira_issue_type,
+                  jira_create_fields, jira_create_mode, jira_parent_issue_key, gitlab_project,
                   crashlytics_android_package, crashlytics_ios_bundle_id,
                   created_at, updated_at, last_selected_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(repo_key) DO UPDATE SET
                   name = excluded.name,
                   repo_url = excluded.repo_url,
@@ -343,6 +366,9 @@ class RepoRegistryStore:
                   jira_email = excluded.jira_email,
                   jira_token = COALESCE(excluded.jira_token, repos.jira_token),
                   jira_issue_type = excluded.jira_issue_type,
+                  jira_create_fields = excluded.jira_create_fields,
+                  jira_create_mode = excluded.jira_create_mode,
+                  jira_parent_issue_key = excluded.jira_parent_issue_key,
                   gitlab_project = excluded.gitlab_project,
                   crashlytics_android_package = excluded.crashlytics_android_package,
                   crashlytics_ios_bundle_id = excluded.crashlytics_ios_bundle_id,
@@ -365,6 +391,9 @@ class RepoRegistryStore:
                     jira_em,
                     jira_tok,
                     jira_it,
+                    jira_cf,
+                    jira_mode,
+                    jira_parent,
                     gl_proj,
                     cl_android,
                     cl_ios,
@@ -571,6 +600,15 @@ class RepoRegistryStore:
             else None,
             jira_project_key=row["jira_project_key"]
             if "jira_project_key" in row.keys() and row["jira_project_key"]
+            else None,
+            jira_create_fields=row["jira_create_fields"]
+            if "jira_create_fields" in row.keys() and row["jira_create_fields"]
+            else None,
+            jira_create_mode=normalize_jira_create_mode(
+                row["jira_create_mode"] if "jira_create_mode" in row.keys() else None
+            ),
+            jira_parent_issue_key=row["jira_parent_issue_key"]
+            if "jira_parent_issue_key" in row.keys() and row["jira_parent_issue_key"]
             else None,
             gitlab_project=row["gitlab_project"] if "gitlab_project" in row.keys() and row["gitlab_project"] else None,
             crashlytics_android_package=row["crashlytics_android_package"]

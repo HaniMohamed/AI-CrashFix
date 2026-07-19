@@ -46,6 +46,7 @@ class CrashState(TypedDict, total=False):
 
     jira_payload: dict[str, Any] | None
 
+    # Browse key from Jira create (e.g. DE-12345), not the internal numeric id.
     jira_issue_id: str | None
 
     # Fix generation state

@@ -11,7 +11,7 @@ Given recent Crashlytics crashes, AI Crash Fix:
 - (best effort) creates a **draft GitLab merge request** by applying the diff on a new branch, committing only fix paths, pushing, and opening an MR
 
 ### What you get (per crash)
-- **Jira issue id**: `state["jira_issue_id"]` (skipped in `--skip-jira-creation` or `--mock` Jira)
+- **Jira issue key**: `state["jira_issue_id"]` stores the browse key (e.g. `DE-12345`), not the internal numeric id (skipped in `--skip-jira-creation` or `--mock` Jira)
 - **Fix patch (LLM)**: `state["generated_fix"]` — unified diff string produced by `generate_fix` (intended for `git apply`)
 - **Applied patch echo**: `state["generated_diff"]` — set after a successful PR step to the same patch text (for downstream logging or tooling)
 - **Impacted paths**: `state["fix_impacted_files"]` — used when staging the commit (`git add -- <paths>`)
@@ -78,6 +78,8 @@ If you don’t pass `--skip-jira-creation`, the graph creates a Jira issue befor
 - Repo-scoped override: **JIRA_PROJECT_KEY** (set per repo in the repo dialog)
 - **JIRA_TOKEN**
 - **JIRA_VERIFY_SSL** (default: `true`)
+- **JIRA_AUTH** (default: `auto`) — Cloud uses Basic `email:token`; Server/DC PATs use Bearer. Set `bearer` for on-prem personal access tokens.
+- **JIRA_CREATE_FIELDS** — optional JSON object merged into the create payload for required custom fields (e.g. DE `Concerned DE Team`: `{"customfield_11404":{"value":"Individual App + Taqdeer"}}`).
 
 #### GitLab merge requests (optional, requires Jira id)
 PR generation is best-effort and will be skipped if `jira_issue_id` is missing.

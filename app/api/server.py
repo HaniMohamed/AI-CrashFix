@@ -166,6 +166,21 @@ class RepoUpsertRequest(BaseModel):
         None,
         description="Optional: Jira issue type name (e.g. Bug).",
     )
+    jira_create_fields: Optional[str] = Field(
+        None,
+        description=(
+            "Optional: JSON object of extra Jira create fields "
+            '(e.g. {"customfield_11404":{"value":"Individual App + Taqdeer"}}).'
+        ),
+    )
+    jira_create_mode: Optional[str] = Field(
+        None,
+        description="standalone (default) or under_parent (create sub-issue under jira_parent_issue_key).",
+    )
+    jira_parent_issue_key: Optional[str] = Field(
+        None,
+        description="Parent story/issue key when jira_create_mode=under_parent (e.g. DE-12345).",
+    )
     gitlab_project: Optional[str] = Field(
         None,
         description="Optional: per-repo GitLab project override (namespace/project).",
@@ -380,6 +395,9 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             jira_email=req.jira_email,
             jira_token=req.jira_token,
             jira_issue_type=req.jira_issue_type,
+            jira_create_fields=req.jira_create_fields,
+            jira_create_mode=req.jira_create_mode,
+            jira_parent_issue_key=req.jira_parent_issue_key,
             gitlab_project=req.gitlab_project,
             crashlytics_android_package=req.crashlytics_android_package,
             crashlytics_ios_bundle_id=req.crashlytics_ios_bundle_id,
@@ -743,6 +761,8 @@ async def get_config(
             "server_url": cfg.JIRA_SERVER_URL,
             "project_key": cfg.JIRA_PROJECT_KEY,
             "verify_ssl": cfg.JIRA_VERIFY_SSL,
+            "auth": cfg.JIRA_AUTH,
+            "create_fields": cfg.JIRA_CREATE_FIELDS,
             "has_token": bool(cfg.JIRA_TOKEN),
             "email": cfg.JIRA_EMAIL,
             "issue_type": cfg.JIRA_ISSUE_TYPE,
@@ -831,6 +851,8 @@ async def get_settings() -> Dict[str, Any]:
         "jira": {
             "server_url": eff_str("JIRA_SERVER_URL", cfg.JIRA_SERVER_URL),
             "verify_ssl": eff_str("JIRA_VERIFY_SSL", cfg.JIRA_VERIFY_SSL),
+            "auth": eff_str("JIRA_AUTH", cfg.JIRA_AUTH),
+            "create_fields": eff_str("JIRA_CREATE_FIELDS", cfg.JIRA_CREATE_FIELDS),
             "has_token": eff_secret("JIRA_TOKEN", cfg.JIRA_TOKEN),
             "email": eff_str("JIRA_EMAIL", cfg.JIRA_EMAIL),
             "issue_type": eff_str("JIRA_ISSUE_TYPE", cfg.JIRA_ISSUE_TYPE),
@@ -907,6 +929,8 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
 
     set_if_present(req.jira, "server_url", "JIRA_SERVER_URL")
     set_if_present(req.jira, "verify_ssl", "JIRA_VERIFY_SSL")
+    set_if_present(req.jira, "auth", "JIRA_AUTH")
+    set_if_present(req.jira, "create_fields", "JIRA_CREATE_FIELDS")
     set_if_present(req.jira, "token", "JIRA_TOKEN")
     set_if_present(req.jira, "email", "JIRA_EMAIL")
     set_if_present(req.jira, "issue_type", "JIRA_ISSUE_TYPE")

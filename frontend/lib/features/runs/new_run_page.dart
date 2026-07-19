@@ -24,7 +24,7 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
   RunMode _mode = RunMode.batch;
   int _limit = 10;
   bool _mock = false;
-  bool _skipJira = true;
+  bool _skipJira = false;
   final _crashIdsCtrl = TextEditingController();
   final _singleCrashIdCtrl = TextEditingController();
   String? _singleRunError;
@@ -152,7 +152,7 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
                               _crashIdsCtrl.clear();
                               _singleCrashIdCtrl.clear();
                               _mock = false;
-                              _skipJira = true;
+                              _skipJira = false;
                               _limit = 10;
                               _mode = RunMode.batch;
                               _singleRunError = null;

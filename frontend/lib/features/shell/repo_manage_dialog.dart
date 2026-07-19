@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -67,6 +69,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _jiraTokenCtrl;
   late final TextEditingController _jiraIssueTypeCtrl;
   late final TextEditingController _jiraProjectKeyCtrl;
+  late final TextEditingController _jiraCreateFieldsCtrl;
+  String _jiraCreateMode = 'standalone';
+  late final TextEditingController _jiraParentIssueKeyCtrl;
 
   bool _saving = false;
   bool _refreshing = false;
@@ -104,6 +109,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _jiraTokenCtrl = TextEditingController();
     _jiraIssueTypeCtrl = TextEditingController(text: 'Bug');
     _jiraProjectKeyCtrl = TextEditingController();
+    _jiraCreateFieldsCtrl = TextEditingController();
+    _jiraParentIssueKeyCtrl = TextEditingController();
 
     void onEdit() {
       if (!mounted) return;
@@ -129,6 +136,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _jiraTokenCtrl.addListener(onEdit);
     _jiraIssueTypeCtrl.addListener(onEdit);
     _jiraProjectKeyCtrl.addListener(onEdit);
+    _jiraCreateFieldsCtrl.addListener(onEdit);
+    _jiraParentIssueKeyCtrl.addListener(onEdit);
   }
 
   String? _validate() {
@@ -164,6 +173,26 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       if (_bqIosTableCtrl.text.trim().isEmpty)
         return 'Crashlytics iOS table is required when using BigQuery backend.';
     }
+    final createFields = _jiraCreateFieldsCtrl.text.trim();
+    if (createFields.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(createFields);
+        if (decoded is! Map) {
+          return 'Jira create fields must be a JSON object.';
+        }
+      } catch (_) {
+        return 'Jira create fields must be valid JSON.';
+      }
+    }
+    if (_jiraCreateMode == 'under_parent') {
+      final parent = _jiraParentIssueKeyCtrl.text.trim().toUpperCase();
+      if (parent.isEmpty) {
+        return 'Parent story/issue key is required for sub-issue mode.';
+      }
+      if (!RegExp(r'^[A-Z][A-Z0-9]+-\d+$').hasMatch(parent)) {
+        return 'Parent issue key should look like PROJ-123.';
+      }
+    }
     return null;
   }
 
@@ -193,6 +222,15 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _jiraIssueTypeCtrl.text =
           (r.jiraIssueType ?? '').trim().isEmpty ? 'Bug' : r.jiraIssueType!.trim();
       _jiraProjectKeyCtrl.text = (r.jiraProjectKey ?? '').toString();
+      _jiraCreateFieldsCtrl.text = (r.jiraCreateFields ?? '').toString();
+      _jiraCreateMode =
+          (r.jiraCreateMode ?? 'standalone').trim().isEmpty
+              ? 'standalone'
+              : r.jiraCreateMode!.trim();
+      if (_jiraCreateMode != 'under_parent') {
+        _jiraCreateMode = 'standalone';
+      }
+      _jiraParentIssueKeyCtrl.text = (r.jiraParentIssueKey ?? '').toString();
       _expandedPanelIndex = 0;
     });
     _loadRepoStatus();
@@ -309,6 +347,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _jiraTokenCtrl.clear();
     _jiraIssueTypeCtrl.text = 'Bug';
     _jiraProjectKeyCtrl.clear();
+    _jiraCreateFieldsCtrl.clear();
+    _jiraCreateMode = 'standalone';
+    _jiraParentIssueKeyCtrl.clear();
   }
 
   @override
@@ -330,6 +371,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _jiraTokenCtrl.dispose();
     _jiraIssueTypeCtrl.dispose();
     _jiraProjectKeyCtrl.dispose();
+    _jiraCreateFieldsCtrl.dispose();
+    _jiraParentIssueKeyCtrl.dispose();
     super.dispose();
   }
 
@@ -1174,7 +1217,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                             hintText: 'Bug',
                             helperText: _debug
                                 ? 'JIRA_ISSUE_TYPE'
-                                : 'Must match an issue type name in your Jira project.',
+                                : _jiraCreateMode == 'under_parent'
+                                    ? 'Use Sub-task (exact name in Jira) when creating under a parent.'
+                                    : 'Must match an issue type name in your Jira project.',
                             prefixIcon: const Icon(Icons.category_outlined),
                             suffixIcon: _jiraIssueTypeCtrl.text.trim().isEmpty
                                 ? null
@@ -1186,6 +1231,90 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                               () => _jiraIssueTypeCtrl.text =
                                                   'Bug',
                                             ),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Jira create mode',
+                            helperText: _debug
+                                ? 'jira_create_mode'
+                                : 'Standalone Bug/Story, or a sub-issue under a parent story.',
+                            prefixIcon: const Icon(Icons.account_tree_outlined),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isExpanded: true,
+                              value: _jiraCreateMode,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'standalone',
+                                  child: Text('Standalone issue'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'under_parent',
+                                  child: Text('Sub-issue under parent'),
+                                ),
+                              ],
+                              onChanged: _saving
+                                  ? null
+                                  : (v) {
+                                      if (v == null) return;
+                                      setState(() => _jiraCreateMode = v);
+                                    },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _jiraParentIssueKeyCtrl,
+                          enabled: !_saving && _jiraCreateMode == 'under_parent',
+                          textInputAction: TextInputAction.next,
+                          textCapitalization: TextCapitalization.characters,
+                          decoration: InputDecoration(
+                            labelText: 'Parent story/issue key',
+                            hintText: 'DE-12345',
+                            helperText: _debug
+                                ? 'jira_parent_issue_key'
+                                : _jiraCreateMode == 'under_parent'
+                                    ? 'Required. Issue type must be Sub-task for classic Jira parent linking.'
+                                    : 'Only used when create mode is Sub-issue under parent.',
+                            prefixIcon: const Icon(Icons.link),
+                            suffixIcon: _jiraParentIssueKeyCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _jiraParentIssueKeyCtrl.clear(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _jiraCreateFieldsCtrl,
+                          enabled: !_saving,
+                          minLines: 2,
+                          maxLines: 5,
+                          textInputAction: TextInputAction.newline,
+                          decoration: InputDecoration(
+                            labelText: 'Jira create fields (JSON)',
+                            hintText:
+                                '{"customfield_11404":{"value":"Individual App + Taqdeer"}}',
+                            helperText: _debug
+                                ? 'JIRA_CREATE_FIELDS'
+                                : 'Required custom fields for issue create (e.g. Concerned DE Team).',
+                            prefixIcon: const Icon(Icons.data_object_outlined),
+                            suffixIcon: _jiraCreateFieldsCtrl.text.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: _saving
+                                        ? null
+                                        : () => _jiraCreateFieldsCtrl.clear(),
                                     icon: const Icon(Icons.close),
                                   ),
                           ),
@@ -1432,6 +1561,15 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               _jiraIssueTypeCtrl.text.trim().isEmpty
                               ? null
                               : _jiraIssueTypeCtrl.text.trim(),
+                          jiraCreateFields:
+                              _jiraCreateFieldsCtrl.text.trim().isEmpty
+                              ? null
+                              : _jiraCreateFieldsCtrl.text.trim(),
+                          jiraCreateMode: _jiraCreateMode,
+                          jiraParentIssueKey:
+                              _jiraParentIssueKeyCtrl.text.trim().isEmpty
+                              ? null
+                              : _jiraParentIssueKeyCtrl.text.trim().toUpperCase(),
                           gitlabProject:
                               deriveGitlabProjectPathFromRepoUrl(
                                 _urlCtrl.text.trim(),

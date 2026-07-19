@@ -15,6 +15,9 @@ class RepoEntry {
   final bool hasJiraToken;
   final String? jiraIssueType;
   final String? jiraProjectKey;
+  final String? jiraCreateFields;
+  final String? jiraCreateMode;
+  final String? jiraParentIssueKey;
   final String? gitlabProject;
   final String? crashlyticsAndroidPackage;
   final String? crashlyticsIosBundleId;
@@ -36,6 +39,9 @@ class RepoEntry {
     this.hasJiraToken = false,
     this.jiraIssueType,
     this.jiraProjectKey,
+    this.jiraCreateFields,
+    this.jiraCreateMode,
+    this.jiraParentIssueKey,
     this.gitlabProject,
     this.crashlyticsAndroidPackage,
     this.crashlyticsIosBundleId,
@@ -85,6 +91,15 @@ class RepoEntry {
         jiraProjectKey: (j['jira_project_key'] as String?)?.trim().isEmpty ?? true
             ? null
             : (j['jira_project_key'] as String?)?.trim(),
+        jiraCreateFields:
+            (j['jira_create_fields'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (j['jira_create_fields'] as String?)?.trim(),
+        jiraCreateMode: _normalizeJiraCreateMode(j['jira_create_mode']),
+        jiraParentIssueKey:
+            (j['jira_parent_issue_key'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (j['jira_parent_issue_key'] as String?)?.trim(),
         gitlabProject: (j['gitlab_project'] as String?)?.trim().isEmpty ?? true
             ? null
             : (j['gitlab_project'] as String?)?.trim(),
@@ -97,5 +112,16 @@ class RepoEntry {
                 ? null
                 : (j['crashlytics_ios_bundle_id'] as String?)?.trim(),
       );
-}
 
+  static String _normalizeJiraCreateMode(dynamic raw) {
+    final mode = (raw ?? '').toString().trim().toLowerCase();
+    if (mode == 'under_parent' ||
+        mode == 'sub_issue' ||
+        mode == 'subtask' ||
+        mode == 'sub-bug' ||
+        mode == 'child') {
+      return 'under_parent';
+    }
+    return 'standalone';
+  }
+}

@@ -134,6 +134,97 @@ def _repair_unified_diff_hunk_counts(text: str) -> str:
     return "\n".join(out)
 
 
+def _parse_hunk_body(lines: list[str], start: int) -> tuple[list[str], int]:
+    body: list[str] = []
+    j = start
+    while j < len(lines):
+        L = lines[j]
+        if not L:
+            break
+        c0 = L[0]
+        if c0 in (" ", "+", "-"):
+            body.append(L)
+            j += 1
+            continue
+        if c0 == "\\" and "No newline" in L:
+            body.append(L)
+            j += 1
+            continue
+        break
+    return body, j
+
+
+def _repair_overlapping_hunks(text: str) -> str:
+    """
+    Fix consecutive hunks that overlap on the same old-file line range.
+
+    LLMs often emit hunk1 covering lines 1-5 and hunk2 starting again at line 5
+    (shared blank line). ``git apply`` then fails with "patch does not apply".
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    prev_old_end = 0
+    prev_new_end = 0
+    in_file = False
+
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("diff --git ") or line.startswith("--- "):
+            in_file = True
+            prev_old_end = 0
+            prev_new_end = 0
+            out.append(line)
+            i += 1
+            continue
+
+        m = _RE_UNIFIED_HUNK_HEADER.match(line)
+        if not m or not in_file:
+            out.append(line)
+            i += 1
+            continue
+
+        old_start = int(m.group(1))
+        new_start = int(m.group(3))
+        body, j = _parse_hunk_body(lines, i + 1)
+
+        # Drop leading context-only lines that overlap the previous hunk.
+        while (
+            prev_old_end > 0
+            and old_start < prev_old_end
+            and body
+            and body[0].startswith(" ")
+        ):
+            body = body[1:]
+            old_start += 1
+            new_start += 1
+
+        if prev_old_end > 0 and old_start < prev_old_end:
+            # Still overlaps (edits collide) — force start after previous hunk.
+            shift = prev_old_end - old_start
+            old_start = prev_old_end
+            new_start = prev_new_end
+            # Drop that many leading context lines if present.
+            dropped = 0
+            while dropped < shift and body and body[0].startswith(" "):
+                body = body[1:]
+                dropped += 1
+
+        old_count = sum(1 for L in body if L and L[0] in (" ", "-"))
+        new_count = sum(1 for L in body if L and L[0] in (" ", "+"))
+        if old_count == 0 and new_count == 0:
+            i = j
+            continue
+
+        out.append(f"@@ -{old_start},{old_count} +{new_start},{new_count} @@")
+        out.extend(body)
+        prev_old_end = old_start + old_count
+        prev_new_end = new_start + new_count
+        i = j
+
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
 class GitService:
     def __init__(self, repo_root: str, *, repo_key: str | None = None) -> None:
         if not repo_root or not str(repo_root).strip():
@@ -456,6 +547,8 @@ class GitService:
                     text = header + stripped + ("\n" if not stripped.endswith("\n") else "")
 
         text = _repair_unified_diff_hunk_counts(text)
+        text = _repair_overlapping_hunks(text)
+        text = _repair_unified_diff_hunk_counts(text)
         if text and not text.endswith("\n"):
             text += "\n"
         return text
@@ -474,26 +567,25 @@ class GitService:
             def try_apply(args: list[str]) -> tuple[int, str]:
                 return self._run_git_no_check([*args, tmp_path])
 
-            has_diff_git = "diff --git " in diff_text
-            has_index_line = "\nindex " in diff_text or diff_text.startswith("index ")
+            attempts: list[list[str]] = [
+                ["apply", "--whitespace=fix", "-p1"],
+                ["apply", "--whitespace=fix", "--3way", "-p1"],
+                ["apply", "--whitespace=nowarn", "-p1"],
+                ["apply", "--whitespace=fix"],
+            ]
+            errors: list[str] = []
+            applied = False
+            for args in attempts:
+                code, out = try_apply(args)
+                if code == 0:
+                    applied = True
+                    break
+                errors.append(f"$ git {' '.join(args)} …\n{out.strip()}")
 
-            primary_args = ["apply", "--whitespace=fix"]
-            if has_diff_git and has_index_line:
-                primary_args.insert(1, "--3way")
-            else:
-                primary_args.extend(["-p1"])
-
-            code, out = try_apply(primary_args)
-            if code != 0 and "--3way" in primary_args:
-                fallback_args = ["apply", "--whitespace=fix", "-p1"]
-                code2, out2 = try_apply(fallback_args)
-                if code2 == 0:
-                    code, out = 0, out2
-                else:
-                    out = f"{out}\n\n--- fallback (no --3way) ---\n{out2}"
-
-            if code != 0:
-                raise RuntimeError(f"Failed to apply diff via git apply.\n\n{out}")
+            if not applied:
+                raise RuntimeError(
+                    "Failed to apply diff via git apply.\n\n" + "\n\n".join(errors)
+                )
         finally:
             if tmp_path:
                 try:
