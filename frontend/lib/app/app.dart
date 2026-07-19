@@ -35,9 +35,11 @@ class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Quit / last window close on macOS: stop the bundled backend first.
-    if (state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
+    // Only tear down the backend when the Flutter engine is going away.
+    // Do NOT stop on `hidden` / `inactive` — on macOS those fire when the user
+    // switches apps or minimizes, which previously left the UI pointing at a
+    // dead port ("Could not reach the API" / Connection refused).
+    if (state == AppLifecycleState.detached) {
       unawaited(EmbeddedBackendLifecycle.stop());
     }
   }

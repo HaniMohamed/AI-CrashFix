@@ -61,7 +61,7 @@ AI Crash Fix supports three configuration sources:
 - **LLM_PROVIDER**: `gemini` (default), `openai`, or `gosi-brain`
 - **GOOGLE_API_KEY** + **GEMINI_MODEL** (default model: `gemini-2.5-flash`)
 - **OPENAI_API_KEY** + **OPENAI_MODEL** (default model: `gpt-4o-mini`) + **OPENAI_URL** (optional)
-- **GOSI Brain** (when `LLM_PROVIDER=gosi-brain`): **GOSI_BRAIN_AUTHORIZATION** (full `Authorization` header value), **GOSI_BRAIN_API_KEY** (`x-apikey`), **GOSI_BRAIN_MODEL**, optional **GOSI_BRAIN_URL** (default `https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions`), **GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME** (default `MobileDomain`), **GOSI_BRAIN_TEMPERATURE** (0–1, default `0.7`), 
+- **GOSI Brain** (when `LLM_PROVIDER=gosi-brain`): **GOSI_BRAIN_AUTHORIZATION** (full `Authorization` header value), **GOSI_BRAIN_API_KEY** (`x-apikey`), **GOSI_BRAIN_MODEL**, **GOSI_BRAIN_USER_ID** (`custom_session.user_id`), optional **GOSI_BRAIN_URL** (default `https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions`), **GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME** (default `MobileDomain`), **GOSI_BRAIN_TEMPERATURE** (0–1, default `0.7`), **GOSI_BRAIN_STREAMING** (`auto`/`on`/`off`), **GOSI_BRAIN_IDLE_TIMEOUT** (SSE idle seconds, default `120`), 
 
 #### Crashlytics (BigQuery)
 Used when you run without `--mock`.

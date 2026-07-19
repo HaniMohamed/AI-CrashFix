@@ -4,10 +4,17 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import ClassVar, Iterable
+
+from app.services.sqlite_util import (
+    connect_sqlite,
+    mark_schema_ensured,
+    schema_needs_ensure,
+)
 
 
 def _data_dir() -> Path | None:
@@ -18,6 +25,19 @@ def _data_dir() -> Path | None:
         return Path(raw).expanduser().resolve()
     except Exception:
         return None
+
+
+def resolve_repo_registry_db_path(db_path: str | None = None) -> str:
+    path = (db_path or os.environ.get("AI_CRASH_FIX_REPO_REGISTRY_DB") or "").strip()
+    if not path:
+        base = _data_dir()
+        if base is not None:
+            path = os.fspath((base / "db" / "repo_registry.db").resolve())
+        else:
+            path = "db/repo_registry.db"
+    p = Path(path).expanduser().resolve()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return str(p)
 
 
 def compute_repo_key(*, repo_url: str, repo_ref: str | None) -> str:
@@ -122,25 +142,41 @@ class RepoRegistryStore:
     Global repo registry stored in a single SQLite DB.
 
     This is intentionally separate from the per-repo crash DBs.
+    One process-wide instance is reused per DB path.
     """
 
+    _shared: ClassVar[dict[str, RepoRegistryStore]] = {}
+    _shared_lock: ClassVar[threading.Lock] = threading.Lock()
+
+    def __new__(cls, db_path: str | None = None) -> RepoRegistryStore:
+        path = resolve_repo_registry_db_path(db_path)
+        with cls._shared_lock:
+            existing = cls._shared.get(path)
+            if existing is not None:
+                return existing
+            obj = super().__new__(cls)
+            cls._shared[path] = obj
+            obj._singleton_ready = False  # type: ignore[attr-defined]
+            return obj
+
     def __init__(self, db_path: str | None = None) -> None:
-        path = (db_path or os.environ.get("AI_CRASH_FIX_REPO_REGISTRY_DB") or "").strip()
-        if not path:
-            base = _data_dir()
-            if base is not None:
-                path = os.fspath((base / "db" / "repo_registry.db").resolve())
-            else:
-                path = "db/repo_registry.db"
-        p = Path(path).expanduser().resolve()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path = str(p)
+        if getattr(self, "_singleton_ready", False):
+            return
+        self.db_path = resolve_repo_registry_db_path(db_path)
         self._ensure_schema()
+        self._singleton_ready = True
+
+    @classmethod
+    def clear_shared_for_tests(cls) -> None:
+        with cls._shared_lock:
+            cls._shared.clear()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path, timeout=30.0)
+        return connect_sqlite(self.db_path)
 
     def _ensure_schema(self) -> None:
+        if not schema_needs_ensure(f"repo_registry:{self.db_path}"):
+            return
         with self._connect() as conn:
             conn.execute(
                 """
@@ -219,6 +255,7 @@ class RepoRegistryStore:
                 "CREATE INDEX IF NOT EXISTS idx_repos_updated_at ON repos(updated_at)"
             )
             conn.commit()
+        mark_schema_ensured(f"repo_registry:{self.db_path}")
 
     def list_repos(self) -> list[RepoEntry]:
         with self._connect() as conn:

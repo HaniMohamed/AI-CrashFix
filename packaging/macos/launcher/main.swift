@@ -29,15 +29,19 @@ func usageAndExit(code: Int32) -> Never {
       --gosi-brain-model <model>        -> GOSI_BRAIN_MODEL
       --gosi-brain-api-key <key>        -> GOSI_BRAIN_API_KEY
       --gosi-brain-authorization <hdr>  -> GOSI_BRAIN_AUTHORIZATION
+      --gosi-brain-user-id <id>         -> GOSI_BRAIN_USER_ID
       --gosi-brain-oauth-domain <name>  -> GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME
       --gosi-brain-temperature <n>      -> GOSI_BRAIN_TEMPERATURE
       --crash-store-backend <sqlite|postgres> -> AI_CRASH_FIX_CRASH_STORE_BACKEND
       --crash-db-url <url>              -> AI_CRASH_FIX_CRASH_DB_URL
+      --env-file <path>                 -> AI_CRASH_FIX_ENV_FILE (load KEY=VALUE from file)
 
     Advanced:
       --env KEY=VALUE                    -> sets arbitrary environment variable
 
     Notes:
+      - Passing long JWTs via --args / open --env can hit "command too long" (ARG_MAX).
+        Prefer --env-file or scripts/run_macos_app.sh with a local secrets file.
       - Passing API keys via --args can expose them in process listings.
       - The launcher will NOT print secrets to its log file.
       - LLM and other UI-backed settings passed here are persisted on backend startup
@@ -45,6 +49,11 @@ func usageAndExit(code: Int32) -> Never {
 
     Example:
       open -a "AI Crash Fix" --args --llm-provider openai --openai-model gpt-4o-mini --openai-url https://api.openai.com/v1 --openai-api-key $OPENAI_API_KEY
+
+    Long secrets (recommended):
+      ./scripts/run_macos_app.sh ~/gosi-launch.env
+      # or:
+      open -a "AI Crash Fix" --args --env-file ~/gosi-launch.env
     """
   )
   exit(code)
@@ -116,6 +125,9 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
     case "--gosi-brain-authorization":
       if let v = nextValue(&i, a) { set("GOSI_BRAIN_AUTHORIZATION", v) } else { usageAndExit(code: 2) }
 
+    case "--gosi-brain-user-id":
+      if let v = nextValue(&i, a) { set("GOSI_BRAIN_USER_ID", v) } else { usageAndExit(code: 2) }
+
     case "--gosi-brain-oauth-domain":
       if let v = nextValue(&i, a) { set("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME", v) } else { usageAndExit(code: 2) }
 
@@ -127,6 +139,9 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
 
     case "--crash-db-url":
       if let v = nextValue(&i, a) { set("AI_CRASH_FIX_CRASH_DB_URL", v) } else { usageAndExit(code: 2) }
+
+    case "--env-file":
+      if let v = nextValue(&i, a) { set("AI_CRASH_FIX_ENV_FILE", v) } else { usageAndExit(code: 2) }
 
     case "--env":
       if let kv = nextValue(&i, a) {
@@ -163,6 +178,8 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
         set("GOSI_BRAIN_API_KEY", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else if a.hasPrefix("--gosi-brain-authorization=") {
         set("GOSI_BRAIN_AUTHORIZATION", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--gosi-brain-user-id=") {
+        set("GOSI_BRAIN_USER_ID", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else if a.hasPrefix("--gosi-brain-oauth-domain=") {
         set("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else if a.hasPrefix("--gosi-brain-temperature=") {
@@ -171,6 +188,8 @@ func parseLauncherEnvOverrides(_ argv: [String]) -> (overrides: [String: String]
         set("AI_CRASH_FIX_CRASH_STORE_BACKEND", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else if a.hasPrefix("--crash-db-url=") {
         set("AI_CRASH_FIX_CRASH_DB_URL", String(a.split(separator: "=", maxSplits: 1)[1]))
+      } else if a.hasPrefix("--env-file=") {
+        set("AI_CRASH_FIX_ENV_FILE", String(a.split(separator: "=", maxSplits: 1)[1]))
       } else {
         unknown.append(a)
       }

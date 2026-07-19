@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/endpoints.dart';
 import 'api_provider.dart';
+import 'backend_process_provider.dart';
 
 class HealthState {
   final bool? ok;
@@ -30,7 +31,7 @@ class HealthState {
     if (crashStoreUnhealthy) {
       return crashStoreError ??
           'The shared Postgres crash store is unavailable. '
-          'Check that the database is running and AI_CRASH_FIX_CRASH_DB_URL is correct.';
+              'Check that the database is running and AI_CRASH_FIX_CRASH_DB_URL is correct.';
     }
     if (ok == false) {
       return error ?? 'The API is unavailable.';
@@ -41,10 +42,18 @@ class HealthState {
 
 class HealthNotifier extends AsyncNotifier<HealthState> {
   Timer? _timer;
+  int _consecutiveFailures = 0;
+  HealthState? _lastGood;
 
   @override
   Future<HealthState> build() async {
     ref.onDispose(() => _timer?.cancel());
+    // When embedded backend restarts on a new port, re-check immediately.
+    ref.listen(backendProcessProvider, (prev, next) {
+      if (prev?.valueOrNull?.baseUrl != next.valueOrNull?.baseUrl) {
+        unawaited(refresh());
+      }
+    });
     _scheduleNext();
     return _check();
   }
@@ -60,12 +69,16 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
   Future<HealthState> _check() async {
     final api = ref.read(apiClientProvider);
     try {
-      final res = await api.getJson(Endpoints.health);
+      final res = await api
+          .getJson(Endpoints.health)
+          .timeout(const Duration(seconds: 5));
       if (res is! Map) {
-        return HealthState(
-          ok: false,
-          error: 'Unexpected health response',
-          checkedAt: DateTime.now(),
+        return _failure(
+          HealthState(
+            ok: false,
+            error: 'Unexpected health response',
+            checkedAt: DateTime.now(),
+          ),
         );
       }
       final crashStore = res['crash_store'];
@@ -81,16 +94,45 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
         }
       }
       final ok = res['ok'] == true;
-      return HealthState(
+      final next = HealthState(
         ok: ok,
         crashStoreBackend: crashStoreBackend,
         crashStoreOk: crashStoreOk,
         crashStoreError: crashStoreError,
         checkedAt: DateTime.now(),
       );
+      if (ok && !next.crashStoreUnhealthy) {
+        _consecutiveFailures = 0;
+        _lastGood = next;
+        return next;
+      }
+      // API up but DB down: report immediately (user needs to start Postgres).
+      if (ok && next.crashStoreUnhealthy) {
+        _consecutiveFailures = 0;
+        return next;
+      }
+      return _failure(next);
     } catch (e) {
-      return HealthState(error: e.toString(), checkedAt: DateTime.now());
+      return _failure(
+        HealthState(error: e.toString(), checkedAt: DateTime.now()),
+      );
     }
+  }
+
+  /// Ignore a single transient failure; keep last good state so the UI does
+  /// not flash full-screen offline on a blip.
+  HealthState _failure(HealthState failed) {
+    _consecutiveFailures += 1;
+    if (_consecutiveFailures < 2 && _lastGood != null) {
+      return HealthState(
+        ok: _lastGood!.ok,
+        crashStoreBackend: _lastGood!.crashStoreBackend,
+        crashStoreOk: _lastGood!.crashStoreOk,
+        crashStoreError: _lastGood!.crashStoreError,
+        checkedAt: DateTime.now(),
+      );
+    }
+    return failed;
   }
 
   Future<void> refresh() async {

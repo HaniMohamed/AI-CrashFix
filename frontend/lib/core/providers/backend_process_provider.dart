@@ -33,6 +33,23 @@ class EmbeddedBackendLifecycle {
   static Process? _proc;
   static int? _pid;
   static bool _stopping = false;
+  /// Unexpected exit restarts within a rolling window (survives notifier rebuilds).
+  static int _autoRestartsInWindow = 0;
+  static DateTime? _autoRestartWindowStart;
+
+  static bool noteUnexpectedExitAndShouldRestart({int max = 3}) {
+    final now = DateTime.now();
+    final start = _autoRestartWindowStart;
+    if (start == null || now.difference(start) > const Duration(minutes: 10)) {
+      _autoRestartWindowStart = now;
+      _autoRestartsInWindow = 0;
+    }
+    if (_autoRestartsInWindow >= max) return false;
+    _autoRestartsInWindow += 1;
+    return true;
+  }
+
+  static int get autoRestartsInWindow => _autoRestartsInWindow;
 
   static Future<void> _registerPidWithNative(int pid) async {
     if (!Platform.isMacOS) return;
@@ -128,6 +145,7 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
   StreamSubscription<String>? _err;
   http.Client? _client;
   final List<String> _logTail = <String>[];
+  bool _intentionalStop = false;
 
   void _pushLog(String line) {
     final s = line.trimRight();
@@ -141,6 +159,7 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
   @override
   Future<BackendBoot?> build() async {
     ref.onDispose(() {
+      _intentionalStop = true;
       unawaited(_shutdown());
     });
 
@@ -157,9 +176,16 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
     if (backendPath == null) {
       // Debug `flutter run -d macos`: no bundled binary — talk to external API.
       if (kDebugMode) return null;
+      final exe = Platform.resolvedExecutable;
+      final contentsDir = Directory(exe).parent.parent.path;
+      final expected =
+          '$contentsDir/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend';
       throw StateError(
-        'Embedded backend binary not found. Set AI_CRASH_FIX_BACKEND_PATH or '
-        'stage it under the app bundle Resources/backend/.',
+        'Embedded backend binary not found at:\n$expected\n\n'
+        'The DMG/app was likely built without re-signing after injecting the '
+        'backend, or the install is incomplete. Rebuild with '
+        './scripts/build_macos_dmg_all.sh, reinstall to /Applications, then '
+        'run: xattr -cr "/Applications/AI Crash Fix.app"',
       );
     }
 
@@ -167,6 +193,7 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
     final baseUrl = 'http://127.0.0.1:$port';
 
     _client = http.Client();
+    _intentionalStop = false;
 
     final env = Map<String, String>.from(Platform.environment);
     env['AI_CRASH_FIX_HOST'] = '127.0.0.1';
@@ -205,6 +232,42 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
         .transform(const LineSplitter())
         .listen(_pushLog);
 
+    // After boot, unexpected exits used to leave the UI on a dead port until
+    // manual Retry. Watch exit and auto-restart a few times.
+    final launched = _proc!;
+    // ignore: unawaited_futures
+    launched.exitCode.then((code) {
+      if (_intentionalStop) return;
+      EmbeddedBackendLifecycle.clear(launched);
+      final tail = _logTail.isEmpty
+          ? ''
+          : '\n\n--- backend logs (tail) ---\n${_logTail.join('\n')}';
+      final n = EmbeddedBackendLifecycle.autoRestartsInWindow + 1;
+      if (EmbeddedBackendLifecycle.noteUnexpectedExitAndShouldRestart()) {
+        debugPrint(
+          'Embedded backend exited (code=$code); auto-restart $n/3$tail',
+        );
+        Future<void>.delayed(Duration(milliseconds: 400 * n), () {
+          if (_intentionalStop) return;
+          try {
+            ref.invalidateSelf();
+          } catch (_) {
+            // Notifier already disposed (app quitting).
+          }
+        });
+        return;
+      }
+      try {
+        state = AsyncError(
+          StateError(
+            'Embedded backend exited with code $code after '
+            '${EmbeddedBackendLifecycle.autoRestartsInWindow} auto-restarts.$tail',
+          ),
+          StackTrace.current,
+        );
+      } catch (_) {}
+    });
+
     try {
       await _waitForHealth(baseUrl);
     } catch (e) {
@@ -216,6 +279,7 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
   }
 
   Future<void> _shutdown() async {
+    _intentionalStop = true;
     await _out?.cancel();
     await _err?.cancel();
     _out = null;
@@ -299,27 +363,14 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
   Future<void> _waitForHealth(String baseUrl) async {
     final deadline = DateTime.now().add(const Duration(seconds: 25));
     Object? lastErr;
-    var exitHooked = false;
     while (DateTime.now().isBefore(deadline)) {
-      final p = _proc;
-      if (p != null && !exitHooked) {
-        exitHooked = true;
-        // ignore: unawaited_futures
-        p.exitCode.then((c) {
-          if (c != 0 && state.isLoading) {
-            final tail = _logTail.isEmpty
-                ? ''
-                : '\n\n--- backend logs (tail) ---\n${_logTail.join('\n')}';
-            state = AsyncError(
-              StateError('Backend exited with code $c$tail'),
-              StackTrace.current,
-            );
-          }
-        });
+      if (_intentionalStop) {
+        throw StateError('Backend startup cancelled');
       }
-
       try {
-        final res = await _client!.get(Uri.parse('$baseUrl/api/health'));
+        final res = await _client!
+            .get(Uri.parse('$baseUrl/api/health'))
+            .timeout(const Duration(seconds: 3));
         if (res.statusCode >= 200 && res.statusCode < 300) return;
         lastErr = 'status=${res.statusCode}';
       } catch (e) {

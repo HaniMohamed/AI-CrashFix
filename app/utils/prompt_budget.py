@@ -172,9 +172,13 @@ def estimate_gosi_request_bytes(
     model: str = "model",
     temperature: float = 0.7,
 ) -> int:
-    """UTF-8 size of the JSON body GOSI Brain would send."""
+    """UTF-8 size of the JSON body GOSI Brain would send (includes custom_session)."""
     body = {
-        "stream": False,
+        "custom_session": {
+            "user_id": "estimate",
+            "session_id": "0000000000000-estimate",
+        },
+        "stream": True,
         "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},

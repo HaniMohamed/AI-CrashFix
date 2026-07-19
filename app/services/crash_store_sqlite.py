@@ -14,6 +14,12 @@ from app.services.crash_store_common import (
     recompute_pipeline_complete,
 )
 
+from app.services.sqlite_util import (
+    connect_sqlite,
+    mark_schema_ensured,
+    schema_needs_ensure,
+)
+
 _ALL_COLUMNS = (
     "crash_id",
     "jira_issue_id",
@@ -80,13 +86,16 @@ class SqliteCrashStore:
         self._ensure_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path, timeout=30.0)
+        return connect_sqlite(self.db_path)
 
     def _ensure_schema(self) -> None:
+        if not schema_needs_ensure(f"crash_store:{self.db_path}"):
+            return
         with self._connect() as conn:
             self._create_table(conn)
             self._migrate_columns(conn)
             conn.commit()
+        mark_schema_ensured(f"crash_store:{self.db_path}")
 
     def _create_table(self, conn: sqlite3.Connection) -> None:
         conn.execute(
@@ -259,6 +268,7 @@ class SqliteCrashStore:
 
     def iter_all_results(self):
         cols = ", ".join(_ALL_COLUMNS) + ", result"
+        rows_out: list[tuple[dict, dict | None]] = []
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(f"SELECT {cols} FROM crashes")
@@ -271,4 +281,5 @@ class SqliteCrashStore:
                         parsed = json.loads(raw)
                     except Exception:
                         parsed = None
-                yield row_dict, parsed
+                rows_out.append((row_dict, parsed))
+        yield from rows_out

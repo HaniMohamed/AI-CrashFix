@@ -75,10 +75,12 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
   late final TextEditingController _gosiUrlCtrl;
   late final TextEditingController _gosiModelCtrl;
   late final TextEditingController _gosiOauthDomainCtrl;
+  late final TextEditingController _gosiUserIdCtrl;
   late final TextEditingController _gosiApiKeyCtrl;
   late final TextEditingController _gosiAuthCtrl;
   String _provider = 'gemini';
   double _gosiTemperature = 0.7;
+  String _gosiStreaming = 'auto';
   bool _didSync = false;
 
   @override
@@ -92,6 +94,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
     _gosiUrlCtrl = TextEditingController();
     _gosiModelCtrl = TextEditingController();
     _gosiOauthDomainCtrl = TextEditingController();
+    _gosiUserIdCtrl = TextEditingController();
     _gosiApiKeyCtrl = TextEditingController();
     _gosiAuthCtrl = TextEditingController();
   }
@@ -106,6 +109,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
     _gosiUrlCtrl.dispose();
     _gosiModelCtrl.dispose();
     _gosiOauthDomainCtrl.dispose();
+    _gosiUserIdCtrl.dispose();
     _gosiApiKeyCtrl.dispose();
     _gosiAuthCtrl.dispose();
     super.dispose();
@@ -150,6 +154,14 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
             _gosiOauthDomainCtrl.text =
                 (llm['gosi_brain_oauth_identity_domain_name'] ?? 'MobileDomain')
                     .toString();
+            _gosiUserIdCtrl.text = (llm['gosi_brain_user_id'] ?? '').toString();
+            final streaming = (llm['gosi_brain_streaming'] ?? 'auto')
+                .toString()
+                .trim()
+                .toLowerCase();
+            _gosiStreaming = (streaming == 'on' || streaming == 'off')
+                ? streaming
+                : 'auto';
             final temp = llm['gosi_brain_temperature'];
             _gosiTemperature = temp is num
                 ? temp.toDouble().clamp(0.0, 1.0)
@@ -270,6 +282,22 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                   decoration: const InputDecoration(
                     labelText: 'OAuth identity domain name',
                     hintText: 'MobileDomain',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _gosiUserIdCtrl,
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    labelText: 'User ID (custom_session)',
+                    hintText: 'PersonNumber from JWT',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Streaming: $_gosiStreaming',
+                  style: theme.bodySmall?.copyWith(
+                    color: palette.textSecondary,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),

@@ -97,7 +97,15 @@ GOSI_BRAIN_URL = os.getenv(
 GOSI_BRAIN_MODEL = os.getenv("GOSI_BRAIN_MODEL")
 GOSI_BRAIN_AUTHORIZATION = os.getenv("GOSI_BRAIN_AUTHORIZATION")
 GOSI_BRAIN_API_KEY = os.getenv("GOSI_BRAIN_API_KEY")
-GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME = os.getenv("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME", "MobileDomain")
+GOSI_BRAIN_USER_ID = (os.getenv("GOSI_BRAIN_USER_ID") or "").strip() or None
+# Optional F5/WAF Cookie header from a working Postman/curl session (e.g. TS016ee342=...).
+GOSI_BRAIN_COOKIE = (os.getenv("GOSI_BRAIN_COOKIE") or "").strip() or None
+# Only sent when GOSI_BRAIN_SEND_OAUTH_DOMAIN is truthy (Postman curl does not send this).
+GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME = (
+    os.getenv("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME") or ""
+).strip() or None
+_GOSI_BRAIN_SEND_OAUTH_RAW = (os.getenv("GOSI_BRAIN_SEND_OAUTH_DOMAIN") or "").strip().lower()
+GOSI_BRAIN_SEND_OAUTH_DOMAIN = _GOSI_BRAIN_SEND_OAUTH_RAW in ("1", "true", "yes", "on")
 _GOSI_BRAIN_TEMP_RAW = (os.getenv("GOSI_BRAIN_TEMPERATURE") or "").strip()
 try:
     GOSI_BRAIN_TEMPERATURE = float(_GOSI_BRAIN_TEMP_RAW) if _GOSI_BRAIN_TEMP_RAW else 0.7
@@ -106,9 +114,9 @@ except ValueError:
 
 _GOSI_BRAIN_MAX_BYTES_RAW = (os.getenv("GOSI_BRAIN_MAX_REQUEST_BYTES") or "").strip()
 try:
-    GOSI_BRAIN_MAX_REQUEST_BYTES = int(_GOSI_BRAIN_MAX_BYTES_RAW) if _GOSI_BRAIN_MAX_BYTES_RAW else 524288
+    GOSI_BRAIN_MAX_REQUEST_BYTES = int(_GOSI_BRAIN_MAX_BYTES_RAW) if _GOSI_BRAIN_MAX_BYTES_RAW else 48000
 except ValueError:
-    GOSI_BRAIN_MAX_REQUEST_BYTES = 524288
+    GOSI_BRAIN_MAX_REQUEST_BYTES = 48000
 
 GOSI_BRAIN_PROMPT_COMPACTION = (os.getenv("GOSI_BRAIN_PROMPT_COMPACTION") or "auto").strip().lower()
 
@@ -125,6 +133,17 @@ try:
     )
 except ValueError:
     GOSI_BRAIN_CONNECT_TIMEOUT = 30
+
+_GOSI_BRAIN_IDLE_TIMEOUT_RAW = (os.getenv("GOSI_BRAIN_IDLE_TIMEOUT") or "").strip()
+try:
+    GOSI_BRAIN_IDLE_TIMEOUT = int(_GOSI_BRAIN_IDLE_TIMEOUT_RAW) if _GOSI_BRAIN_IDLE_TIMEOUT_RAW else 120
+except ValueError:
+    GOSI_BRAIN_IDLE_TIMEOUT = 120
+
+GOSI_BRAIN_STREAMING = (os.getenv("GOSI_BRAIN_STREAMING") or "auto").strip().lower()
+
+_GOSI_BRAIN_WAF_SHIELD_RAW = (os.getenv("GOSI_BRAIN_WAF_CONTENT_SHIELD") or "true").strip().lower()
+GOSI_BRAIN_WAF_CONTENT_SHIELD = _GOSI_BRAIN_WAF_SHIELD_RAW not in ("0", "false", "no", "off")
 
 _GOSI_BRAIN_GZIP_RAW = (os.getenv("GOSI_BRAIN_GZIP_REQUEST") or "").strip().lower()
 GOSI_BRAIN_GZIP_REQUEST = _GOSI_BRAIN_GZIP_RAW in ("1", "true", "yes", "on")

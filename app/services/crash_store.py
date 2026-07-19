@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Protocol
 
 from app.config import AI_CRASH_FIX_CRASH_STORE_BACKEND
@@ -63,18 +64,44 @@ def uses_postgres_crash_store() -> bool:
     return crash_store_backend_name() == "postgres"
 
 
-def crash_store_health() -> dict[str, object]:
-    """Health payload for ``GET /api/health`` crash_store section."""
+_CRASH_STORE_HEALTH_CACHE: dict[str, object] | None = None
+_CRASH_STORE_HEALTH_CACHED_AT = 0.0
+_CRASH_STORE_HEALTH_TTL_SEC = 10.0
+
+
+def crash_store_health(*, force: bool = False) -> dict[str, object]:
+    """Health payload for ``GET /api/health`` crash_store section.
+
+    Caches Postgres probes briefly so a transient blip does not flap the UI
+    every 15s health poll, and so we do not open a new DB connection each time.
+    """
+    global _CRASH_STORE_HEALTH_CACHE, _CRASH_STORE_HEALTH_CACHED_AT
+
+    now = time.monotonic()
+    if (
+        not force
+        and _CRASH_STORE_HEALTH_CACHE is not None
+        and (now - _CRASH_STORE_HEALTH_CACHED_AT) < _CRASH_STORE_HEALTH_TTL_SEC
+    ):
+        return dict(_CRASH_STORE_HEALTH_CACHE)
+
     try:
         backend = crash_store_backend_name()
     except ValueError as exc:
-        return {"backend": "unknown", "ok": False, "error": str(exc)}
+        payload: dict[str, object] = {"backend": "unknown", "ok": False, "error": str(exc)}
+        _CRASH_STORE_HEALTH_CACHE = payload
+        _CRASH_STORE_HEALTH_CACHED_AT = now
+        return dict(payload)
 
     if backend == "postgres":
         ok, error = check_postgres_crash_store()
-        return {"backend": backend, "ok": ok, "error": error}
+        payload = {"backend": backend, "ok": ok, "error": error}
+    else:
+        payload = {"backend": backend, "ok": True, "error": None}
 
-    return {"backend": backend, "ok": True, "error": None}
+    _CRASH_STORE_HEALTH_CACHE = payload
+    _CRASH_STORE_HEALTH_CACHED_AT = now
+    return dict(payload)
 
 
 def open_crash_store(

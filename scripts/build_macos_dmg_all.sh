@@ -134,20 +134,46 @@ mkdir -p "${APP_PATH}/Contents/Resources/backend"
 mkdir -p "${APP_PATH}/Contents/Resources/bin"
 
 rm -rf "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
-cp -R "dist/ai_crash_fix_backend" "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
+# ditto preserves macOS metadata better than cp -R for large bundles.
+ditto "dist/ai_crash_fix_backend" "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
 
-cp "${RG_PATH}" "${APP_PATH}/Contents/Resources/bin/rg"
+ditto "${RG_PATH}" "${APP_PATH}/Contents/Resources/bin/rg"
 chmod +x "${APP_PATH}/Contents/Resources/bin/rg"
 chmod +x "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend" || true
+
+BACKEND_BIN="${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+[[ -x "${BACKEND_BIN}" ]] || fail "Backend missing after bundle inject: ${BACKEND_BIN}"
+
+echo "==> Step 3b: Re-sign .app (required after injecting backend)"
+# Flutter sealed the app before we added Resources/backend. Without re-signing,
+# Gatekeeper treats the install under /Applications as tampered and the embedded
+# backend never starts ("API offline").
+./scripts/resign_macos_app.sh "${APP_PATH}"
 echo
 
 echo "==> Step 4: Build DMG"
 ./scripts/build_dmg.sh
 [[ -f "dist/AI-Crash-Fix.dmg" ]] || fail "Missing dist/AI-Crash-Fix.dmg"
+
+# Sanity-check the DMG contains the backend (space-safe mount path).
+echo "==> Step 5: Verify DMG contents"
+VERIFY_ATTACH="$(hdiutil attach -nobrowse -readonly "dist/AI-Crash-Fix.dmg")"
+VERIFY_MNT="$(echo "${VERIFY_ATTACH}" | sed -n 's/.*\(\/Volumes\/.*\)$/\1/p' | tail -1)"
+[[ -n "${VERIFY_MNT}" ]] || fail "Could not mount DMG for verification"
+VERIFY_BACKEND="${VERIFY_MNT}/AI Crash Fix.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+if [[ ! -x "${VERIFY_BACKEND}" ]]; then
+  hdiutil detach "${VERIFY_MNT}" -quiet >/dev/null 2>&1 || true
+  fail "DMG is missing embedded backend at AI Crash Fix.app/Contents/Resources/backend/..."
+fi
+hdiutil detach "${VERIFY_MNT}" -quiet >/dev/null 2>&1 || true
+echo "DMG backend OK"
 echo
 
 echo "Done."
 echo "- App: ${APP_PATH}"
 echo "- DMG: dist/AI-Crash-Fix.dmg"
 echo
+echo "Install: open the DMG, drag AI Crash Fix.app to Applications, then launch from /Applications."
+echo "If macOS blocks the first launch: right-click → Open, or:"
+echo "  xattr -cr \"/Applications/AI Crash Fix.app\""
 echo "Closing the app window (or Quit) stops the embedded backend process."

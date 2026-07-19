@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/spacing.dart';
 import '../../core/providers/analytics_provider.dart';
+import '../../core/providers/backend_process_provider.dart';
 import '../../core/providers/crashes_provider.dart';
 import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
@@ -156,13 +157,17 @@ class _AppShellState extends ConsumerState<AppShell> {
                     health?.crashStoreUnhealthy == true
                         ? 'Start the team Postgres instance (see infra/postgres) and verify '
                             'AI_CRASH_FIX_CRASH_DB_URL, then retry.'
-                        : 'Check the API base URL in the top bar (must point at the Python '
-                            'backend, e.g. http://localhost:8000), then retry.',
+                        : 'The embedded backend may have stopped. Retry restarts it. '
+                            'If this keeps happening, check backend logs under '
+                            '~/Library/Application Support/AI Crash Fix/.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   FilledButton.icon(
                     onPressed: () {
+                      // Restart embedded backend if it died (e.g. after a bad
+                      // lifecycle kill or crash); then re-check health.
+                      ref.invalidate(backendProcessProvider);
                       ref.invalidate(healthProvider);
                       ref.invalidate(repoRegistryProvider);
                     },
@@ -234,6 +239,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   const SizedBox(height: AppSpacing.xl),
                   FilledButton.icon(
                     onPressed: () {
+                      ref.invalidate(backendProcessProvider);
                       ref.invalidate(repoRegistryProvider);
                       ref.invalidate(healthProvider);
                     },

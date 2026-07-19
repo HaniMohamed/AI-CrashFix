@@ -22,8 +22,9 @@ STAGE_DIR="${OUT_DIR}/.dmg-stage"
 rm -rf "${STAGE_DIR}"
 mkdir -p "${STAGE_DIR}"
 
-cp -R "${APP_PATH}" "${STAGE_DIR}/${APP_NAME}"
-ln -s "/Applications" "${STAGE_DIR}/Applications"
+# ditto preserves macOS metadata better than cp -R for large app bundles.
+ditto "${APP_PATH}" "${STAGE_DIR}/${APP_NAME}"
+ln -sf "/Applications" "${STAGE_DIR}/Applications"
 
 # Create a read-write DMG we can customize (window size, icon layout, background).
 BASE_DMG="${OUT_DIR}/.tmp-ai-crash-fix-base.dmg"
@@ -57,13 +58,14 @@ customize_dmg() {
   command -v osascript >/dev/null 2>&1 || return 1
   command -v qlmanage >/dev/null 2>&1 || return 1
 
-  # Attach and grab device + mount point. We detach by *device* (more reliable).
+  # Attach and grab device + mount point. Volume name contains spaces
+  # ("AI Crash Fix") so never use awk $NF for the path.
   local attach_out mount_point device
   attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "${RW_DMG}")"
-  mount_point="$(echo "${attach_out}" | awk '/\/Volumes\// {print $NF; exit}')"
-  device="$(echo "${attach_out}" | awk '/\/Volumes\// {print $1; exit}')"
-  [[ -n "${mount_point}" ]] || return 1
-  [[ -n "${device}" ]] || return 1
+  mount_point="$(echo "${attach_out}" | sed -n 's/.*\(\/Volumes\/.*\)$/\1/p' | tail -1)"
+  device="$(echo "${attach_out}" | sed -n 's#^\(/dev/[^[:space:]]*\).*\/Volumes/.*#\1#p' | tail -1)"
+  [[ -n "${mount_point}" && -d "${mount_point}" ]] || return 1
+  [[ -n "${device}" ]] || device="${mount_point}"
 
   # Background image
   mkdir -p "${mount_point}/.background"
@@ -135,6 +137,7 @@ OSA
 
   hdiutil detach "${device}" -quiet || true
   hdiutil detach "${device}" -force -quiet || true
+  hdiutil detach "${mount_point}" -force -quiet || true
   return 0
 }
 

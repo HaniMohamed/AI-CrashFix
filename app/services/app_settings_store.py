@@ -3,10 +3,17 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
+
+from app.services.sqlite_util import (
+    connect_sqlite,
+    mark_schema_ensured,
+    schema_needs_ensure,
+)
 
 
 def _data_dir() -> Path | None:
@@ -17,6 +24,19 @@ def _data_dir() -> Path | None:
         return Path(raw).expanduser().resolve()
     except Exception:
         return None
+
+
+def resolve_app_settings_db_path(db_path: str | None = None) -> str:
+    path = (db_path or os.environ.get("AI_CRASH_FIX_REPO_REGISTRY_DB") or "").strip()
+    if not path:
+        base = _data_dir()
+        if base is not None:
+            path = os.fspath((base / "db" / "repo_registry.db").resolve())
+        else:
+            path = "db/repo_registry.db"
+    p = Path(path).expanduser().resolve()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return str(p)
 
 
 @dataclass(frozen=True)
@@ -55,25 +75,45 @@ class AppSettingsStore:
     Global, backend-persisted settings (editable from UI) with .env fallback.
 
     Secrets are stored but never returned.
+
+    One process-wide instance is reused per DB path so we do not open SQLite
+    (and re-run schema checks) on every SettingsResolver / API call.
     """
 
+    _shared: ClassVar[dict[str, AppSettingsStore]] = {}
+    _shared_lock: ClassVar[threading.Lock] = threading.Lock()
+
+    def __new__(cls, db_path: str | None = None) -> AppSettingsStore:
+        path = resolve_app_settings_db_path(db_path)
+        with cls._shared_lock:
+            existing = cls._shared.get(path)
+            if existing is not None:
+                return existing
+            obj = super().__new__(cls)
+            cls._shared[path] = obj
+            obj._singleton_ready = False  # type: ignore[attr-defined]
+            return obj
+
     def __init__(self, db_path: str | None = None) -> None:
-        path = (db_path or os.environ.get("AI_CRASH_FIX_REPO_REGISTRY_DB") or "").strip()
-        if not path:
-            base = _data_dir()
-            if base is not None:
-                path = os.fspath((base / "db" / "repo_registry.db").resolve())
-            else:
-                path = "db/repo_registry.db"
-        p = Path(path).expanduser().resolve()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path = str(p)
+        if getattr(self, "_singleton_ready", False):
+            return
+        self.db_path = resolve_app_settings_db_path(db_path)
+        self._cache: dict[str, Any] | None = None
+        self._cache_lock = threading.Lock()
         self._ensure_schema()
+        self._singleton_ready = True
+
+    @classmethod
+    def clear_shared_for_tests(cls) -> None:
+        with cls._shared_lock:
+            cls._shared.clear()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path, timeout=30.0)
+        return connect_sqlite(self.db_path)
 
     def _ensure_schema(self) -> None:
+        if not schema_needs_ensure(f"app_settings:{self.db_path}"):
+            return
         with self._connect() as conn:
             conn.execute(
                 """
@@ -85,6 +125,36 @@ class AppSettingsStore:
                 """
             )
             conn.commit()
+        mark_schema_ensured(f"app_settings:{self.db_path}")
+
+    def _invalidate_cache(self) -> None:
+        with self._cache_lock:
+            self._cache = None
+
+    def get_all(self) -> dict[str, Any]:
+        """Load all settings in one connection (cached until the next set)."""
+        with self._cache_lock:
+            if self._cache is not None:
+                return dict(self._cache)
+
+        out: dict[str, Any] = {}
+        with self._connect() as conn:
+            rows = conn.execute("SELECT k, v FROM app_settings").fetchall()
+        for key, raw in rows:
+            k = str(key or "").strip()
+            if not k:
+                continue
+            if raw is None:
+                out[k] = None
+                continue
+            try:
+                out[k] = json.loads(str(raw))
+            except Exception:
+                out[k] = None
+
+        with self._cache_lock:
+            self._cache = out
+            return dict(out)
 
     def set(self, *, k: str, v: Any) -> None:
         key = (k or "").strip()
@@ -104,25 +174,13 @@ class AppSettingsStore:
                 (key, payload, now),
             )
             conn.commit()
+        self._invalidate_cache()
 
     def get(self, *, k: str) -> Any | None:
         key = (k or "").strip()
         if not key:
             return None
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT v FROM app_settings WHERE k = ?",
-                (key,),
-            ).fetchone()
-        if not row:
-            return None
-        raw = row[0]
-        if raw is None:
-            return None
-        try:
-            return json.loads(str(raw))
-        except Exception:
-            return None
+        return self.get_all().get(key)
 
     def get_updated_at(self) -> str | None:
         with self._connect() as conn:
@@ -133,4 +191,3 @@ class AppSettingsStore:
             return None
         v = row[0]
         return str(v).strip() or None
-

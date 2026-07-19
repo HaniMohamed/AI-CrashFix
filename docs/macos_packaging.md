@@ -80,10 +80,44 @@ open "dist/macos/AI Crash Fix.app"
 # "./dist/macos/AI Crash Fix.app/Contents/MacOS/AI Crash Fix"
 ```
 
-On recent macOS you can also pass env via `open`:
+On recent macOS you can also pass env via `open` (short values only — a full
+JWT often triggers **"command too long"** / `ARG_MAX`):
 
 ```bash
 open --env LLM_PROVIDER=openai --env OPENAI_API_KEY=sk-REPLACE_ME -a "AI Crash Fix"
+```
+
+### GOSI Brain (recommended: env file)
+
+Put long secrets in a local file (not on the command line):
+
+```bash
+# ~/gosi-launch.env  (chmod 600)
+LLM_PROVIDER=gosi-brain
+GOSI_BRAIN_AUTHORIZATION="Bearer eyJ..."
+GOSI_BRAIN_API_KEY=...
+GOSI_BRAIN_MODEL=gosi_brain_agent
+GOSI_BRAIN_USER_ID=CR240821
+GOSI_BRAIN_COOKIE="TS016ee342=..."
+GOSI_BRAIN_STREAMING=off
+```
+
+Copy `GOSI_BRAIN_COOKIE` from a working Postman/curl `Cookie` header (F5 `TS*` cookies rotate; refresh on HTTP 401).
+
+Then launch with the helper (exports the file into the process and sets
+`AI_CRASH_FIX_ENV_FILE` so the backend persists Settings):
+
+```bash
+./scripts/run_macos_app.sh ~/gosi-launch.env
+# or with an explicit .app path:
+./scripts/run_macos_app.sh ~/gosi-launch.env "dist/macos/AI Crash Fix.app"
+```
+
+Alternatively:
+
+```bash
+export AI_CRASH_FIX_ENV_FILE=~/gosi-launch.env
+"./dist/macos/AI Crash Fix.app/Contents/MacOS/AI Crash Fix"
 ```
 
 Crash store:
@@ -153,22 +187,44 @@ Or from a custom 1024×1024 PNG:
 
 Flutter **web** assets are optional in the freeze (native macOS UI does not need them).
 
-3) Inject backend + ripgrep:
+3) Inject backend + ripgrep, then **re-sign** (required):
 
 ```bash
 APP="dist/macos/AI Crash Fix.app"
 mkdir -p "$APP/Contents/Resources/backend" "$APP/Contents/Resources/bin"
 rm -rf "$APP/Contents/Resources/backend/ai_crash_fix_backend"
-cp -R "dist/ai_crash_fix_backend" "$APP/Contents/Resources/backend/ai_crash_fix_backend"
-cp "/opt/homebrew/bin/rg" "$APP/Contents/Resources/bin/rg"
+ditto "dist/ai_crash_fix_backend" "$APP/Contents/Resources/backend/ai_crash_fix_backend"
+ditto "/opt/homebrew/bin/rg" "$APP/Contents/Resources/bin/rg"
 chmod +x "$APP/Contents/Resources/bin/rg"
+./scripts/resign_macos_app.sh "$APP"
 ```
+
+Flutter seals the app **before** backend injection. Skipping re-sign leaves an
+invalid signature: Gatekeeper then blocks the embedded backend after you drag
+the app from the DMG into `/Applications` (UI shows API offline).
 
 4) DMG:
 
 ```bash
 ./scripts/build_dmg.sh
 # → dist/AI-Crash-Fix.dmg
+```
+
+## Install from DMG
+
+1. Open `AI-Crash-Fix.dmg`
+2. Drag **AI Crash Fix.app** into **Applications** (do not run it from the DMG)
+3. Launch from `/Applications`
+4. If macOS blocks the first open: right-click → **Open**, or clear quarantine:
+
+```bash
+xattr -cr "/Applications/AI Crash Fix.app"
+```
+
+Confirm the install includes the backend:
+
+```bash
+ls -la "/Applications/AI Crash Fix.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
 ```
 
 ## Lifecycle
@@ -184,11 +240,16 @@ Disable embed: `AI_CRASH_FIX_USE_EMBEDDED_BACKEND=0`.
 
 ## Optional: codesigning (recommended)
 
-Internal builds can work unsigned, but Gatekeeper warnings are common.
-If you have a signing identity, sign the app bundle before building the DMG:
+`build_macos_dmg_all.sh` always **adhoc re-signs** after injecting the backend
+(`scripts/resign_macos_app.sh`). That is enough for most internal installs.
+
+If you have a Developer ID identity, sign before building the DMG (replaces adhoc):
 
 ```bash
-codesign --force --deep --sign "Developer ID Application: <Your Org>" "dist/macos/AI Crash Fix.app"
+codesign --force --deep --sign "Developer ID Application: <Your Org>" \
+  --entitlements frontend/macos/Runner/Release.entitlements \
+  "dist/macos/AI Crash Fix.app"
+codesign --verify --deep --strict "dist/macos/AI Crash Fix.app"
 ```
 
 If you distribute outside the org or want the smoothest first-run experience,

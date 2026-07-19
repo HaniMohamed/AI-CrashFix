@@ -34,11 +34,17 @@ class LLMService:
                 gb.get("authorization"),
                 gb.get("api_key"),
                 gb.get("oauth_domain"),
+                gb.get("send_oauth_domain"),
+                gb.get("user_id"),
+                gb.get("cookie"),
                 gb.get("temperature"),
                 gb.get("max_request_bytes"),
                 gb.get("prompt_compaction"),
                 gb.get("timeout"),
                 gb.get("connect_timeout"),
+                gb.get("idle_timeout"),
+                gb.get("streaming_mode"),
+                gb.get("waf_content_shield"),
                 gb.get("gzip_request"),
             )
         g = resolver.effective_google()
@@ -69,9 +75,15 @@ class LLMService:
                 authorization=gb.get("authorization"),
                 api_key=gb.get("api_key"),
                 oauth_domain=gb.get("oauth_domain"),
+                send_oauth_domain=bool(gb.get("send_oauth_domain")),
+                user_id=gb.get("user_id"),
+                cookie=gb.get("cookie"),
                 temperature=float(gb.get("temperature") or 0.7),
                 timeout=float(gb.get("timeout") or 300),
                 connect_timeout=float(gb.get("connect_timeout") or 30),
+                idle_timeout=float(gb.get("idle_timeout") or 120),
+                streaming_mode=str(gb.get("streaming_mode") or "auto"),
+                waf_content_shield=bool(gb.get("waf_content_shield", True)),
                 gzip_request=bool(gb.get("gzip_request")),
             )
         elif name == "gemini":
@@ -121,7 +133,7 @@ class LLMService:
             gb = resolver.effective_gosi_brain()
             model = (gb.get("model") or "model").strip()
             temperature = float(gb.get("temperature") or 0.7)
-            max_bytes = int(gb.get("max_request_bytes") or 524288)
+            max_bytes = int(gb.get("max_request_bytes") or 48000)
             compaction_mode = (gb.get("prompt_compaction") or "auto").strip().lower()
 
             level = starting_compaction_level(

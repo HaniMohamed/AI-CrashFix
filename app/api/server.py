@@ -202,9 +202,15 @@ class RepoStatusResponse(BaseModel):
 
 @app.get("/api/health")
 async def health() -> Dict[str, Any]:
-    crash_store = crash_store_health()
+    # Run sync DB probe off the event loop so a slow Postgres does not stall
+    # the whole API (which previously looked like "API offline").
+    import asyncio
+
+    crash_store = await asyncio.to_thread(crash_store_health)
+    # `ok` means the API process is up. Crash-store health is separate so a
+    # Postgres blip does not make the UI treat the backend as dead.
     return {
-        "ok": bool(crash_store.get("ok")),
+        "ok": True,
         "crash_store": crash_store,
     }
 
@@ -710,6 +716,10 @@ async def get_config(
             "gosi_brain_model": cfg.GOSI_BRAIN_MODEL,
             "gosi_brain_oauth_identity_domain_name": cfg.GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME,
             "gosi_brain_temperature": cfg.GOSI_BRAIN_TEMPERATURE,
+            "gosi_brain_user_id": cfg.GOSI_BRAIN_USER_ID,
+            "gosi_brain_streaming": cfg.GOSI_BRAIN_STREAMING,
+            "gosi_brain_idle_timeout": cfg.GOSI_BRAIN_IDLE_TIMEOUT,
+            "gosi_brain_waf_content_shield": cfg.GOSI_BRAIN_WAF_CONTENT_SHIELD,
             "has_gosi_brain_api_key": bool(cfg.GOSI_BRAIN_API_KEY),
             "has_gosi_brain_authorization": bool(cfg.GOSI_BRAIN_AUTHORIZATION),
         },
@@ -796,6 +806,10 @@ async def get_settings() -> Dict[str, Any]:
             "gosi_brain_model": gb.get("model"),
             "gosi_brain_oauth_identity_domain_name": gb.get("oauth_domain"),
             "gosi_brain_temperature": gb.get("temperature"),
+            "gosi_brain_user_id": gb.get("user_id"),
+            "gosi_brain_streaming": gb.get("streaming_mode"),
+            "gosi_brain_idle_timeout": gb.get("idle_timeout"),
+            "gosi_brain_waf_content_shield": gb.get("waf_content_shield"),
             "has_gosi_brain_api_key": bool((gb.get("api_key") or "").strip()),
             "has_gosi_brain_authorization": bool((gb.get("authorization") or "").strip()),
         },
@@ -880,6 +894,10 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     set_if_present(req.llm, "gosi_brain_temperature", "GOSI_BRAIN_TEMPERATURE")
     set_if_present(req.llm, "gosi_brain_api_key", "GOSI_BRAIN_API_KEY")
     set_if_present(req.llm, "gosi_brain_authorization", "GOSI_BRAIN_AUTHORIZATION")
+    set_if_present(req.llm, "gosi_brain_user_id", "GOSI_BRAIN_USER_ID")
+    set_if_present(req.llm, "gosi_brain_streaming", "GOSI_BRAIN_STREAMING")
+    set_if_present(req.llm, "gosi_brain_idle_timeout", "GOSI_BRAIN_IDLE_TIMEOUT")
+    set_if_present(req.llm, "gosi_brain_waf_content_shield", "GOSI_BRAIN_WAF_CONTENT_SHIELD")
 
     set_if_present(req.crashlytics, "google_application_credentials", "GOOGLE_APPLICATION_CREDENTIALS")
     set_if_present(req.crashlytics, "bq_project_id", "BQ_PROJECT_ID")

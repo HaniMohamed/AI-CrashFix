@@ -46,9 +46,14 @@ class SettingsResolver:
     def __init__(self) -> None:
         self._app = AppSettingsStore()
         self._repos = RepoRegistryStore()
+        # One SQLite read for all keys (cached in AppSettingsStore until next set).
+        self._kv = self._app.get_all()
+
+    def _app_get(self, key: str) -> Any | None:
+        return self._kv.get(key)
 
     def _app_str(self, key: str) -> str | None:
-        v = self._app.get(k=key)
+        v = self._app_get(key)
         if isinstance(v, str):
             s = v.strip()
             return s or None
@@ -79,7 +84,7 @@ class SettingsResolver:
         }
 
     def _app_number(self, key: str) -> int | float | None:
-        v = self._app.get(k=key)
+        v = self._app_get(key)
         if isinstance(v, bool):
             return None
         if isinstance(v, int) and not isinstance(v, bool):
@@ -104,7 +109,12 @@ class SettingsResolver:
             self._app_str("GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME")
             or cfg.GOSI_BRAIN_OAUTH_IDENTITY_DOMAIN_NAME
         )
-        oauth = (oauth or "MobileDomain").strip() or "MobileDomain"
+        oauth = (oauth or "").strip() or None
+        send_oauth_raw = self._app_str("GOSI_BRAIN_SEND_OAUTH_DOMAIN")
+        if send_oauth_raw is not None:
+            send_oauth = send_oauth_raw.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            send_oauth = bool(cfg.GOSI_BRAIN_SEND_OAUTH_DOMAIN)
         t_raw = self._app_number("GOSI_BRAIN_TEMPERATURE")
         if isinstance(t_raw, (int, float)):
             temperature = float(t_raw)
@@ -140,17 +150,45 @@ class SettingsResolver:
         else:
             gzip_request = bool(cfg.GOSI_BRAIN_GZIP_REQUEST)
 
+        user_id = self._app_str("GOSI_BRAIN_USER_ID") or cfg.GOSI_BRAIN_USER_ID
+        cookie = self._app_secret("GOSI_BRAIN_COOKIE") or cfg.GOSI_BRAIN_COOKIE
+
+        idle_raw = self._app_number("GOSI_BRAIN_IDLE_TIMEOUT")
+        if isinstance(idle_raw, (int, float)) and idle_raw > 0:
+            idle_timeout = int(idle_raw)
+        else:
+            idle_timeout = int(cfg.GOSI_BRAIN_IDLE_TIMEOUT)
+
+        streaming = (
+            self._app_str("GOSI_BRAIN_STREAMING") or cfg.GOSI_BRAIN_STREAMING or "auto"
+        )
+        streaming = (streaming or "auto").strip().lower()
+        if streaming not in ("auto", "on", "off"):
+            streaming = "auto"
+
+        waf_raw = self._app_str("GOSI_BRAIN_WAF_CONTENT_SHIELD")
+        if waf_raw is not None:
+            waf_shield = waf_raw.strip().lower() not in ("0", "false", "no", "off")
+        else:
+            waf_shield = bool(cfg.GOSI_BRAIN_WAF_CONTENT_SHIELD)
+
         return {
             "url": (url or "").strip() or None,
             "model": model,
             "authorization": self._app_secret("GOSI_BRAIN_AUTHORIZATION") or cfg.GOSI_BRAIN_AUTHORIZATION,
             "api_key": self._app_secret("GOSI_BRAIN_API_KEY") or cfg.GOSI_BRAIN_API_KEY,
             "oauth_domain": oauth,
+            "send_oauth_domain": send_oauth,
+            "user_id": (user_id or "").strip() or None,
+            "cookie": (cookie or "").strip() or None,
             "temperature": temperature,
             "max_request_bytes": max_request_bytes,
             "prompt_compaction": compaction,
             "timeout": timeout,
             "connect_timeout": connect_timeout,
+            "idle_timeout": idle_timeout,
+            "streaming_mode": streaming,
+            "waf_content_shield": waf_shield,
             "gzip_request": gzip_request,
         }
 
