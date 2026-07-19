@@ -127,6 +127,26 @@ def _sanitize_jira_summary(summary: str, *, max_len: int = 255) -> str:
     return text
 
 
+def _resolve_issue_type(issue_type: str | None, *, under_parent: bool) -> str:
+    """
+    Classic Jira only accepts ``fields.parent`` for Sub-task types.
+
+    Normalize common aliases (``Sub-Task``, ``Subtask``) to the canonical ``Sub-task``
+    name used by Jira Server/DC. When under a parent, replace Bug/Story/etc. with Sub-task.
+    """
+    raw = (issue_type or "").strip()
+    if not under_parent:
+        return raw or "Bug"
+
+    compact = re.sub(r"[\s_-]+", "", raw.lower())
+    if compact in {"subtask", "subtasks"}:
+        return "Sub-task"
+    if compact in {"bug", "story", "task", "improvement", "newfeature", "subbug", ""}:
+        return "Sub-task"
+    # Custom sub-task-like types (e.g. "EA Review") — keep as configured.
+    return raw or "Sub-task"
+
+
 def _build_issue_fields(
     *,
     project: str,
@@ -170,19 +190,21 @@ def create_jira_issue(
 
     Connection settings are resolved for ``repo_key`` (repo row → app settings → .env).
     Auth: Cloud uses Basic (email + API token); Server/DC PATs use Bearer (see ``JIRA_AUTH``).
-    Extra create fields come from ``JIRA_CREATE_FIELDS`` (required custom fields, etc.).
-    When create_mode is ``under_parent``, sets ``parent.key`` from the repo parent story key
-    (requires a Sub-task issue type in classic Jira).
+    Extra create fields come from ``JIRA_CREATE_FIELDS`` (required custom fields, etc.)
+    for standalone issues only — Sub-task creates skip them (screens often omit those fields).
+    When create_mode is ``under_parent``, sets ``parent.key`` and uses issue type ``Sub-task``
+    (aliases like ``Sub-Task`` are normalized).
     """
     from app.services.repo_registry_store import normalize_jira_create_mode
 
     eff = SettingsResolver().effective_jira(repo_key=(repo_key or "").strip() or None)
-    itype = (issue_type or eff.issue_type or "Bug").strip() or "Bug"
-    project = (project_key or eff.project_key or "").strip()
     mode = normalize_jira_create_mode(eff.create_mode)
+    under_parent = mode == "under_parent"
+    itype = _resolve_issue_type(issue_type or eff.issue_type, under_parent=under_parent)
+    project = (project_key or eff.project_key or "").strip()
     parent_key = (eff.parent_issue_key or "").strip().upper() or None
 
-    if mode == "under_parent" and not parent_key:
+    if under_parent and not parent_key:
         raise RuntimeError(
             "Jira create mode is under_parent but no parent issue key is set. "
             "Set Parent story/issue key in Manage Repos."
@@ -190,7 +212,11 @@ def create_jira_issue(
 
     if mock:
         return mock_create_jira_issue(
-            summary, description, project, itype, parent_issue_key=parent_key if mode == "under_parent" else None
+            summary,
+            description,
+            project,
+            itype,
+            parent_issue_key=parent_key if under_parent else None,
         )
 
     if not project:
@@ -198,7 +224,8 @@ def create_jira_issue(
 
     base_url = _jira_base_url(eff)
     url = f"{base_url}/rest/api/2/issue"
-    extra = _parse_create_fields(eff.create_fields_json)
+    # Sub-task screens typically do not include Bug-only fields like Concerned DE Team.
+    extra = {} if under_parent else _parse_create_fields(eff.create_fields_json)
     payload: dict[str, Any] = {
         "fields": _build_issue_fields(
             project=project,
@@ -206,7 +233,7 @@ def create_jira_issue(
             description=description,
             issue_type=itype,
             extra_fields=extra,
-            parent_issue_key=parent_key if mode == "under_parent" else None,
+            parent_issue_key=parent_key if under_parent else None,
         )
     }
 
@@ -245,14 +272,16 @@ def create_jira_issue(
                 " Hint: set JIRA_CREATE_FIELDS JSON for required custom fields "
                 '(e.g. Concerned DE Team: {"customfield_11404":{"value":"Individual App + Taqdeer"}}).'
             )
-        elif exc.code == 400 and mode == "under_parent" and "not a sub-task" in detail.lower():
+        elif exc.code == 400 and under_parent and "not a sub-task" in detail.lower():
             hint = (
-                " Hint: classic Jira only allows parent on Sub-task issue types. "
-                "Set Issue type to Sub-task (exact name in your project)."
+                f" Hint: sent issuetype={itype!r} with parent={parent_key!r}. "
+                "Jira requires the canonical name Sub-task (id 10003). "
+                "Restart the backend after updating Manage Repos."
             )
-        elif exc.code == 400 and mode == "under_parent" and "parent" in detail.lower():
+        elif exc.code == 400 and under_parent and "parent" in detail.lower():
             hint = (
-                " Hint: check Parent story key and that Issue type is Sub-task."
+                f" Hint: check Parent story key ({parent_key}) and Issue type "
+                f"(using {itype!r}; must be Sub-task)."
             )
         raise RuntimeError(f"Jira API error ({exc.code}) creating issue: {detail}.{hint}") from exc
     except urllib.error.URLError as exc:

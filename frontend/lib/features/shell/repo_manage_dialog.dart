@@ -1218,7 +1218,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                             helperText: _debug
                                 ? 'JIRA_ISSUE_TYPE'
                                 : _jiraCreateMode == 'under_parent'
-                                    ? 'Use Sub-task (exact name in Jira) when creating under a parent.'
+                                    ? 'Use exactly Sub-task (lowercase t). Sub-Task/Bug will be normalized to Sub-task.'
                                     : 'Must match an issue type name in your Jira project.',
                             prefixIcon: const Icon(Icons.category_outlined),
                             suffixIcon: _jiraIssueTypeCtrl.text.trim().isEmpty
