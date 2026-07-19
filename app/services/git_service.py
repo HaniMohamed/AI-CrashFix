@@ -193,7 +193,11 @@ class GitService:
     def _gitlab_api_base(self) -> str:
         base = (self._gitlab_server_url or GITLAB_SERVER_URL or "").strip()
         if not base:
-            raise RuntimeError("Missing GitLab server URL. Set GITLAB_SERVER_URL.")
+            raise RuntimeError(
+                "Missing GitLab server URL. Set GITLAB_SERVER_URL in Settings, "
+                "or ensure the repo remote URL includes the GitLab host "
+                "(e.g. https://gitlab.example.com/group/project)."
+            )
         base = base.rstrip("/")
         if base.endswith("/api/v4"):
             return base
@@ -344,7 +348,13 @@ class GitService:
         cmd = ["git", "fetch"]
         subprocess.check_output(cmd, cwd=self.repo_root, text=True, stderr=subprocess.STDOUT)
 
-    def create_branch_from_main(self, jira_ticket_id: str, title: str) -> dict[str, str]:
+    def create_branch_from_main(
+        self,
+        jira_ticket_id: str,
+        title: str,
+        *,
+        base_branch: str | None = None,
+    ) -> dict[str, str]:
         if not jira_ticket_id or not jira_ticket_id.strip():
             raise ValueError("jira_ticket_id is required")
         if not title or not title.strip():
@@ -353,7 +363,8 @@ class GitService:
         jira = jira_ticket_id.strip().upper()
         slug = self._slugify_title(title, jira_issue_id=jira)
         branch_name = f"ai-bugfix/{jira}-{slug}"
-        base = MAIN_BRANCH
+        # Prefer the repo's configured ref (e.g. uat) over global MAIN_BRANCH.
+        base = (base_branch or "").strip() or (MAIN_BRANCH or "main").strip() or "main"
 
         # 1) Sync refs
         self.git_fetch()
@@ -368,22 +379,26 @@ class GitService:
 
         if base_exists:
             try:
-                self._run_git(["checkout", base])
-                self._run_git(["merge", "--ff-only", origin_base])
+                self._run_git(["checkout", "--force", "-B", base, origin_base])
             except subprocess.CalledProcessError as e:
                 raise RuntimeError(
-                    f"Failed to fast-forward {base!r} to {origin_base!r}. "
-                    f"Your local branch may have diverged.\n\n{e.output}"
+                    f"Failed to reset {base!r} to {origin_base!r}.\n\n{e.output}"
                 ) from e
         else:
-            self._run_git(["checkout", "-b", base, origin_base])
+            try:
+                self._run_git(["checkout", "--force", "-B", base, origin_base])
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(
+                    f"Failed to create {base!r} from {origin_base!r}. "
+                    f"Confirm the remote branch exists.\n\n{e.output}"
+                ) from e
 
         # 3) Create feature branch from updated base
         try:
-            self._run_git(["checkout", "-b", branch_name])
+            self._run_git(["checkout", "-B", branch_name])
         except subprocess.CalledProcessError as e:
             raise RuntimeError(
-                f"Failed to create branch {branch_name!r}. It may already exist.\n\n{e.output}"
+                f"Failed to create branch {branch_name!r}.\n\n{e.output}"
             ) from e
 
         return {"base": base, "branch": branch_name}

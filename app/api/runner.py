@@ -267,6 +267,7 @@ def stream_run(
                 repo_ref=resolved_repo_ref,
                 repo_key=resolved_repo_key,
                 firebase_project_id=resolved_firebase_project_id,
+                access_token=resolved_repo_token,
             )
         elif mode == "single":
             cid = (crash_id or "").strip()
@@ -325,6 +326,7 @@ def stream_run(
                 repo_ref=resolved_repo_ref,
                 repo_key=resolved_repo_key,
                 firebase_project_id=resolved_firebase_project_id,
+                access_token=resolved_repo_token,
             )
         else:
             yield {
@@ -360,6 +362,33 @@ def _drain(pending: Deque[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
             break
 
 
+def _sync_repo_for_crash(
+    *,
+    repo_url: str | None,
+    repo_ref: str | None,
+    access_token: str | None,
+    fallback_repo_root: str | None,
+) -> str | None:
+    """
+    Fetch + checkout the configured ref (e.g. uat) and clean the worktree.
+
+    Called before every crash so analysis/PR start from the latest remote tip,
+    not a leftover feature branch from a previous run.
+    """
+    url = (repo_url or "").strip()
+    if not url:
+        return fallback_repo_root
+    from app.services.project_service import ProjectService
+
+    proj = ProjectService().prepare_repo(
+        repo_url=url,
+        repo_ref=(repo_ref or "").strip() or None,
+        access_token=(access_token or "").strip() or None,
+        clean_workdir=True,
+    )
+    return proj.repo_root
+
+
 def _run_batch(
     *,
     graph,
@@ -375,6 +404,7 @@ def _run_batch(
     repo_ref: str | None,
     repo_key: str | None,
     firebase_project_id: str | None,
+    access_token: str | None = None,
 ) -> Iterator[Dict[str, Any]]:
     # CrashlyticsService uses the repo's firebase/gcp project id when provided.
     # It falls back to .env BQ_PROJECT_ID otherwise.
@@ -447,13 +477,21 @@ def _run_batch(
             }
             continue
 
+        # Fresh checkout of the configured ref (e.g. uat) before every crash.
+        synced_root = _sync_repo_for_crash(
+            repo_url=repo_url,
+            repo_ref=repo_ref,
+            access_token=access_token,
+            fallback_repo_root=repo_root,
+        )
+
         crash_store.insert_crash(crash_id)
         state = _initial_state_for_crash(
             crash,
             run_id=run_id,
             skip_jira_creation=skip_jira_creation,
             mock=mock,
-            repo_root=repo_root,
+            repo_root=synced_root,
             repo_url=repo_url,
             repo_ref=repo_ref,
             repo_key=repo_key,
@@ -493,17 +531,25 @@ def _run_single(
     repo_ref: str | None,
     repo_key: str | None,
     firebase_project_id: str | None,
+    access_token: str | None = None,
 ) -> Iterator[Dict[str, Any]]:
     crash_id = (crash.get("crash_id") or "").strip()
     if crash_id:
         crash_store.insert_crash(crash_id)
+
+    synced_root = _sync_repo_for_crash(
+        repo_url=repo_url,
+        repo_ref=repo_ref,
+        access_token=access_token,
+        fallback_repo_root=repo_root,
+    )
 
     state = _initial_state_for_crash(
         crash,
         run_id=run_id,
         skip_jira_creation=skip_jira_creation,
         mock=mock,
-        repo_root=repo_root,
+        repo_root=synced_root,
         repo_url=repo_url,
         repo_ref=repo_ref,
         repo_key=repo_key,

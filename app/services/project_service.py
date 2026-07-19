@@ -91,6 +91,7 @@ class ProjectService:
         repo_url: str,
         repo_ref: str | None = None,
         access_token: str | None = None,
+        clean_workdir: bool = True,
     ) -> PreparedProject:
         url = (repo_url or "").strip()
         if not url:
@@ -131,29 +132,18 @@ class ProjectService:
             )
 
         # Checkout requested ref (branch / tag / commit) if provided.
+        # Critical: after fetch, `git checkout --force uat` keeps the *local* branch tip
+        # (often stale). Reset local branch to origin/<ref> when that remote exists.
         if ref:
-            subprocess.check_output(
-                ["git", "checkout", "--force", ref],
-                cwd=str(target),
-                text=True,
-                stderr=subprocess.STDOUT,
+            self._checkout_ref(
+                target, ref=ref, clone_cmd=clone_cmd, clean_workdir=clean_workdir
             )
         else:
-            # Ensure working tree is on the configured main branch if it exists.
+            # Ensure working tree tracks the configured main branch tip.
             main = (cfg.MAIN_BRANCH or "main").strip() or "main"
-            # Best-effort: checkout main if present; otherwise keep whatever clone defaulted to.
             try:
-                subprocess.check_output(
-                    ["git", "checkout", "--force", main],
-                    cwd=str(target),
-                    text=True,
-                    stderr=subprocess.STDOUT,
-                )
-                subprocess.check_output(
-                    ["git", "pull", "--ff-only"],
-                    cwd=str(target),
-                    text=True,
-                    stderr=subprocess.STDOUT,
+                self._checkout_ref(
+                    target, ref=main, clone_cmd=clone_cmd, clean_workdir=clean_workdir
                 )
             except Exception:
                 pass
@@ -169,4 +159,82 @@ class ProjectService:
         # Normalize path string for downstream usage.
         repo_root = os.fspath(target)
         return PreparedProject(project_id=project_id, repo_url=url, repo_ref=ref, repo_root=repo_root)
+
+    @staticmethod
+    def _rev_parse_ok(repo_root: Path, rev: str) -> bool:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--verify", rev],
+            cwd=str(repo_root),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        return proc.returncode == 0
+
+    def _checkout_ref(
+        self,
+        target: Path,
+        *,
+        ref: str,
+        clone_cmd: list[str],
+        clean_workdir: bool = True,
+    ) -> None:
+        """
+        Move HEAD to the latest remote tip for branch-like refs.
+
+        Prefer ``origin/<ref>`` after fetch; otherwise fall back to a direct
+        checkout (commit SHA / local-only ref / tag after a targeted fetch).
+        """
+        remote_ref = f"origin/{ref}"
+        if self._rev_parse_ok(target, remote_ref):
+            # Create/reset local branch to match remote tip.
+            subprocess.check_output(
+                ["git", "checkout", "--force", "-B", ref, remote_ref],
+                cwd=str(target),
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+        else:
+            # Tag or other remote ref that is not origin/<name> yet — try fetching it.
+            if not self._rev_parse_ok(target, ref):
+                try:
+                    subprocess.check_output(
+                        [*clone_cmd, "fetch", "origin", "tag", ref, "--no-tags"],
+                        cwd=str(target),
+                        text=True,
+                        stderr=subprocess.STDOUT,
+                    )
+                except Exception:
+                    try:
+                        subprocess.check_output(
+                            [*clone_cmd, "fetch", "origin", ref],
+                            cwd=str(target),
+                            text=True,
+                            stderr=subprocess.STDOUT,
+                        )
+                    except Exception:
+                        pass
+
+            subprocess.check_output(
+                ["git", "checkout", "--force", ref],
+                cwd=str(target),
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+
+        # Drop leftover edits/untracked files from a previous crash/PR attempt so
+        # the next run starts from a clean tip of the configured ref.
+        if clean_workdir:
+            subprocess.check_output(
+                ["git", "reset", "--hard", "HEAD"],
+                cwd=str(target),
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            subprocess.check_output(
+                ["git", "clean", "-fd"],
+                cwd=str(target),
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
 

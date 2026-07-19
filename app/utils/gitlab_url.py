@@ -29,3 +29,36 @@ def derive_gitlab_project_path_from_repo_url(raw: str) -> str | None:
         path = path[: -len(".git")]
     path = path.strip("/")
     return path or None
+
+
+def derive_gitlab_server_url_from_repo_url(raw: str) -> str | None:
+    """
+    GitLab base URL (scheme + host[:port]) from a normal git remote URL.
+
+    Examples:
+      https://gitlab.gosi.ins/super-app/gosi-super-app → https://gitlab.gosi.ins
+      git@gitlab.gosi.ins:super-app/gosi-super-app.git → https://gitlab.gosi.ins
+    """
+    u = (raw or "").strip()
+    if not u:
+        return None
+    if u.startswith("git@"):
+        # git@host:path
+        at = u.find("@")
+        colon = u.find(":")
+        if at < 0 or colon <= at:
+            return None
+        host = u[at + 1 : colon].strip()
+        if not host:
+            return None
+        return f"https://{host}"
+    parsed = urlparse(u)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    # Drop userinfo if present (rare for https remotes).
+    host = parsed.hostname
+    if not host:
+        return None
+    port = parsed.port
+    netloc = f"{host}:{port}" if port else host
+    return f"{parsed.scheme}://{netloc}"

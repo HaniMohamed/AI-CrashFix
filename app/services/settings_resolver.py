@@ -254,16 +254,30 @@ class SettingsResolver:
         )
 
     def effective_gitlab(self, *, repo_key: str | None) -> EffectiveGitlabConfig:
-        from app.utils.gitlab_url import derive_gitlab_project_path_from_repo_url
+        from app.utils.gitlab_url import (
+            derive_gitlab_project_path_from_repo_url,
+            derive_gitlab_server_url_from_repo_url,
+        )
 
-        repo = self._repos.get_repo((repo_key or "").strip()) if (repo_key or "").strip() else None
+        rk = (repo_key or "").strip()
+        repo = self._repos.get_repo(rk) if rk else None
         gl_project = (repo.gitlab_project if repo else None) or None
         if not gl_project and repo and repo.repo_url:
             gl_project = derive_gitlab_project_path_from_repo_url(repo.repo_url)
+        # Prefer explicit global setting; otherwise derive from the repo remote URL
+        # (Manage repos stores the full git URL, not GITLAB_SERVER_URL).
+        derived_server = (
+            derive_gitlab_server_url_from_repo_url(repo.repo_url)
+            if repo and repo.repo_url
+            else None
+        )
+        repo_token = self._repos.get_access_token(rk) if rk else None
         return EffectiveGitlabConfig(
-            server_url=self._app_str("GITLAB_SERVER_URL") or cfg.GITLAB_SERVER_URL,
+            server_url=self._app_str("GITLAB_SERVER_URL")
+            or cfg.GITLAB_SERVER_URL
+            or derived_server,
             verify_ssl=self._app_str("GITLAB_VERIFY_SSL") or cfg.GITLAB_VERIFY_SSL,
-            token=self._app_secret("GITLAB_TOKEN") or cfg.GITLAB_TOKEN,
+            token=self._app_secret("GITLAB_TOKEN") or cfg.GITLAB_TOKEN or repo_token,
             ca_bundle=self._app_str("GITLAB_SSL_CA_BUNDLE") or cfg.GITLAB_SSL_CA_BUNDLE,
             project=gl_project or cfg.GITLAB_PROJECT,
         )

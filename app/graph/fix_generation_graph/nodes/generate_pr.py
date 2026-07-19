@@ -63,7 +63,12 @@ def generate_pr_node(state: CrashState):
 
         # --- Step 2: feature branch from main (GitService slugifies the raw LLM pr_title for the branch name). ---
         branch_slug_title = (state["pr_title"] or "").strip() or "CrashLens fix"
-        branch_info = git.create_branch_from_main(jira_ticket_id=jira, title=branch_slug_title)
+        base_branch = (state.get("repo_ref") or "").strip() or None
+        branch_info = git.create_branch_from_main(
+            jira_ticket_id=jira,
+            title=branch_slug_title,
+            base_branch=base_branch,
+        )
         branch = branch_info["branch"]
         state["pr_branch"] = branch
         if crash_id:
