@@ -1,6 +1,6 @@
 import pytest
 
-from app.utils.llm_helpers import is_ollama_base_url, parse_json
+from app.utils.llm_helpers import is_ollama_base_url, parse_json, parse_json_object
 
 
 def test_is_ollama_base_url():
@@ -51,3 +51,20 @@ def test_parse_json_fix_field_unescaped_quotes():
 def test_parse_json_empty_raises():
     with pytest.raises(ValueError, match="Empty"):
         parse_json("")
+
+
+def test_parse_json_object_unwraps_list():
+    raw = '[{"approved": true, "feedback": "ok", "required_changes": []}]'
+    parsed = parse_json_object(raw, context="review_fix")
+    assert parsed["approved"] is True
+    assert parsed["feedback"] == "ok"
+
+
+def test_parse_json_object_rejects_list_of_non_dicts():
+    with pytest.raises(ValueError, match="list with no object"):
+        parse_json_object("[1, 2]", context="review_fix")
+
+
+def test_parse_json_object_rejects_scalar():
+    with pytest.raises(ValueError, match="expected a JSON object"):
+        parse_json_object('"just a string"', context="review_fix")

@@ -3,7 +3,7 @@ from app.prompts.pr_fix_prompts import PR_FIX_PROMPT_INPUT, PR_SYSTEM_PROMPT
 from app.services.ai_service import LLMService
 from app.services.crash_store import CrashStore
 from app.services.git_service import GitService
-from app.utils.llm_helpers import parse_json
+from app.utils.llm_helpers import parse_json_object
 from app import config as cfg
 
 
@@ -51,11 +51,12 @@ def generate_pr_node(state: CrashState):
 
         # --- Step 1: LLM proposes MR title, description, and git commit subject (title is used for branch slug). ---
         llm = LLMService()
-        pr_meta = parse_json(
+        pr_meta = parse_json_object(
             llm.call(
                 system_prompt=PR_SYSTEM_PROMPT(),
                 user_prompt=PR_FIX_PROMPT_INPUT(state),
-            )
+            ),
+            context="generate_pr",
         )
         state["pr_title"] = pr_meta.get("pr_title") or ""
         state["pr_body"] = pr_meta.get("pr_body") or ""

@@ -2,7 +2,7 @@ from app.services.ai_service import LLMService
 from app.services.crash_store import CrashStore
 
 from app.prompts.prompts import SYSTEM_PROMPT, USER_PROMPT
-from app.utils.llm_helpers import parse_json
+from app.utils.llm_helpers import parse_json_object
 from app.utils.prompt_budget import compact_analysis_prompt_input
 
 
@@ -19,7 +19,7 @@ def llm_analysis(state):
         compact_input=compact_input,
     )
 
-    parsed = parse_json(response)
+    parsed = parse_json_object(response, context="llm_analysis")
 
     state["root_cause"] = parsed["root_cause"]
     state["confidence"] = parsed["confidence"]

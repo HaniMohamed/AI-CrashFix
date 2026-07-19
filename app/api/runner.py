@@ -138,6 +138,46 @@ def _crash_dict_from_persisted_result(result: Dict[str, Any], crash_id: str) -> 
     }
 
 
+def _hydrate_rerun_state(
+    state: Dict[str, Any],
+    *,
+    crash_store: CrashStore,
+    crash_id: str,
+    skip_jira_creation: bool,
+) -> Dict[str, Any]:
+    """Reuse important fields from a prior run (Jira ticket, skip_jira preference).
+
+    - Always restore ``jira_issue_id`` when the store (or prior result) has one so
+      re-runs do not create a duplicate ticket.
+    - If the previous run had ``skip_jira_creation=False``, keep Jira enabled on
+      this re-run even if the client requests skip (legacy Re-run buttons).
+    """
+    cid = (crash_id or "").strip()
+    if not cid:
+        return state
+
+    prev = crash_store.get_crash(cid, include_result=True)
+    if not prev:
+        return state
+
+    prev_result = prev.get("result") if isinstance(prev.get("result"), dict) else {}
+
+    jira_id = (
+        str(prev.get("jira_issue_id") or "").strip()
+        or str(prev_result.get("jira_issue_id") or "").strip()
+    )
+    if jira_id:
+        state["jira_issue_id"] = jira_id
+        # Keep the Jira path enabled so create is a no-op and PR naming keeps the key.
+        state["skip_jira_creation"] = False
+    elif "skip_jira_creation" in prev_result and not bool(prev_result.get("skip_jira_creation")):
+        state["skip_jira_creation"] = False
+    else:
+        state["skip_jira_creation"] = bool(skip_jira_creation)
+
+    return state
+
+
 def _resolve_single_crash_payload(
     *,
     crash_store: CrashStore,
@@ -554,6 +594,12 @@ def _run_single(
         repo_ref=repo_ref,
         repo_key=repo_key,
         firebase_project_id=firebase_project_id,
+    )
+    state = _hydrate_rerun_state(
+        state,
+        crash_store=crash_store,
+        crash_id=crash_id,
+        skip_jira_creation=skip_jira_creation,
     )
 
     counters = {"processed": 0, "skipped": 0, "deduped": 0, "failed": 0}

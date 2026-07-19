@@ -277,9 +277,8 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
                             final req = RunRequest(
                               mode: RunMode.single,
                               crashId: c.crashId,
-                              // Keep defaults consistent with NewRunPage.
                               mock: false,
-                              skipJiraCreation: true,
+                              skipJiraCreation: c.skipJiraCreation,
                             );
                             ref.read(runSessionProvider.notifier).start(req);
                             context.go('/runs/live');

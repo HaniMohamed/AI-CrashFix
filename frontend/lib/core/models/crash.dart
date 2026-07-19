@@ -65,6 +65,9 @@ class Crash {
   String? get fixSuggestion => result?['fix_suggestion'] as String?;
   Object? get device => result?['device'];
 
+  /// Prefer the previous run's skip flag so re-runs do not force-skip Jira.
+  bool get skipJiraCreation => result?['skip_jira_creation'] == true;
+
   /// PR/MR fields from persisted `result` (CrashState).
   String? get prTitle {
     final v = result?['pr_title'];

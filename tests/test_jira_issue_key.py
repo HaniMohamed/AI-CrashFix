@@ -34,3 +34,35 @@ def test_jira_create_stores_key_not_numeric_id(monkeypatch) -> None:
     }
     out = jira_create(state)
     assert out["jira_issue_id"] == "DE-99999"
+
+
+def test_jira_create_reuses_existing_issue_id(monkeypatch) -> None:
+    created = {"called": False}
+
+    def fake_create(*_args, **_kwargs):
+        created["called"] = True
+        return {"id": "1", "key": "DE-NEW"}
+
+    flags = {}
+
+    class _Store:
+        def set_pipeline_flags(self, crash_id, **kwargs):
+            flags["crash_id"] = crash_id
+            flags.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.graph.nodes.jira_create.create_jira_issue",
+        fake_create,
+    )
+    monkeypatch.setattr("app.graph.nodes.jira_create.CrashStore", lambda **_k: _Store())
+
+    state = {
+        "crash_id": "c1",
+        "jira_issue_id": "DE-11111",
+        "exception": "boom",
+    }
+    out = jira_create(state)
+    assert out["jira_issue_id"] == "DE-11111"
+    assert created["called"] is False
+    assert flags.get("jira_issue_id") == "DE-11111"
+    assert flags.get("jira_created") is True

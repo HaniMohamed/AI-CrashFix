@@ -160,3 +160,20 @@ def parse_json(text: str):
             return parsed
 
     raise ValueError(f"Failed to parse JSON from LLM output:\n{text}")
+
+
+def parse_json_object(text: str, *, context: str = "LLM JSON") -> dict[str, Any]:
+    """
+    Like ``parse_json``, but always returns a ``dict``.
+
+    LLMs sometimes wrap the object in a one-element list; unwrap that.
+    """
+    parsed = parse_json(text)
+    if isinstance(parsed, dict):
+        return parsed
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, dict):
+                return item
+        raise ValueError(f"{context}: expected a JSON object, got a list with no object element")
+    raise ValueError(f"{context}: expected a JSON object, got {type(parsed).__name__}")

@@ -126,12 +126,12 @@ class _CrashRunCardState extends ConsumerState<CrashRunCard> {
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: () {
+                                final prevSkip = stateMap?['skip_jira_creation'] == true;
                                 final req = RunRequest(
                                   mode: RunMode.single,
                                   crashId: s.crashId,
-                                  // Keep defaults consistent with NewRunPage.
                                   mock: false,
-                                  skipJiraCreation: true,
+                                  skipJiraCreation: prevSkip,
                                 );
                                 ref.read(runSessionProvider.notifier).start(req);
                                 context.go('/runs/live');

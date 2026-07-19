@@ -1,6 +1,6 @@
- 
 from app.services.jira_service import create_jira_issue
 from app.services.crash_store import CrashStore
+
 
 def jira_create(state):
     crash_id = state.get("crash_id")
@@ -8,6 +8,21 @@ def jira_create(state):
     platform = state.get("platform")
     app_version = state.get("app_version")
     device = state.get("device")
+
+    # Re-run: reuse an existing ticket instead of creating a duplicate.
+    existing = str(state.get("jira_issue_id") or "").strip()
+    if existing:
+        state["jira_issue_id"] = existing
+        cid = state.get("crash_id")
+        if cid:
+            repo_key = (state.get("repo_key") or "").strip() or None
+            fpid = (state.get("firebase_project_id") or "").strip() or None
+            CrashStore(repo_key=repo_key, project_id=fpid).set_pipeline_flags(
+                cid,
+                jira_created=True,
+                jira_issue_id=existing,
+            )
+        return state
 
     summary = state.get("summary") or f"[AI Crash Fix] {exception or crash_id or 'Crash'}"
 

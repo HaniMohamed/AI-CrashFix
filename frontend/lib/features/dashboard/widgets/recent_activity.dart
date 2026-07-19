@@ -156,7 +156,7 @@ class _Row extends StatelessWidget {
                       mode: RunMode.single,
                       crashId: c.crashId,
                       mock: false,
-                      skipJiraCreation: true,
+                      skipJiraCreation: c.skipJiraCreation,
                     );
                     ref.read(runSessionProvider.notifier).start(req);
                     context.go('/runs/live');
