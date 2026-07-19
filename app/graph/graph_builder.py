@@ -4,6 +4,7 @@ from app.graph.nodes.map_stacktrace import map_stacktrace
 from app.graph.nodes.repo_context import repo_context
 from app.graph.nodes.llm_analysis import llm_analysis
 from app.graph.nodes.jira_create import jira_create
+from app.graph.nodes.jira_update import jira_update
 from app.graph.nodes.git_regression import git_regression
 from app.graph.fix_generation_graph.nodes.generate_fix import generate_fix_node
 from app.graph.fix_generation_graph.nodes.review_fix import review_fix_node
@@ -40,6 +41,7 @@ def build_graph():
     graph.add_node("review_fix", instrument_node("review_fix", review_fix_node))
     graph.add_node("validate_fix", instrument_node("validate_fix", validate_fix_node))
     graph.add_node("generate_pr", instrument_node("generate_pr", generate_pr_node))
+    graph.add_node("jira_update", instrument_node("jira_update", jira_update))
     graph.add_node("fallback", instrument_node("fallback", fallback_node))
 
     graph.set_entry_point("map_stacktrace")
@@ -93,7 +95,8 @@ def build_graph():
         },
     )
 
-    graph.add_edge("generate_pr", END)
+    graph.add_edge("generate_pr", "jira_update")
+    graph.add_edge("jira_update", END)
     graph.add_edge("fallback", END)
 
     return graph.compile()

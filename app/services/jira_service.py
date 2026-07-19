@@ -307,3 +307,210 @@ def mock_create_jira_issue(
     if parent:
         out["fields"] = {"parent": {"key": parent}, "issuetype": {"name": issue_type}}
     return out
+
+
+def _resolve_eff(*, repo_key: str | None = None) -> EffectiveJiraConfig:
+    return SettingsResolver().effective_jira(repo_key=(repo_key or "").strip() or None)
+
+
+def _jira_request(
+    eff: EffectiveJiraConfig,
+    method: str,
+    path: str,
+    *,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Perform a Jira REST call. Returns parsed JSON or None for empty bodies."""
+    base_url = _jira_base_url(eff)
+    url = f"{base_url}{path}"
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    headers = {
+        "Authorization": _jira_auth_header(eff),
+        "Accept": "application/json",
+    }
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method.upper(), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30, context=_jira_ssl_context(eff)) as resp:
+            raw = resp.read() or b""
+            if not raw.strip():
+                return None
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except json.JSONDecodeError:
+                return {"raw_response": raw.decode("utf-8", errors="replace")}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        detail = _summarize_jira_error_body(body) or body
+        raise RuntimeError(f"Jira API error ({exc.code}) {method.upper()} {path}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Jira request failed: {exc}") from exc
+
+
+def get_jira_issue(
+    issue_key: str,
+    *,
+    fields: str = "description,status",
+    mock: bool = False,
+    repo_key: str | None = None,
+) -> dict[str, Any]:
+    """Fetch a Jira issue (default: description + status)."""
+    key = (issue_key or "").strip().upper()
+    if not key:
+        raise RuntimeError("Missing Jira issue key.")
+    if mock:
+        return {
+            "key": key,
+            "fields": {
+                "description": "Mock description",
+                "status": {"name": "In Progress", "id": "3"},
+            },
+        }
+    eff = _resolve_eff(repo_key=repo_key)
+    field_q = urllib.request.quote(fields, safe=",")
+    result = _jira_request(eff, "GET", f"/rest/api/2/issue/{urllib.request.quote(key, safe='')}?fields={field_q}")
+    return result or {}
+
+
+def update_jira_issue_description(
+    issue_key: str,
+    description: str,
+    *,
+    mock: bool = False,
+    repo_key: str | None = None,
+) -> dict[str, Any]:
+    """Replace the issue description via PUT /rest/api/2/issue/{key}."""
+    key = (issue_key or "").strip().upper()
+    if not key:
+        raise RuntimeError("Missing Jira issue key.")
+    if mock:
+        return {"key": key, "updated": True, "description": description}
+    eff = _resolve_eff(repo_key=repo_key)
+    _jira_request(
+        eff,
+        "PUT",
+        f"/rest/api/2/issue/{urllib.request.quote(key, safe='')}",
+        payload={"fields": {"description": description}},
+    )
+    return {"key": key, "updated": True}
+
+
+def transition_jira_issue(
+    issue_key: str,
+    transition_name: str = "Done",
+    *,
+    mock: bool = False,
+    repo_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Transition an issue by transition **name** (case-insensitive).
+
+    Looks up available transitions via GET .../transitions, then POSTs the match.
+    Returns ``{"skipped": True, "reason": ...}`` when already in the target status
+    or when no matching transition exists (does not raise).
+    """
+    key = (issue_key or "").strip().upper()
+    wanted = (transition_name or "").strip()
+    if not key:
+        raise RuntimeError("Missing Jira issue key.")
+    if not wanted:
+        raise RuntimeError("Missing Jira transition name.")
+
+    if mock:
+        return {"key": key, "transitioned": True, "transition": wanted, "mock": True}
+
+    eff = _resolve_eff(repo_key=repo_key)
+    encoded = urllib.request.quote(key, safe="")
+
+    # Skip if already in the target status (status name often matches transition name).
+    try:
+        issue = get_jira_issue(key, fields="status", mock=False, repo_key=repo_key)
+        status_name = (
+            ((issue.get("fields") or {}).get("status") or {}).get("name") or ""
+        ).strip()
+        if status_name.lower() == wanted.lower():
+            return {"key": key, "skipped": True, "reason": f"already_{status_name}"}
+    except Exception:
+        # Transition lookup below is authoritative; ignore status prefetch failures.
+        pass
+
+    listed = _jira_request(eff, "GET", f"/rest/api/2/issue/{encoded}/transitions") or {}
+    transitions = listed.get("transitions") if isinstance(listed, dict) else None
+    if not isinstance(transitions, list):
+        transitions = []
+
+    match: dict[str, Any] | None = None
+    for t in transitions:
+        if not isinstance(t, dict):
+            continue
+        name = str(t.get("name") or "").strip()
+        if name.lower() == wanted.lower():
+            match = t
+            break
+        # Some workflows name the transition after the target status to-status.
+        to_name = str(((t.get("to") or {}) if isinstance(t.get("to"), dict) else {}).get("name") or "").strip()
+        if to_name.lower() == wanted.lower():
+            match = t
+            break
+
+    if not match:
+        return {
+            "key": key,
+            "skipped": True,
+            "reason": "no_matching_transition",
+            "wanted": wanted,
+            "available": [str(t.get("name") or "") for t in transitions if isinstance(t, dict)],
+        }
+
+    tid = str(match.get("id") or "").strip()
+    if not tid:
+        return {"key": key, "skipped": True, "reason": "missing_transition_id"}
+
+    _jira_request(
+        eff,
+        "POST",
+        f"/rest/api/2/issue/{encoded}/transitions",
+        payload={"transition": {"id": tid}},
+    )
+    return {
+        "key": key,
+        "transitioned": True,
+        "transition": str(match.get("name") or wanted),
+        "transition_id": tid,
+    }
+
+
+def format_mr_description_block(*, pr_url: str, pr_branch: str | None = None) -> str:
+    """Wiki-markup block appended to a Jira description after MR creation."""
+    url = (pr_url or "").strip()
+    branch = (pr_branch or "").strip()
+    lines = [
+        "----",
+        "h3. AI Crash Fix — Merge Request",
+        f"*MR:* [Open MR|{url}]" if url else "*MR:* (missing)",
+    ]
+    if branch:
+        lines.append(f"*Branch:* `{branch}`")
+    return "\n".join(lines)
+
+
+def append_mr_block_to_description(
+    description: str | None,
+    *,
+    pr_url: str,
+    pr_branch: str | None = None,
+) -> tuple[str, bool]:
+    """
+    Append the MR block to ``description`` unless ``pr_url`` is already present.
+
+    Returns ``(new_description, changed)``.
+    """
+    url = (pr_url or "").strip()
+    current = description if isinstance(description, str) else ("" if description is None else str(description))
+    if url and url in current:
+        return current, False
+    block = format_mr_description_block(pr_url=url, pr_branch=pr_branch)
+    if current.strip():
+        return current.rstrip() + "\n\n" + block, True
+    return block, True

@@ -48,6 +48,8 @@ class CrashState(TypedDict, total=False):
 
     # Browse key from Jira create (e.g. DE-12345), not the internal numeric id.
     jira_issue_id: str | None
+    # Best-effort post-MR Jira update (description + status); does not fail the run.
+    jira_update_error: str | None
 
     # Fix generation state
     generated_fix: str | None

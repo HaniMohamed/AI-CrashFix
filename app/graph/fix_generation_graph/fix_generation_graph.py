@@ -6,6 +6,7 @@ from app.graph.fix_generation_graph.nodes.review_fix import review_fix_node
 from app.graph.fix_generation_graph.nodes.validate_fix import validate_fix_node
 from app.graph.fix_generation_graph.nodes.generate_pr import generate_pr_node
 from app.graph.fix_generation_graph.nodes.fallback import fallback_node
+from app.graph.nodes.jira_update import jira_update
 from app.graph.observability import instrument_node, instrument_router
 from app.graph.state import CrashState
 
@@ -18,6 +19,7 @@ def build_fix_subgraph():
     fix_graph.add_node("review_fix", instrument_node(f"{log_prefix}review_fix", review_fix_node))
     fix_graph.add_node("validate_fix", instrument_node(f"{log_prefix}validate_fix", validate_fix_node))
     fix_graph.add_node("generate_pr", instrument_node(f"{log_prefix}generate_pr", generate_pr_node))
+    fix_graph.add_node("jira_update", instrument_node(f"{log_prefix}jira_update", jira_update))
     fix_graph.add_node("fallback", instrument_node(f"{log_prefix}fallback", fallback_node))
 
     fix_graph.set_entry_point("generate_fix")
@@ -46,7 +48,8 @@ def build_fix_subgraph():
         },
     )
 
-    fix_graph.add_edge("generate_pr", END)
+    fix_graph.add_edge("generate_pr", "jira_update")
+    fix_graph.add_edge("jira_update", END)
     fix_graph.add_edge("fallback", END)
 
     return fix_graph.compile()

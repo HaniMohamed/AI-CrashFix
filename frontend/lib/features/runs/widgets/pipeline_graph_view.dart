@@ -404,6 +404,7 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     _GraphNode(id: 'validate_fix', label: 'Validate fix', isRouter: false),
     _GraphNode(id: 'route_after_validate_fix', label: 'Route', isRouter: true),
     _GraphNode(id: 'generate_pr', label: 'Generate PR', isRouter: false),
+    _GraphNode(id: 'jira_update', label: 'Update Jira', isRouter: false),
     _GraphNode(id: 'fallback', label: 'Fallback', isRouter: false),
   ];
 
@@ -467,6 +468,7 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
       label: 'fail',
       routerId: 'route_after_validate_fix',
     ),
+    _GraphEdge(from: 'generate_pr', to: 'jira_update', kind: _EdgeKind.normal),
   ];
 
   _GraphModel _buildModel(List<RunEvent> events) {
@@ -1165,6 +1167,7 @@ _FixedLayout? _fixedLayoutForIds(Set<String> ids) {
     ['validate_fix'],
     ['route_after_validate_fix'],
     ['generate_pr', 'fallback'],
+    ['jira_update'],
   ];
 
   for (final required in const [
