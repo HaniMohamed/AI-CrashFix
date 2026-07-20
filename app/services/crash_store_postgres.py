@@ -15,6 +15,8 @@ from app.services.crash_store_common import (
     recompute_pipeline_complete,
     row_to_dict,
 )
+from app.services.postgres_schema import ensure_app_postgres_schema
+from app.services.user_context import resolve_user_id
 
 _ALL_COLUMNS = (
     "crash_id",
@@ -23,34 +25,9 @@ _ALL_COLUMNS = (
     "status",
     "created_at",
     "updated_at",
+    "created_by_user_id",
     *PIPELINE_FLAG_COLUMNS,
 )
-
-_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS crashes (
-  firebase_project_id TEXT NOT NULL,
-  crash_id TEXT NOT NULL,
-  jira_issue_id TEXT,
-  pr_url TEXT,
-  status TEXT NOT NULL DEFAULT 'in_progress',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  result JSONB,
-  analysis_done BOOLEAN NOT NULL DEFAULT FALSE,
-  jira_created BOOLEAN NOT NULL DEFAULT FALSE,
-  fix_generated BOOLEAN NOT NULL DEFAULT FALSE,
-  fix_validated BOOLEAN NOT NULL DEFAULT FALSE,
-  diff_applied BOOLEAN NOT NULL DEFAULT FALSE,
-  branch_created BOOLEAN NOT NULL DEFAULT FALSE,
-  mr_created BOOLEAN NOT NULL DEFAULT FALSE,
-  pipeline_complete BOOLEAN NOT NULL DEFAULT FALSE,
-  PRIMARY KEY (firebase_project_id, crash_id)
-);
-CREATE INDEX IF NOT EXISTS idx_crashes_project_updated
-  ON crashes (firebase_project_id, updated_at DESC);
-"""
-
-_schema_ready = False
 
 
 def _crash_db_url() -> str:
@@ -63,15 +40,8 @@ def _crash_db_url() -> str:
 
 
 def ensure_postgres_schema(conn: psycopg.Connection) -> None:
-    global _schema_ready
-    if _schema_ready:
-        return
-    with conn.cursor() as cur:
-        for statement in (part.strip() for part in _SCHEMA_SQL.split(";")):
-            if statement:
-                cur.execute(statement)
-    conn.commit()
-    _schema_ready = True
+    """Compatibility wrapper; prefer :func:`ensure_app_postgres_schema`."""
+    ensure_app_postgres_schema(conn)
 
 
 def check_postgres_crash_store(*, connect_timeout: int = 3) -> tuple[bool, str | None]:
@@ -107,22 +77,25 @@ class PostgresCrashStore:
         self.db_path = _crash_db_url()
         self.store_key = f"postgres:{self.project_id}"
         with self._connect() as conn:
-            ensure_postgres_schema(conn)
+            ensure_app_postgres_schema(conn)
 
     def _connect(self) -> psycopg.Connection:
         return psycopg.connect(self.db_path, row_factory=dict_row)
 
     def insert_crash(self, crash_id: str) -> None:
         now = datetime.utcnow()
+        created_by = resolve_user_id(required=False)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO crashes (firebase_project_id, crash_id, created_at, updated_at, status)
-                    VALUES (%s, %s, %s, %s, 'in_progress')
+                    INSERT INTO crashes (
+                      firebase_project_id, crash_id, created_at, updated_at, status, created_by_user_id
+                    )
+                    VALUES (%s, %s, %s, %s, 'in_progress', %s)
                     ON CONFLICT (firebase_project_id, crash_id) DO NOTHING
                     """,
-                    (self.project_id, crash_id, now, now),
+                    (self.project_id, crash_id, now, now, created_by),
                 )
             conn.commit()
 

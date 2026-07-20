@@ -191,8 +191,12 @@ GITLAB_SSL_CA_BUNDLE = os.getenv("GITLAB_SSL_CA_BUNDLE")
 AI_CRASH_FIX_GRAPH_LOG_LEVEL = os.getenv("AI_CRASH_FIX_GRAPH_LOG_LEVEL")
 AI_CRASH_FIX_GRAPH_LOG_STYLE = os.getenv("AI_CRASH_FIX_GRAPH_LOG_STYLE")
 
-# Crash pipeline store: "sqlite" (default, local files) or "postgres" (shared remote).
+# Unified app store backend: "sqlite" (default, local files) or "postgres" (shared remote).
+# When postgres, this single switch covers crashes, repos, app_settings, app_state, and repo_indexes.
 AI_CRASH_FIX_CRASH_STORE_BACKEND = (
     (os.getenv("AI_CRASH_FIX_CRASH_STORE_BACKEND") or "sqlite").strip().lower()
 )
 AI_CRASH_FIX_CRASH_DB_URL = (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip() or None
+# Preferred user id for per-user Postgres rows AND GOSI Brain custom_session.
+# When set, GOSI_BRAIN_USER_ID is ignored for identity.
+AI_CRASH_FIX_USER_ID = (os.getenv("AI_CRASH_FIX_USER_ID") or "").strip() or None

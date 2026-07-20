@@ -13,12 +13,12 @@ from app.services.crash_store_common import (
     row_to_dict,
     recompute_pipeline_complete,
 )
-
 from app.services.sqlite_util import (
     connect_sqlite,
     mark_schema_ensured,
     schema_needs_ensure,
 )
+from app.services.user_context import resolve_user_id
 
 _ALL_COLUMNS = (
     "crash_id",
@@ -27,6 +27,7 @@ _ALL_COLUMNS = (
     "status",
     "created_at",
     "updated_at",
+    "created_by_user_id",
     *PIPELINE_FLAG_COLUMNS,
 )
 
@@ -128,16 +129,19 @@ class SqliteCrashStore:
                 conn.execute(
                     f"ALTER TABLE crashes ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0"
                 )
+        if "created_by_user_id" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN created_by_user_id TEXT")
 
     def insert_crash(self, crash_id: str) -> None:
         now = datetime.utcnow().isoformat()
+        created_by = resolve_user_id(required=False)
         with self._connect() as conn:
             conn.execute(
                 """
-        INSERT OR IGNORE INTO crashes (crash_id, created_at, updated_at, status)
-        VALUES (?, ?, ?, 'in_progress')
+        INSERT OR IGNORE INTO crashes (crash_id, created_at, updated_at, status, created_by_user_id)
+        VALUES (?, ?, ?, 'in_progress', ?)
         """,
-                (crash_id, now, now),
+                (crash_id, now, now, created_by),
             )
             conn.commit()
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 
 class DeleteRepoDialog extends ConsumerStatefulWidget {
@@ -34,6 +35,8 @@ class _DeleteRepoDialogState extends ConsumerState<DeleteRepoDialog> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
+    final repoDataReadonly =
+        ref.watch(healthProvider).valueOrNull?.repoDataReadonly == true;
     return AlertDialog(
       backgroundColor: palette.surface2,
       title: Text('Delete repository', style: theme.titleLarge),
@@ -43,6 +46,14 @@ class _DeleteRepoDialogState extends ConsumerState<DeleteRepoDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (repoDataReadonly)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Repo data is read-only on this machine. Deletion is disabled.',
+                  style: theme.bodySmall?.copyWith(color: palette.warning),
+                ),
+              ),
             Text(
               'This will delete the repository entry and ALL related local data '
               '(cloned workspace + crash database).',
@@ -56,7 +67,7 @@ class _DeleteRepoDialogState extends ConsumerState<DeleteRepoDialog> {
             const SizedBox(height: 8),
             TextField(
               controller: _ctrl,
-              enabled: !_deleting,
+              enabled: !_deleting && !repoDataReadonly,
               decoration: InputDecoration(hintText: widget.repoName),
             ),
             if (_error != null) ...[
@@ -72,7 +83,7 @@ class _DeleteRepoDialogState extends ConsumerState<DeleteRepoDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _deleting
+          onPressed: (_deleting || repoDataReadonly)
               ? null
               : () async {
                   final nav = Navigator.of(context);

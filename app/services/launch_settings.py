@@ -124,17 +124,39 @@ def persist_launch_env_overrides() -> list[str]:
     ``AI_CRASH_FIX_ENV_FILE`` was applied, ``AI_CRASH_FIX_LAUNCH_ENV_KEYS`` lists
     env keys to persist into SQLite so Settings reflects the launch configuration.
     """
+    from app.services.repo_data_guard import is_repo_data_readonly
+
     apply_launch_env_file()
+
+    if is_repo_data_readonly():
+        return []
 
     marker = (os.environ.get("AI_CRASH_FIX_LAUNCH_ENV_KEYS") or "").strip()
     if not marker:
         return []
 
+    from app.services.user_context import assert_postgres_user_id_configured
+
+    try:
+        assert_postgres_user_id_configured()
+    except ValueError:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Skipping launch env persist: postgres backend requires AI_CRASH_FIX_USER_ID "
+            "(or GOSI_BRAIN_USER_ID as fallback)"
+        )
+        return []
+
     store = AppSettingsStore()
     persisted: list[str] = []
+    crash_fix_uid = (os.environ.get("AI_CRASH_FIX_USER_ID") or "").strip()
     for key in marker.split(","):
         k = key.strip()
         if not k or k not in _APP_SETTINGS_ENV_KEYS:
+            continue
+        # AI_CRASH_FIX_USER_ID owns identity; do not mirror GOSI_BRAIN_USER_ID into settings.
+        if k == "GOSI_BRAIN_USER_ID" and crash_fix_uid:
             continue
         raw = os.environ.get(k)
         if raw is None:

@@ -38,6 +38,8 @@ class AppTopbar extends ConsumerWidget {
           const Spacer(),
           _RepoPicker(async: reposAsync),
           const SizedBox(width: AppSpacing.md),
+          const _UserIdChip(),
+          const SizedBox(width: AppSpacing.sm),
           const _HealthPill(),
           const SizedBox(width: AppSpacing.md),
           _BaseUrlPopover(currentUrl: settings.apiBaseUrl),
@@ -262,6 +264,33 @@ class _SearchOrTitle extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _UserIdChip extends ConsumerWidget {
+  const _UserIdChip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final userId = ref.watch(healthProvider).valueOrNull?.userId;
+    if (userId == null || userId.isEmpty) return const SizedBox.shrink();
+    return Tooltip(
+      message: 'Machine user ID (shared DB scope)\n$userId',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: palette.surface2,
+          border: Border.all(color: palette.border),
+          borderRadius: AppRadii.all(AppRadii.pill),
+        ),
+        child: Text(
+          'you · $userId',
+          style: theme.labelMedium?.copyWith(color: palette.textSecondary),
+        ),
+      ),
     );
   }
 }

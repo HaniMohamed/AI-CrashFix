@@ -1,19 +1,10 @@
 from __future__ import annotations
 
-import json
 import os
-import sqlite3
 import threading
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
-
-from app.services.sqlite_util import (
-    connect_sqlite,
-    mark_schema_ensured,
-    schema_needs_ensure,
-)
 
 
 def _data_dir() -> Path | None:
@@ -70,37 +61,51 @@ class AppSettingsSnapshot:
     updated_at: str | None
 
 
+def _singleton_key(db_path: str | None = None) -> str:
+    from app.services.crash_store import uses_postgres_crash_store
+    from app.services.user_context import resolve_user_id
+
+    if uses_postgres_crash_store():
+        user_id = resolve_user_id(required=True)
+        return f"postgres:{user_id}"
+    return f"sqlite:{resolve_app_settings_db_path(db_path)}"
+
+
 class AppSettingsStore:
     """
-    Global, backend-persisted settings (editable from UI) with .env fallback.
+    Settings facade (SQLite local or shared Postgres per user).
 
-    Secrets are stored but never returned.
-
-    One process-wide instance is reused per DB path so we do not open SQLite
-    (and re-run schema checks) on every SettingsResolver / API call.
+    Secrets are stored but never returned by API layers.
     """
 
     _shared: ClassVar[dict[str, AppSettingsStore]] = {}
     _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __new__(cls, db_path: str | None = None) -> AppSettingsStore:
-        path = resolve_app_settings_db_path(db_path)
+        key = _singleton_key(db_path)
         with cls._shared_lock:
-            existing = cls._shared.get(path)
+            existing = cls._shared.get(key)
             if existing is not None:
                 return existing
             obj = super().__new__(cls)
-            cls._shared[path] = obj
+            cls._shared[key] = obj
             obj._singleton_ready = False  # type: ignore[attr-defined]
             return obj
 
     def __init__(self, db_path: str | None = None) -> None:
         if getattr(self, "_singleton_ready", False):
             return
-        self.db_path = resolve_app_settings_db_path(db_path)
-        self._cache: dict[str, Any] | None = None
-        self._cache_lock = threading.Lock()
-        self._ensure_schema()
+        from app.services.crash_store import uses_postgres_crash_store
+
+        if uses_postgres_crash_store():
+            from app.services.app_settings_postgres import PostgresAppSettingsStore
+
+            self._impl = PostgresAppSettingsStore()
+        else:
+            from app.services.app_settings_sqlite import SqliteAppSettingsStore
+
+            self._impl = SqliteAppSettingsStore(db_path=db_path)
+        self.db_path = self._impl.db_path
         self._singleton_ready = True
 
     @classmethod
@@ -108,86 +113,14 @@ class AppSettingsStore:
         with cls._shared_lock:
             cls._shared.clear()
 
-    def _connect(self) -> sqlite3.Connection:
-        return connect_sqlite(self.db_path)
-
-    def _ensure_schema(self) -> None:
-        if not schema_needs_ensure(f"app_settings:{self.db_path}"):
-            return
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS app_settings (
-                    k TEXT PRIMARY KEY,
-                    v TEXT,
-                    updated_at TEXT
-                )
-                """
-            )
-            conn.commit()
-        mark_schema_ensured(f"app_settings:{self.db_path}")
-
-    def _invalidate_cache(self) -> None:
-        with self._cache_lock:
-            self._cache = None
-
     def get_all(self) -> dict[str, Any]:
-        """Load all settings in one connection (cached until the next set)."""
-        with self._cache_lock:
-            if self._cache is not None:
-                return dict(self._cache)
-
-        out: dict[str, Any] = {}
-        with self._connect() as conn:
-            rows = conn.execute("SELECT k, v FROM app_settings").fetchall()
-        for key, raw in rows:
-            k = str(key or "").strip()
-            if not k:
-                continue
-            if raw is None:
-                out[k] = None
-                continue
-            try:
-                out[k] = json.loads(str(raw))
-            except Exception:
-                out[k] = None
-
-        with self._cache_lock:
-            self._cache = out
-            return dict(out)
+        return self._impl.get_all()
 
     def set(self, *, k: str, v: Any) -> None:
-        key = (k or "").strip()
-        if not key:
-            raise ValueError("k is required")
-        now = datetime.utcnow().isoformat()
-        payload = json.dumps(v, ensure_ascii=False)
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO app_settings(k, v, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(k) DO UPDATE SET
-                  v = excluded.v,
-                  updated_at = excluded.updated_at
-                """,
-                (key, payload, now),
-            )
-            conn.commit()
-        self._invalidate_cache()
+        self._impl.set(k=k, v=v)
 
     def get(self, *, k: str) -> Any | None:
-        key = (k or "").strip()
-        if not key:
-            return None
-        return self.get_all().get(key)
+        return self._impl.get(k=k)
 
     def get_updated_at(self) -> str | None:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT updated_at FROM app_settings ORDER BY datetime(updated_at) DESC LIMIT 1"
-            ).fetchone()
-        if not row:
-            return None
-        v = row[0]
-        return str(v).strip() or None
+        return self._impl.get_updated_at()

@@ -127,16 +127,25 @@ Crash store:
 
 Host Postgres with Docker Compose under [`infra/postgres/`](../infra/postgres/README.md).
 
-## Shared crash store (Postgres)
+## Shared app store (Postgres)
 
-The repo registry stays on local SQLite. Crash pipeline progress can use local
-SQLite (default) or a team Postgres database keyed by Firebase project id.
+When `AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres`, **crashes, repos, settings,
+app_state, and repo_indexes** all live in the shared Postgres database
+(`AI_CRASH_FIX_CRASH_DB_URL`). Repos/settings are scoped by
+`AI_CRASH_FIX_USER_ID` (case-insensitive; when set, `GOSI_BRAIN_USER_ID` is ignored).
+Crash inventory stays shared by Firebase project; rows record
+`created_by_user_id` for audit.
+
+Set `REPO_DATA_READONLY` in app settings (per user on Postgres) to block UI/API writes to repos,
+settings, secrets, and index metadata. Use `scripts/set_repo_data_readonly.py true|false`.
+
+Default remains local SQLite under `db/` when backend is `sqlite`.
 
 Manual verification:
 
 - Default SQLite: existing `db/*.db` files are untouched; batch dedup still works.
-- Postgres: two clients with the same Firebase project see the same crashes and `already_processed` skips.
-- Import: dry-run row counts match expectations; spot-check a known `crash_id` in Postgres.
+- Postgres: two clients with the same Firebase project see the same crashes and `already_processed` skips; each client's repos/settings are private to their user id.
+- Import: `scripts/migrate_app_store_to_postgres.py --user-id … --data-dir …` dry-run row counts match expectations.
 
 ## Build steps (on your machine)
 

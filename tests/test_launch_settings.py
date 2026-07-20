@@ -49,9 +49,9 @@ def test_persist_launch_env_overrides_skips_unknown_keys(monkeypatch) -> None:
         monkeypatch.setenv("AI_CRASH_FIX_REPO_REGISTRY_DB", str(db))
         monkeypatch.setenv(
             "AI_CRASH_FIX_LAUNCH_ENV_KEYS",
-            "AI_CRASH_FIX_CRASH_STORE_BACKEND,OPENAI_MODEL",
+            "NOT_A_SETTINGS_KEY,OPENAI_MODEL",
         )
-        monkeypatch.setenv("AI_CRASH_FIX_CRASH_STORE_BACKEND", "postgres")
+        monkeypatch.setenv("NOT_A_SETTINGS_KEY", "should-not-persist")
         monkeypatch.setenv("OPENAI_MODEL", "gpt-4o-mini")
 
         persisted = persist_launch_env_overrides()
@@ -59,7 +59,7 @@ def test_persist_launch_env_overrides_skips_unknown_keys(monkeypatch) -> None:
 
         store = AppSettingsStore()
         assert store.get(k="OPENAI_MODEL") == "gpt-4o-mini"
-        assert store.get(k="AI_CRASH_FIX_CRASH_STORE_BACKEND") is None
+        assert store.get(k="NOT_A_SETTINGS_KEY") is None
 
 
 def test_apply_launch_env_file_loads_and_marks_keys(monkeypatch, tmp_path: Path) -> None:

@@ -8,6 +8,18 @@ class BackendSettingsState {
 
   Map<String, dynamic> section(String name) =>
       (raw[name] as Map?)?.cast<String, dynamic>() ?? const {};
+
+  /// Machine identity for shared Postgres scoping (case-insensitive elsewhere).
+  String? get userId {
+    final v = raw['user_id'];
+    if (v == null) return null;
+    final s = '$v'.trim();
+    return s.isEmpty ? null : s;
+  }
+
+  bool get userIdEditable => raw['user_id_editable'] == true;
+
+  bool get repoDataReadonly => raw['repo_data_readonly'] == true;
 }
 
 class BackendSettingsNotifier extends AsyncNotifier<BackendSettingsState> {

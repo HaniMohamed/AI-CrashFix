@@ -221,11 +221,16 @@ async def health() -> Dict[str, Any]:
     # the whole API (which previously looked like "API offline").
     import asyncio
 
+    from app.services.repo_data_guard import is_repo_data_readonly
+    from app.services.user_context import resolve_user_id
+
     crash_store = await asyncio.to_thread(crash_store_health)
     # `ok` means the API process is up. Crash-store health is separate so a
     # Postgres blip does not make the UI treat the backend as dead.
     return {
         "ok": True,
+        "user_id": resolve_user_id(required=False),
+        "repo_data_readonly": is_repo_data_readonly(),
         "crash_store": crash_store,
     }
 
@@ -305,6 +310,12 @@ async def post_runs(req: RunRequest) -> StreamingResponse:
             status_code=400,
             detail="mode='single' requires a non-empty 'crash_id' in the request body",
         )
+    from app.services.user_context import assert_postgres_user_id_configured
+
+    try:
+        assert_postgres_user_id_configured()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return StreamingResponse(
         _ndjson_stream(req),
@@ -362,13 +373,22 @@ async def get_analytics(
 
 @app.get("/api/repos")
 async def list_repos() -> Dict[str, Any]:
+    from app.services.repo_data_guard import is_repo_data_readonly
+
     reg = RepoRegistryStore()
     items = [e.__dict__ for e in reg.list_repos()]
-    return {"items": items, "count": len(items)}
+    return {
+        "items": items,
+        "count": len(items),
+        "repo_data_readonly": is_repo_data_readonly(),
+    }
 
 
 @app.post("/api/repos")
 async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
+    from app.services.repo_data_guard import ensure_repo_data_writable
+
+    ensure_repo_data_writable()
     reg = RepoRegistryStore()
     try:
         # Validate by cloning/checking out before persisting in registry.
@@ -462,6 +482,9 @@ async def select_repo(req: RepoSelectRequest) -> Dict[str, Any]:
 
 @app.delete("/api/repos/{repo_key}")
 async def delete_repo(repo_key: str, req: RepoDeleteRequest) -> Dict[str, Any]:
+    from app.services.repo_data_guard import ensure_repo_data_writable
+
+    ensure_repo_data_writable()
     reg = RepoRegistryStore()
     entry = reg.get_repo(repo_key)
     if entry is None:
@@ -630,6 +653,9 @@ async def get_repo_effective_config(repo_key: str) -> Dict[str, Any]:
 
 @app.post("/api/repos/{repo_key}/refresh")
 async def refresh_repo(repo_key: str) -> Dict[str, Any]:
+    from app.services.repo_data_guard import ensure_repo_data_writable
+
+    ensure_repo_data_writable()
     key = (repo_key or "").strip()
     if not key:
         raise HTTPException(status_code=400, detail="repo_key is required")
@@ -790,7 +816,10 @@ async def get_settings() -> Dict[str, Any]:
     """
     from app import config as cfg
     from app.services.app_settings_store import AppSettingsStore
+    from app.services.crash_store import uses_postgres_crash_store
+    from app.services.repo_data_guard import is_repo_data_readonly
     from app.services.settings_resolver import SettingsResolver
+    from app.services.user_context import resolve_user_id
 
     store = AppSettingsStore()
     gb = SettingsResolver().effective_gosi_brain()
@@ -815,6 +844,9 @@ async def get_settings() -> Dict[str, Any]:
     # Per-repo Jira overrides (server, email, token, project, issue type) live on each repo row.
     return {
         "updated_at": store.get_updated_at(),
+        "user_id": resolve_user_id(required=False),
+        "user_id_editable": not uses_postgres_crash_store(),
+        "repo_data_readonly": is_repo_data_readonly(),
         "llm": {
             "provider": eff_str("LLM_PROVIDER", cfg.LLM_PROVIDER),
             "openai_model": eff_str("OPENAI_MODEL", cfg.OPENAI_MODEL),
@@ -872,12 +904,21 @@ class SettingsUpdateRequest(BaseModel):
     crashlytics: Optional[Dict[str, Any]] = None
     jira: Optional[Dict[str, Any]] = None
     gitlab: Optional[Dict[str, Any]] = None
+    repo_data_readonly: Optional[bool] = None
 
 
 @app.post("/api/settings")
 async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     from app.services.app_settings_store import AppSettingsStore
+    from app.services.repo_data_guard import (
+        SETTINGS_KEY_REPO_DATA_READONLY,
+        ensure_repo_data_writable,
+        is_repo_data_readonly,
+    )
 
+    unlocking = req.repo_data_readonly is False and is_repo_data_readonly()
+    if not unlocking:
+        ensure_repo_data_writable()
     store = AppSettingsStore()
 
     def set_if_present(d: Dict[str, Any] | None, field: str, key: str) -> None:
@@ -916,7 +957,11 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     set_if_present(req.llm, "gosi_brain_temperature", "GOSI_BRAIN_TEMPERATURE")
     set_if_present(req.llm, "gosi_brain_api_key", "GOSI_BRAIN_API_KEY")
     set_if_present(req.llm, "gosi_brain_authorization", "GOSI_BRAIN_AUTHORIZATION")
-    set_if_present(req.llm, "gosi_brain_user_id", "GOSI_BRAIN_USER_ID")
+    # When AI_CRASH_FIX_USER_ID is set it owns identity; do not persist GOSI_BRAIN_USER_ID.
+    from app.services.user_context import ai_crash_fix_user_id_raw
+
+    if not ai_crash_fix_user_id_raw():
+        set_if_present(req.llm, "gosi_brain_user_id", "GOSI_BRAIN_USER_ID")
     set_if_present(req.llm, "gosi_brain_streaming", "GOSI_BRAIN_STREAMING")
     set_if_present(req.llm, "gosi_brain_idle_timeout", "GOSI_BRAIN_IDLE_TIMEOUT")
     set_if_present(req.llm, "gosi_brain_waf_content_shield", "GOSI_BRAIN_WAF_CONTENT_SHIELD")
@@ -941,6 +986,9 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     set_if_present(req.gitlab, "ca_bundle", "GITLAB_SSL_CA_BUNDLE")
     set_if_present(req.gitlab, "token", "GITLAB_TOKEN")
 
+    if req.repo_data_readonly is not None:
+        store.set(k=SETTINGS_KEY_REPO_DATA_READONLY, v=bool(req.repo_data_readonly))
+
     return {"saved": True}
 
 
@@ -951,6 +999,9 @@ async def upload_google_credentials(file: UploadFile = File(...)) -> Dict[str, A
     GOOGLE_APPLICATION_CREDENTIALS override.
     """
     from app.services.app_settings_store import AppSettingsStore
+    from app.services.repo_data_guard import ensure_repo_data_writable
+
+    ensure_repo_data_writable()
     from app import config as cfg
     import json
     from datetime import datetime

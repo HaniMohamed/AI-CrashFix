@@ -12,6 +12,8 @@ class HealthState {
   final String? crashStoreBackend;
   final bool? crashStoreOk;
   final String? crashStoreError;
+  final String? userId;
+  final bool repoDataReadonly;
   final DateTime checkedAt;
   const HealthState({
     this.ok,
@@ -19,6 +21,8 @@ class HealthState {
     this.crashStoreBackend,
     this.crashStoreOk,
     this.crashStoreError,
+    this.userId,
+    this.repoDataReadonly = false,
     required this.checkedAt,
   });
 
@@ -94,11 +98,20 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
         }
       }
       final ok = res['ok'] == true;
+      final rawUserId = res['user_id'];
+      final userId = rawUserId == null
+          ? null
+          : () {
+              final s = '$rawUserId'.trim();
+              return s.isEmpty ? null : s;
+            }();
       final next = HealthState(
         ok: ok,
         crashStoreBackend: crashStoreBackend,
         crashStoreOk: crashStoreOk,
         crashStoreError: crashStoreError,
+        userId: userId,
+        repoDataReadonly: res['repo_data_readonly'] == true,
         checkedAt: DateTime.now(),
       );
       if (ok && !next.crashStoreUnhealthy) {
@@ -129,6 +142,8 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
         crashStoreBackend: _lastGood!.crashStoreBackend,
         crashStoreOk: _lastGood!.crashStoreOk,
         crashStoreError: _lastGood!.crashStoreError,
+        userId: _lastGood!.userId,
+        repoDataReadonly: _lastGood!.repoDataReadonly,
         checkedAt: DateTime.now(),
       );
     }

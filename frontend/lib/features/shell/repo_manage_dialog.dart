@@ -8,6 +8,7 @@ import '../../app/theme/app_theme.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/config_provider.dart';
+import '../../core/providers/health_provider.dart';
 import '../../core/models/repo_entry.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import '../../util/service_account_json_pick.dart';
@@ -384,9 +385,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     final repos = async.valueOrNull?.repos ?? const [];
     final activeKey = async.valueOrNull?.active?.repoKey;
     final statusByKey = async.valueOrNull?.statusByKey ?? const {};
+    final repoDataReadonly =
+        ref.watch(healthProvider).valueOrNull?.repoDataReadonly == true;
+    final fieldsEnabled = !_saving && !repoDataReadonly;
 
     final validationError = _validate();
-    final canSave = !_saving && validationError == null;
+    final canSave = fieldsEnabled && validationError == null;
     final headSha = (_repoStatus?['head_sha'] ?? '').toString().trim();
     final indexedSha =
         ((_repoStatus?['index_status'] as Map?)?['indexed_sha'] ?? '')
@@ -421,7 +425,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                 ),
               const SizedBox(width: 8),
               OutlinedButton.icon(
-                onPressed: _saving ? null : _startNew,
+                onPressed: fieldsEnabled ? _startNew : null,
                 icon: const Icon(Icons.add, size: 16),
                 label: const Text('New'),
               ),
@@ -627,9 +631,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(width: 8),
                         IconButton(
                           tooltip: 'Refresh (fetch + reindex on commit change)',
-                          onPressed: _saving
-                              ? null
-                              : () async {
+                          onPressed: (fieldsEnabled && !_refreshing)
+                              ? () async {
                                   try {
                                     await ref
                                         .read(repoRegistryProvider.notifier)
@@ -638,7 +641,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                     if (!mounted) return;
                                     setState(() => _error = e.toString());
                                   }
-                                },
+                                }
+                              : null,
                           icon: Icon(
                             Icons.refresh,
                             color: palette.textSecondary,
@@ -646,9 +650,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         ),
                         IconButton(
                           tooltip: 'Delete',
-                          onPressed: _saving
-                              ? null
-                              : () => widget.onDelete(r.repoKey, r.name),
+                          onPressed: fieldsEnabled
+                              ? () => widget.onDelete(r.repoKey, r.name)
+                              : null,
                           icon: Icon(
                             Icons.delete_outline,
                             color: palette.danger,
@@ -733,7 +737,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                       children: [
                         TextField(
                           controller: _nameCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Display name',
@@ -743,8 +747,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed:
-                                        _saving ? null : () => _nameCtrl.clear(),
+                                    onPressed: fieldsEnabled
+                                        ? () => _nameCtrl.clear()
+                                        : null,
                                     icon: const Icon(Icons.close),
                                   ),
                           ),
@@ -752,7 +757,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _urlCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Remote repo URL',
@@ -763,8 +768,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed:
-                                        _saving ? null : () => _urlCtrl.clear(),
+                                    onPressed: fieldsEnabled
+                                        ? () => _urlCtrl.clear()
+                                        : null,
                                     icon: const Icon(Icons.close),
                                   ),
                           ),
@@ -772,7 +778,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _refCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Git ref (optional)',
@@ -782,8 +788,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed:
-                                        _saving ? null : () => _refCtrl.clear(),
+                                    onPressed: fieldsEnabled
+                                        ? () => _refCtrl.clear()
+                                        : null,
                                     icon: const Icon(Icons.close),
                                   ),
                           ),
@@ -791,7 +798,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _tokenCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           obscureText: !_showToken,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
@@ -803,7 +810,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               children: [
                                 IconButton(
                                   tooltip: _showToken ? 'Hide' : 'Show',
-                                  onPressed: _saving
+                                  onPressed: !fieldsEnabled
                                       ? null
                                       : () => setState(
                                             () => _showToken = !_showToken,
@@ -817,7 +824,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 if (_tokenCtrl.text.trim().isNotEmpty)
                                   IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _tokenCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -829,7 +836,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _packagesDirsCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Packages dirs (optional)',
@@ -841,7 +848,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _packagesDirsCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -880,7 +887,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                       children: [
                         TextField(
                           controller: _firebaseProjectIdCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Firebase project ID',
@@ -892,7 +899,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _firebaseProjectIdCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -903,7 +910,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: OutlinedButton.icon(
-                            onPressed: _saving || _gcpCredsUploading
+                            onPressed: !fieldsEnabled || _gcpCredsUploading
                                 ? null
                                 : _pickAndUploadGcpCredentials,
                             icon: _gcpCredsUploading
@@ -954,7 +961,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ),
                               )
                               .toList(growable: false),
-                          onChanged: _saving
+                          onChanged: !fieldsEnabled
                               ? null
                               : (v) {
                                   setState(() {
@@ -977,7 +984,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _androidPackageCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Android package name',
@@ -990,7 +997,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _androidPackageCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1000,7 +1007,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _iosBundleIdCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'iOS bundle ID',
@@ -1013,7 +1020,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _iosBundleIdCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1024,7 +1031,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                           const SizedBox(height: 10),
                           TextField(
                             controller: _bqDatasetCtrl,
-                            enabled: !_saving,
+                            enabled: fieldsEnabled,
                             textInputAction: TextInputAction.next,
                             decoration: InputDecoration(
                               labelText: 'BigQuery dataset',
@@ -1039,7 +1046,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                           const SizedBox(height: 10),
                           TextField(
                             controller: _bqAndroidTableCtrl,
-                            enabled: !_saving,
+                            enabled: fieldsEnabled,
                             textInputAction: TextInputAction.next,
                             decoration: InputDecoration(
                               labelText: 'Crashlytics Android table',
@@ -1053,7 +1060,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                           const SizedBox(height: 10),
                           TextField(
                             controller: _bqIosTableCtrl,
-                            enabled: !_saving,
+                            enabled: fieldsEnabled,
                             textInputAction: TextInputAction.next,
                             decoration: InputDecoration(
                               labelText: 'Crashlytics iOS table',
@@ -1097,7 +1104,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                       children: [
                         TextField(
                           controller: _jiraServerUrlCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Jira server URL',
@@ -1110,7 +1117,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _jiraServerUrlCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1120,7 +1127,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _jiraEmailCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Jira email (optional)',
@@ -1133,7 +1140,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _jiraEmailCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1143,7 +1150,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _jiraTokenCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           obscureText: !_showJiraToken,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
@@ -1158,7 +1165,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               children: [
                                 IconButton(
                                   tooltip: _showJiraToken ? 'Hide' : 'Show',
-                                  onPressed: _saving
+                                  onPressed: !fieldsEnabled
                                       ? null
                                       : () => setState(
                                             () =>
@@ -1173,7 +1180,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 if (_jiraTokenCtrl.text.trim().isNotEmpty)
                                   IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _jiraTokenCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1185,7 +1192,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _jiraProjectKeyCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Jira project key',
@@ -1200,7 +1207,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _jiraProjectKeyCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1210,7 +1217,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _jiraIssueTypeCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Jira issue type',
@@ -1225,7 +1232,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Reset to Bug',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => setState(
                                               () => _jiraIssueTypeCtrl.text =
@@ -1258,7 +1265,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                   child: Text('Sub-issue under parent'),
                                 ),
                               ],
-                              onChanged: _saving
+                              onChanged: !fieldsEnabled
                                   ? null
                                   : (v) {
                                       if (v == null) return;
@@ -1270,7 +1277,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _jiraParentIssueKeyCtrl,
-                          enabled: !_saving && _jiraCreateMode == 'under_parent',
+                          enabled: fieldsEnabled && _jiraCreateMode == 'under_parent',
                           textInputAction: TextInputAction.next,
                           textCapitalization: TextCapitalization.characters,
                           decoration: InputDecoration(
@@ -1286,7 +1293,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _jiraParentIssueKeyCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1296,7 +1303,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _jiraCreateFieldsCtrl,
-                          enabled: !_saving,
+                          enabled: fieldsEnabled,
                           minLines: 2,
                           maxLines: 5,
                           textInputAction: TextInputAction.newline,
@@ -1312,7 +1319,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ? null
                                 : IconButton(
                                     tooltip: 'Clear',
-                                    onPressed: _saving
+                                    onPressed: !fieldsEnabled
                                         ? null
                                         : () => _jiraCreateFieldsCtrl.clear(),
                                     icon: const Icon(Icons.close),
@@ -1368,9 +1375,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ),
                                 const SizedBox(width: 8),
                                 OutlinedButton.icon(
-                                  onPressed: (_saving || _refreshing)
-                                      ? null
-                                      : _refreshRepo,
+                                  onPressed: (fieldsEnabled && !_refreshing)
+                                      ? _refreshRepo
+                                      : null,
                                   icon: _refreshing
                                       ? SizedBox(
                                           width: 16,
@@ -1394,8 +1401,37 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
             ),
           ),
           const SizedBox(height: 12),
+          if (repoDataReadonly) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: palette.surface1,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: palette.border),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lock_outline, size: 18, color: palette.textMuted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Repo data is read-only on this machine '
+                      '(REPO_DATA_READONLY in app settings). You can view repos and settings '
+                      'but cannot save, delete, refresh, or upload credentials.',
+                      style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Text(
-            'On save, the backend clones the repo first. If cloning fails, nothing is stored.',
+            repoDataReadonly
+                ? 'Changes are disabled while repo data is read-only.'
+                : 'On save, the backend clones the repo first. If cloning fails, nothing is stored.',
             style: theme.bodySmall?.copyWith(color: palette.textSecondary),
           ),
           if (validationError != null) ...[
@@ -1496,10 +1532,11 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
             onPressed: _saving ? null : () => Navigator.of(context).pop(),
             child: const Text('Close'),
           ),
-        FilledButton(
-          onPressed: !canSave
-              ? null
-              : () async {
+        if (!repoDataReadonly)
+          FilledButton(
+            onPressed: !canSave
+                ? null
+                : () async {
                   final nav = Navigator.of(context);
                   setState(() {
                     _saving = true;

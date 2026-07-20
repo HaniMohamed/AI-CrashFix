@@ -154,7 +154,14 @@ class SettingsResolver:
         else:
             gzip_request = bool(cfg.GOSI_BRAIN_GZIP_REQUEST)
 
-        user_id = self._app_str("GOSI_BRAIN_USER_ID") or cfg.GOSI_BRAIN_USER_ID
+        # Single identity: AI_CRASH_FIX_USER_ID wins everywhere; ignore GOSI_BRAIN_USER_ID.
+        from app.services.user_context import ai_crash_fix_user_id_raw
+
+        crash_fix_uid = ai_crash_fix_user_id_raw()
+        if crash_fix_uid:
+            user_id = crash_fix_uid
+        else:
+            user_id = self._app_str("GOSI_BRAIN_USER_ID") or cfg.GOSI_BRAIN_USER_ID
         cookie = self._app_secret("GOSI_BRAIN_COOKIE") or cfg.GOSI_BRAIN_COOKIE
 
         idle_raw = self._app_number("GOSI_BRAIN_IDLE_TIMEOUT")

@@ -9,6 +9,7 @@ import '../../app/theme/typography.dart';
 import '../../core/models/crash.dart';
 import '../../core/providers/config_provider.dart';
 import '../../core/providers/crashes_provider.dart';
+import '../../core/providers/health_provider.dart';
 import '../../core/models/run_request.dart';
 import '../../core/providers/run_session_provider.dart';
 import '../../core/utils/crashlytics_console_url.dart';
@@ -42,6 +43,7 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
     final query = ref.watch(crashesQueryProvider);
     final pageAsync = ref.watch(crashesProvider);
     final configAsync = ref.watch(configProvider);
+    final currentUserId = ref.watch(healthProvider).valueOrNull?.userId;
     final crashlyticsCfg = configAsync.when(
       data: (cfg) => cfg.section('crashlytics'),
       loading: () => null,
@@ -150,6 +152,7 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
                             c,
                             crashlyticsCfg: crashlyticsCfg,
                             configLoading: configLoading,
+                            currentUserId: currentUserId,
                           )),
                       Padding(
                         padding: const EdgeInsets.all(AppSpacing.lg),
@@ -170,10 +173,19 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
     Crash c, {
     required Map<String, dynamic>? crashlyticsCfg,
     required bool configLoading,
+    String? currentUserId,
   }) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
     final crashlyticsUri = crashlyticsCfg == null ? null : crashlyticsIssueUri(c, crashlyticsCfg);
+    final by = c.createdByUserId?.trim();
+    final isYou = by != null &&
+        by.isNotEmpty &&
+        currentUserId != null &&
+        by.toLowerCase() == currentUserId.toLowerCase();
+    final byLabel = by == null || by.isEmpty
+        ? null
+        : (isYou ? 'by you' : 'by $by');
     return InkWell(
       onTap: () => context.go('/crashes/${c.crashId}'),
       child: Container(
@@ -188,10 +200,23 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
           children: [
             Expanded(
               flex: 4,
-              child: Text(
-                c.crashId,
-                style: AppTypography.mono(color: palette.text, size: 12),
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c.crashId,
+                    style: AppTypography.mono(color: palette.text, size: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (byLabel != null)
+                    Text(
+                      byLabel,
+                      style: theme.bodySmall?.copyWith(
+                        color: isYou ? palette.primary : palette.textMuted,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
               ),
             ),
             Expanded(

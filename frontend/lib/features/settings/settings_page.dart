@@ -40,11 +40,14 @@ class SettingsPage extends ConsumerWidget {
               Text(
                 'Theme is stored in the browser; the API base URL follows build/runtime defaults (not editable here). '
                 'LLM provider and keys are configured on the server (SQLite / .env); this page shows them read-only. '
-                'Crashlytics, Jira, and GitLab are configured per repo (read-only summary below for the selected repo).',
+                'Crashlytics, Jira, and GitLab are configured per repo (read-only summary below for the selected repo). '
+                'On a shared Postgres store, repos and settings are scoped to the machine user ID.',
                 style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.xl),
               _ConnectionCard(settings: settings),
+              const SizedBox(height: AppSpacing.lg),
+              _MachineUserCard(async: backendSettings),
               const SizedBox(height: AppSpacing.lg),
               _ReadOnlyLlmSection(async: backendSettings),
               const SizedBox(height: AppSpacing.lg),
@@ -601,6 +604,58 @@ class _ReadonlyIntegrationRow extends StatelessWidget {
     return Text(
       s.isEmpty ? '—' : s,
       style: theme.bodyMedium?.copyWith(color: palette.text),
+    );
+  }
+}
+
+class _MachineUserCard extends StatelessWidget {
+  final AsyncValue<BackendSettingsState> async;
+  const _MachineUserCard({required this.async});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return async.when(
+      loading: () => const LoadingShimmer(height: 88),
+      error: (e, _) => ErrorBanner(message: 'Failed to load user id: $e'),
+      data: (state) {
+        final id = state.userId;
+        return GlassCard(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.badge_outlined, color: palette.primary),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text('Machine user ID', style: theme.headlineSmall),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Scopes repos/settings on the shared Postgres store and is sent as '
+                  'GOSI Brain custom_session.user_id. Matching is case-insensitive. '
+                  'When AI_CRASH_FIX_USER_ID is set, GOSI_BRAIN_USER_ID is ignored. '
+                  'Set via AI_CRASH_FIX_USER_ID in the env file'
+                  '${state.userIdEditable ? ' or local Settings when using SQLite' : ''}.',
+                  style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                SelectableText(
+                  (id == null || id.isEmpty) ? '— not set —' : id,
+                  style: theme.bodyLarge?.copyWith(
+                    color: palette.text,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

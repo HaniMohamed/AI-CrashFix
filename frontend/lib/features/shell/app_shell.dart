@@ -265,12 +265,14 @@ class _AppShellState extends ConsumerState<AppShell> {
         }
         if (_forcedDialogOpen) return;
         _forcedDialogOpen = true;
+        final repoDataReadonly =
+            ref.read(healthProvider).valueOrNull?.repoDataReadonly == true;
         try {
           await showDialog<void>(
             context: context,
-            barrierDismissible: false,
+            barrierDismissible: repoDataReadonly,
             builder: (ctx) => ManageReposDialog(
-              allowClose: false,
+              allowClose: repoDataReadonly,
               onDelete: (repoKey, repoName) async {
                 // Deletion is allowed, but there shouldn't be any repos here anyway.
                 // Keep signature compatible with the dialog.

@@ -363,6 +363,8 @@ class _Header extends ConsumerWidget {
                     _meta(context, 'device', c.deviceLabel.isEmpty ? '-' : c.deviceLabel),
                     _meta(context, 'created', Fmt.relative(c.createdAt)),
                     _meta(context, 'updated', Fmt.relative(c.updatedAt)),
+                    if (c.createdByUserId != null && c.createdByUserId!.isNotEmpty)
+                      _meta(context, 'created by', c.createdByUserId!),
                   ],
                 ),
               ],

@@ -6,6 +6,8 @@ class Crash {
   final String status;
   final String? createdAt;
   final String? updatedAt;
+  /// Audit: machine user who first ingested / ran this crash (shared inventory).
+  final String? createdByUserId;
   final bool analysisDone;
   final bool jiraCreated;
   final bool fixGenerated;
@@ -26,6 +28,7 @@ class Crash {
     this.prUrl,
     this.createdAt,
     this.updatedAt,
+    this.createdByUserId,
     this.analysisDone = false,
     this.jiraCreated = false,
     this.fixGenerated = false,
@@ -44,6 +47,12 @@ class Crash {
         prUrl: j['pr_url'] as String?,
         createdAt: j['created_at'] as String?,
         updatedAt: j['updated_at'] as String?,
+        createdByUserId: () {
+          final v = j['created_by_user_id'];
+          if (v == null) return null;
+          final s = v.toString().trim();
+          return s.isEmpty ? null : s;
+        }(),
         analysisDone: j['analysis_done'] == true,
         jiraCreated: j['jira_created'] == true,
         fixGenerated: j['fix_generated'] == true,

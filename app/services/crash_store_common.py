@@ -23,6 +23,7 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
         "status",
         "created_at",
         "updated_at",
+        "created_by_user_id",
         *PIPELINE_FLAG_COLUMNS,
     )
     if hasattr(row, "keys"):
@@ -32,6 +33,13 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
     for col in PIPELINE_FLAG_COLUMNS:
         if col in out:
             out[col] = bool(out[col])
+    if "created_by_user_id" in out:
+        raw_uid = out["created_by_user_id"]
+        if raw_uid is None:
+            out["created_by_user_id"] = None
+        else:
+            s = str(raw_uid).strip()
+            out["created_by_user_id"] = s or None
     if include_result and "result" in row.keys():
         raw = row["result"]
         if raw is None:
