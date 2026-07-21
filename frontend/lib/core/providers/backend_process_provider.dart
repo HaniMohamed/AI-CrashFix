@@ -215,6 +215,9 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
       env['AI_CRASH_FIX_DB_PATH'] = dbPath;
     }
 
+    env['AI_CRASH_FIX_AUTO_LAUNCH_ENV'] = '1';
+    _applyDefaultLaunchEnvFile(env);
+
     _proc = await Process.start(
       backendPath,
       ['--host', '127.0.0.1', '--port', '$port'],
@@ -339,6 +342,37 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
       return home.substring(0, idx);
     }
     return home;
+  }
+
+  static const _defaultLaunchEnvFileName = 'crash_fix_gosi_brain_conf.env';
+
+  /// Auto-load ~/crash_fix_gosi_brain_conf.env when present (macOS standalone).
+  void _applyDefaultLaunchEnvFile(Map<String, String> env) {
+    if ((env['AI_CRASH_FIX_ENV_FILE'] ?? '').trim().isNotEmpty) return;
+    final home = _realUserHome();
+    if (home.isEmpty) return;
+    final candidate = '$home/$_defaultLaunchEnvFileName';
+    final file = File(candidate);
+    if (!file.existsSync() || !_envFileNonempty(file)) return;
+    env['AI_CRASH_FIX_ENV_FILE'] = candidate;
+  }
+
+  bool _envFileNonempty(File file) {
+    try {
+      for (final rawLine in file.readAsLinesSync()) {
+        var line = rawLine.trim();
+        if (line.isEmpty || line.startsWith('#')) continue;
+        if (line.startsWith('export ')) {
+          line = line.substring(7).trim();
+        }
+        final eq = line.indexOf('=');
+        if (eq <= 0) continue;
+        final key = line.substring(0, eq).trim();
+        final val = line.substring(eq + 1).trim();
+        if (key.isNotEmpty && val.isNotEmpty) return true;
+      }
+    } catch (_) {}
+    return false;
   }
 
   String? _resolveRgPath() {

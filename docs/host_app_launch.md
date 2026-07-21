@@ -134,6 +134,8 @@ open --env AI_CRASH_FIX_ENV_FILE="$HOME/crash_fix_gosi_brain_conf.env" \
 
 ## Important behaviors
 
+- **Standalone auto-load:** When launched directly (double-click or Dock), the macOS app looks for a non-empty `~/crash_fix_gosi_brain_conf.env` and passes it to the embedded backend as `AI_CRASH_FIX_ENV_FILE`. You do not need `open --env` for normal use if that file already exists.
+- **GOSI Brain gate:** If `LLM_PROVIDER=gosi-brain` and the env file is missing, empty, or `GOSI_BRAIN_AUTHORIZATION` is missing/expired, the UI shows a full-screen stopper asking the user to launch from **CodeFaster** (which writes a fresh env file).
 - **Cold start only:** `AI_CRASH_FIX_ENV_FILE` is applied when a **new** process starts. If AI Crash Fix is already running, macOS may only activate it and ignore new env. For updated tokens: quit AI Crash Fix, rewrite the env file, then launch again — or document that users must quit first.
 - **No deep links required** for this integration (no crash id / URL scheme).
 - **One instance:** do not force a second instance (`createsNewApplicationInstance`); the embedded backend expects a single UI process.

@@ -5,6 +5,8 @@ from pathlib import Path
 
 from app.services.app_settings_store import AppSettingsStore
 
+DEFAULT_LAUNCH_ENV_FILENAME = "crash_fix_gosi_brain_conf.env"
+
 # Env keys from `open --args` / launcher / env-file that map to editable app_settings.
 _APP_SETTINGS_ENV_KEYS: frozenset[str] = frozenset(
     {
@@ -53,7 +55,32 @@ def _coerce_value(key: str, raw: str) -> str | float:
     return raw.strip()
 
 
-def _parse_env_file(path: Path) -> dict[str, str]:
+def default_launch_env_file_path() -> Path:
+    return Path.home() / DEFAULT_LAUNCH_ENV_FILENAME
+
+
+def env_file_nonempty(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        if key.strip() and val.strip():
+            return True
+    return False
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
     """Parse a simple KEY=VALUE env file (supports quotes; ignores blank/# lines)."""
     out: dict[str, str] = {}
     text = path.read_text(encoding="utf-8")
@@ -76,9 +103,29 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return out
 
 
+def _parse_env_file(path: Path) -> dict[str, str]:
+    return parse_env_file(path)
+
+
+def _resolve_launch_env_file_path() -> Path | None:
+    raw_path = (os.environ.get("AI_CRASH_FIX_ENV_FILE") or "").strip()
+    if raw_path:
+        path = Path(raw_path).expanduser()
+        return path if path.is_file() else None
+    if (os.environ.get("AI_CRASH_FIX_AUTO_LAUNCH_ENV") or "").strip() != "1":
+        return None
+    default = default_launch_env_file_path()
+    if env_file_nonempty(default):
+        return default
+    return None
+
+
 def apply_launch_env_file() -> list[str]:
     """
     Load ``AI_CRASH_FIX_ENV_FILE`` into ``os.environ``.
+
+    When ``AI_CRASH_FIX_ENV_FILE`` is unset, auto-detect a non-empty
+    ``~/crash_fix_gosi_brain_conf.env`` (macOS standalone / CodeFaster host).
 
     Avoids macOS ``ARG_MAX`` / "command too long" when JWTs and keys are too large
     for ``open --args`` / ``open --env``. Only the short file path needs to be on
@@ -87,21 +134,12 @@ def apply_launch_env_file() -> list[str]:
     Keys loaded from the file are merged into ``AI_CRASH_FIX_LAUNCH_ENV_KEYS`` so
     ``persist_launch_env_overrides`` writes them into Settings.
     """
-    raw_path = (os.environ.get("AI_CRASH_FIX_ENV_FILE") or "").strip()
-    if not raw_path:
-        return []
-    path = Path(raw_path).expanduser()
-    if not path.is_file():
-        # Do not crash the API process — missing file should be visible in Settings.
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "AI_CRASH_FIX_ENV_FILE not found: %s (continuing without it)",
-            path,
-        )
+    path = _resolve_launch_env_file_path()
+    if path is None:
         return []
 
-    loaded = _parse_env_file(path)
+    os.environ["AI_CRASH_FIX_ENV_FILE"] = str(path.resolve())
+    loaded = parse_env_file(path)
     applied: list[str] = []
     for key, value in loaded.items():
         os.environ[key] = value

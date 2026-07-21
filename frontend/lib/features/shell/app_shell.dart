@@ -182,6 +182,57 @@ class _AppShellState extends ConsumerState<AppShell> {
       );
     }
 
+    if (health?.gosiBrainLaunchBlocked == true) {
+      final gosi = health!.gosiBrainLaunch;
+      return shellWithTopbar(
+        absorbSidebar: false,
+        body: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    gosi.userFacingTitle.isNotEmpty
+                        ? gosi.userFacingTitle
+                        : 'Launch from CodeFaster',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    gosi.userFacingDetail,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'Launch AI Crash Fix from the CodeFaster app so it can write '
+                    'a fresh ~/crash_fix_gosi_brain_conf.env with your GOSI Brain '
+                    'credentials. Quit this app, launch from CodeFaster, then open '
+                    'AI Crash Fix again.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  FilledButton.icon(
+                    onPressed: () {
+                      ref.invalidate(backendProcessProvider);
+                      ref.invalidate(healthProvider);
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     // While repo registry is loading, do not mount dashboard (avoids analytics JSON errors).
     if (repoAsync.isLoading) {
       return shellWithTopbar(

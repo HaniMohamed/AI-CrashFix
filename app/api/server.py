@@ -221,10 +221,12 @@ async def health() -> Dict[str, Any]:
     # the whole API (which previously looked like "API offline").
     import asyncio
 
+    from app.services.gosi_brain_launch import gosi_brain_launch_health
     from app.services.repo_data_guard import is_repo_data_readonly
     from app.services.user_context import resolve_user_id
 
     crash_store = await asyncio.to_thread(crash_store_health)
+    gosi_launch = await asyncio.to_thread(gosi_brain_launch_health)
     # `ok` means the API process is up. Crash-store health is separate so a
     # Postgres blip does not make the UI treat the backend as dead.
     return {
@@ -232,6 +234,7 @@ async def health() -> Dict[str, Any]:
         "user_id": resolve_user_id(required=False),
         "repo_data_readonly": is_repo_data_readonly(),
         "crash_store": crash_store,
+        "gosi_brain_launch": gosi_launch,
     }
 
 
