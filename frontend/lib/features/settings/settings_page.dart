@@ -5,6 +5,7 @@ import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/providers/api_provider.dart';
+import '../../core/providers/app_version_provider.dart';
 import '../../core/providers/backend_settings_provider.dart';
 import '../../core/providers/repo_effective_config_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
@@ -52,6 +53,8 @@ class SettingsPage extends ConsumerWidget {
               _ReadOnlyLlmSection(async: backendSettings),
               const SizedBox(height: AppSpacing.lg),
               const _RepoIntegrationPanel(),
+              const SizedBox(height: AppSpacing.lg),
+              const _AboutCard(),
             ],
           ),
         ),
@@ -761,5 +764,79 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     } finally {
       setState(() => _testing = false);
     }
+  }
+}
+
+class _AboutCard extends ConsumerWidget {
+  const _AboutCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final async = ref.watch(appVersionProvider);
+    return async.when(
+      loading: () => const LoadingShimmer(height: 88),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (v) => GlassCard(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.info_outline, color: palette.primary),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('About', style: theme.headlineSmall),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'macOS app version from the bundled package metadata.',
+                style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              _AboutRow(label: 'App', value: v.appName),
+              const SizedBox(height: AppSpacing.sm),
+              _AboutRow(label: 'Version', value: v.detailLabel),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AboutRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _AboutRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 88,
+          child: Text(
+            label,
+            style: theme.labelLarge?.copyWith(color: palette.textSecondary),
+          ),
+        ),
+        Expanded(
+          child: SelectableText(
+            value,
+            style: theme.bodyLarge?.copyWith(
+              color: palette.text,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

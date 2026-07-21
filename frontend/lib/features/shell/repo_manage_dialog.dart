@@ -388,6 +388,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     final repoDataReadonly =
         ref.watch(healthProvider).valueOrNull?.repoDataReadonly == true;
     final fieldsEnabled = !_saving && !repoDataReadonly;
+    final canRefresh = !_saving && !_refreshing;
 
     final validationError = _validate();
     final canSave = fieldsEnabled && validationError == null;
@@ -631,7 +632,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         const SizedBox(width: 8),
                         IconButton(
                           tooltip: 'Refresh (fetch + reindex on commit change)',
-                          onPressed: (fieldsEnabled && !_refreshing)
+                          onPressed: canRefresh
                               ? () async {
                                   try {
                                     await ref
@@ -1375,9 +1376,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                 ),
                                 const SizedBox(width: 8),
                                 OutlinedButton.icon(
-                                  onPressed: (fieldsEnabled && !_refreshing)
-                                      ? _refreshRepo
-                                      : null,
+                                  onPressed: canRefresh ? _refreshRepo : null,
                                   icon: _refreshing
                                       ? SizedBox(
                                           width: 16,
@@ -1418,8 +1417,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                   Expanded(
                     child: Text(
                       'Repo data is read-only on this machine '
-                      '(REPO_DATA_READONLY in app settings). You can view repos and settings '
-                      'but cannot save, delete, refresh, or upload credentials.',
+                      '(REPO_DATA_READONLY in app settings). You can view repos and refresh '
+                      'clones/indexes, but cannot save, delete, or upload credentials.',
                       style: theme.bodySmall?.copyWith(color: palette.textSecondary),
                     ),
                   ),
@@ -1430,7 +1429,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
           ],
           Text(
             repoDataReadonly
-                ? 'Changes are disabled while repo data is read-only.'
+                ? 'Changes are disabled while repo data is read-only. Refresh still fetches the latest commit and rebuilds the symbol index.'
                 : 'On save, the backend clones the repo first. If cloning fails, nothing is stored.',
             style: theme.bodySmall?.copyWith(color: palette.textSecondary),
           ),

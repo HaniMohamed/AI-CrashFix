@@ -34,6 +34,7 @@ def is_repo_data_readonly() -> bool:
 
 
 def ensure_repo_data_writable() -> None:
+    """Block mutations to repos/settings/secrets. Does not apply to repo refresh (fetch/reindex)."""
     if is_repo_data_readonly():
         raise HTTPException(
             status_code=403,

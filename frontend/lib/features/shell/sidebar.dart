@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
+import '../../shared/widgets/app_version_label.dart';
 
 class SidebarItem {
   final String label;
@@ -123,6 +124,15 @@ class AppSidebar extends StatelessWidget {
                   ],
                 ),
               ),
+            ),
+          if (!collapsed)
+            const Padding(
+              padding: EdgeInsets.only(
+                left: AppSpacing.lg,
+                right: AppSpacing.lg,
+                bottom: AppSpacing.md,
+              ),
+              child: AppVersionLabel(),
             ),
         ],
       ),

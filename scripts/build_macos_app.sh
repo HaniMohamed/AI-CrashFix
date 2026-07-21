@@ -18,13 +18,51 @@ need_cmd() {
 
 need_cmd flutter
 
+VERSION=""
+if [[ $# -gt 0 && "$1" != --* ]]; then
+  VERSION="$1"
+  shift
+fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version|-v)
+      [[ $# -ge 2 ]] || {
+        echo "Usage: $0 [<version>] [--version <version>]" >&2
+        exit 2
+      }
+      VERSION="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+flutter_build_args=(build macos --release)
+if [[ -n "${VERSION}" ]]; then
+  BUILD_NAME="${VERSION%%+*}"
+  if [[ "${VERSION}" == *+* ]]; then
+    BUILD_NUMBER="${VERSION#*+}"
+  else
+    BUILD_NUMBER=""
+  fi
+  flutter_build_args+=(--build-name="${BUILD_NAME}")
+  if [[ -n "${BUILD_NUMBER}" ]]; then
+    flutter_build_args+=(--build-number="${BUILD_NUMBER}")
+  fi
+  echo "==> flutter build macos --release (version ${VERSION})"
+else
+  echo "==> flutter build macos --release (pubspec version)"
+fi
+
 mkdir -p "${OUT_DIR}"
 rm -rf "${APP_DIR}"
 
-echo "==> flutter build macos --release"
 pushd "${ROOT_DIR}/frontend" >/dev/null
 flutter pub get
-flutter build macos --release
+flutter "${flutter_build_args[@]}"
 popd >/dev/null
 
 # Flutter places the product under build/macos/Build/Products/Release/

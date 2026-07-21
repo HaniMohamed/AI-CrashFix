@@ -4,27 +4,49 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+fail() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
 # Optional flags kept for backward compatibility; Step 2 always uses PyInstaller --noconfirm.
+VERSION=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --noconfirm|-y)
       shift
       ;;
+    --version|-v)
+      [[ $# -ge 2 ]] || fail "Missing value for --version"
+      VERSION="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: $0 <version> [--noconfirm|-y]" >&2
+      echo "       $0 --version <version> [--noconfirm|-y]" >&2
+      echo "Example: $0 1.2.3" >&2
+      echo "         $0 1.2.3+4 --noconfirm" >&2
+      exit 0
+      ;;
     *)
-      echo "Unknown option: $1" >&2
-      echo "Usage: $0 [--noconfirm|-y]" >&2
-      exit 2
+      if [[ -z "${VERSION}" ]]; then
+        VERSION="$1"
+        shift
+      else
+        fail "Unknown option: $1 (usage: $0 <version> [--noconfirm|-y])"
+      fi
       ;;
   esac
 done
 
+[[ -n "${VERSION}" ]] || fail "version is required (example: $0 1.2.3)"
+
+VERSION_TAG="${VERSION//+/-}"
+[[ "${VERSION_TAG}" =~ ^[0-9A-Za-z._-]+$ ]] || fail "invalid version: ${VERSION}"
+DMG_PATH="dist/AI-Crash-Fix-${VERSION_TAG}.dmg"
+
 APP_NAME="AI Crash Fix.app"
 APP_PATH="dist/macos/${APP_NAME}"
-
-fail() {
-  echo "ERROR: $*" >&2
-  exit 1
-}
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
@@ -118,7 +140,7 @@ echo "Using rg from: ${RG_PATH}"
 echo
 
 echo "==> Step 1: Build Flutter macOS (release)"
-./scripts/build_macos_app.sh
+./scripts/build_macos_app.sh "${VERSION}"
 [[ -d "${APP_PATH}" ]] || fail "Missing app bundle at ${APP_PATH}"
 echo
 
@@ -152,12 +174,12 @@ echo "==> Step 3b: Re-sign .app (required after injecting backend)"
 echo
 
 echo "==> Step 4: Build DMG"
-./scripts/build_dmg.sh
-[[ -f "dist/AI-Crash-Fix.dmg" ]] || fail "Missing dist/AI-Crash-Fix.dmg"
+./scripts/build_dmg.sh "${VERSION}"
+[[ -f "${DMG_PATH}" ]] || fail "Missing ${DMG_PATH}"
 
 # Sanity-check the DMG contains the backend (space-safe mount path).
 echo "==> Step 5: Verify DMG contents"
-VERIFY_ATTACH="$(hdiutil attach -nobrowse -readonly "dist/AI-Crash-Fix.dmg")"
+VERIFY_ATTACH="$(hdiutil attach -nobrowse -readonly "${DMG_PATH}")"
 VERIFY_MNT="$(echo "${VERIFY_ATTACH}" | sed -n 's/.*\(\/Volumes\/.*\)$/\1/p' | tail -1)"
 [[ -n "${VERIFY_MNT}" ]] || fail "Could not mount DMG for verification"
 VERIFY_BACKEND="${VERIFY_MNT}/AI Crash Fix.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
@@ -171,7 +193,7 @@ echo
 
 echo "Done."
 echo "- App: ${APP_PATH}"
-echo "- DMG: dist/AI-Crash-Fix.dmg"
+echo "- DMG: ${DMG_PATH}"
 echo
 echo "Install: open the DMG, drag AI Crash Fix.app to Applications, then launch from /Applications."
 echo "If macOS blocks the first launch: right-click → Open, or:"

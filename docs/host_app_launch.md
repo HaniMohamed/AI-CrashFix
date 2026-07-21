@@ -27,20 +27,38 @@ AI Crash Fix loads `AI_CRASH_FIX_ENV_FILE` at backend startup and applies the ke
 
 Write a file the user can read (e.g. `~/crash_fix_gosi_brain_conf.env`), `chmod 600`.
 
-Example contents:
+Example contents (matches `~/crash_fix_gosi_brain_conf.env`; replace `<user>`, `<password>`, and token placeholders):
 
 ```bash
+# GOSI Brain launch env (chmod 600)
+# Launch:
+#   open --env AI_CRASH_FIX_ENV_FILE="$HOME/crash_fix_gosi_brain_conf.env" -a "AI Crash Fix"
+# Or:
+#   ./scripts/run_macos_app.sh "$HOME/crash_fix_gosi_brain_conf.env"
+#
+# Refresh GOSI_BRAIN_COOKIE from a working Postman/curl Cookie header when you get HTTP 401.
+
+AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres
+AI_CRASH_FIX_CRASH_DB_URL=postgresql://ai_crash_fix:<password>@localhost:5432/ai_crash_fix
+
+# Self-signed corporate TLS (jira.gosi.ins / gitlab.gosi.ins)
+JIRA_VERIFY_SSL=false
+GITLAB_VERIFY_SSL=false
+# Jira Data Center personal access token (not Cloud Basic email:token)
+JIRA_AUTH=bearer
+# DE Bug required custom field: Concerned DE Team (see bug_examples.csv)
+JIRA_CREATE_FIELDS={"customfield_11404":{"value":"Individual App + Taqdeer"}}
+
 LLM_PROVIDER=gosi-brain
-GOSI_BRAIN_AUTHORIZATION="Bearer <token>"
-GOSI_BRAIN_API_KEY=<key>
-GOSI_BRAIN_MODEL=gosi_brain_agent
+GOSI_BRAIN_URL=https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions
+GOSI_BRAIN_MODEL=thinking
 GOSI_BRAIN_USER_ID=<user>
-AI_CRASH_FIX_USER_ID=<user>
+GOSI_BRAIN_API_KEY=<api-key>
 GOSI_BRAIN_COOKIE="<cookie>"
-GOSI_BRAIN_STREAMING=off
-# Optional shared Postgres (repos/settings/crashes):
-# AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres
-# AI_CRASH_FIX_CRASH_DB_URL=postgresql://ai_crash_fix:password@host:5432/ai_crash_fix
+GOSI_BRAIN_STREAMING=on
+GOSI_BRAIN_SEND_OAUTH_DOMAIN=false
+GOSI_BRAIN_AUTHORIZATION="Bearer <jwt>"
+AI_CRASH_FIX_USER_ID=<user>
 ```
 
 `AI_CRASH_FIX_USER_ID` is the single identity for Postgres scoping and GOSI Brain `custom_session.user_id` (case-insensitive in the store). When it is set, `GOSI_BRAIN_USER_ID` is ignored. If omitted, the app falls back to `GOSI_BRAIN_USER_ID`.

@@ -6,9 +6,53 @@ OUT_DIR="${ROOT_DIR}/dist"
 MACOS_DIR="${OUT_DIR}/macos"
 APP_NAME="AI Crash Fix.app"
 APP_PATH="${MACOS_DIR}/${APP_NAME}"
-DMG_PATH="${OUT_DIR}/AI-Crash-Fix.dmg"
 DMG_VOLNAME="AI Crash Fix"
 DMG_BG_SVG="${ROOT_DIR}/packaging/macos/dmg_background.svg"
+
+usage() {
+  echo "Usage: $0 <version>" >&2
+  echo "       $0 --version <version>" >&2
+  echo "Example: $0 1.2.3" >&2
+  echo "         $0 1.2.3+4   # → dist/AI-Crash-Fix-1.2.3-4.dmg" >&2
+  exit 2
+}
+
+VERSION=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version|-v)
+      [[ $# -ge 2 ]] || usage
+      VERSION="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      if [[ -z "${VERSION}" ]]; then
+        VERSION="$1"
+        shift
+      else
+        echo "Unknown argument: $1" >&2
+        usage
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "${VERSION}" ]]; then
+  echo "ERROR: version is required" >&2
+  usage
+fi
+
+# Safe for filenames: 1.2.3+4 → 1.2.3-4
+VERSION_TAG="${VERSION//+/-}"
+if [[ ! "${VERSION_TAG}" =~ ^[0-9A-Za-z._-]+$ ]]; then
+  echo "ERROR: invalid version (use semver like 1.2.3 or 1.2.3+4): ${VERSION}" >&2
+  exit 2
+fi
+
+DMG_PATH="${OUT_DIR}/AI-Crash-Fix-${VERSION_TAG}.dmg"
 
 if [[ ! -d "${APP_PATH}" ]]; then
   echo "Missing app bundle at: ${APP_PATH}"

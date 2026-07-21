@@ -653,9 +653,7 @@ async def get_repo_effective_config(repo_key: str) -> Dict[str, Any]:
 
 @app.post("/api/repos/{repo_key}/refresh")
 async def refresh_repo(repo_key: str) -> Dict[str, Any]:
-    from app.services.repo_data_guard import ensure_repo_data_writable
-
-    ensure_repo_data_writable()
+    # Refresh (git fetch + symbol reindex) is allowed even when REPO_DATA_READONLY is set.
     key = (repo_key or "").strip()
     if not key:
         raise HTTPException(status_code=400, detail="repo_key is required")
