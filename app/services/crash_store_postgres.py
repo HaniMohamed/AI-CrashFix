@@ -15,7 +15,7 @@ from app.services.crash_store_common import (
     recompute_pipeline_complete,
     row_to_dict,
 )
-from app.services.postgres_schema import ensure_app_postgres_schema
+from app.services.postgres_schema import connect_postgres, ensure_app_postgres_schema
 from app.services.user_context import resolve_user_id
 
 _ALL_COLUMNS = (
@@ -51,7 +51,7 @@ def check_postgres_crash_store(*, connect_timeout: int = 3) -> tuple[bool, str |
     except ValueError as exc:
         return False, str(exc)
     try:
-        with psycopg.connect(url, connect_timeout=connect_timeout) as conn:
+        with connect_postgres(url, connect_timeout=connect_timeout) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
     except Exception as exc:
@@ -80,7 +80,7 @@ class PostgresCrashStore:
             ensure_app_postgres_schema(conn)
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self.db_path, row_factory=dict_row)
+        return connect_postgres(self.db_path, row_factory=dict_row)
 
     def insert_crash(self, crash_id: str) -> None:
         now = datetime.utcnow()

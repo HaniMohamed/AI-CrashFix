@@ -1,6 +1,23 @@
 from __future__ import annotations
 
+from typing import Any
+
 import psycopg
+
+DEFAULT_POSTGRES_CONNECT_TIMEOUT = 3
+
+
+def connect_postgres(
+    url: str,
+    *,
+    row_factory: Any | None = None,
+    connect_timeout: int = DEFAULT_POSTGRES_CONNECT_TIMEOUT,
+) -> psycopg.Connection:
+    """Open Postgres with a bounded connect wait (avoids blocking API startup)."""
+    kwargs: dict[str, Any] = {"connect_timeout": max(1, int(connect_timeout))}
+    if row_factory is not None:
+        kwargs["row_factory"] = row_factory
+    return psycopg.connect(url, **kwargs)
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS crashes (

@@ -162,9 +162,21 @@ def persist_launch_env_overrides() -> list[str]:
     ``AI_CRASH_FIX_ENV_FILE`` was applied, ``AI_CRASH_FIX_LAUNCH_ENV_KEYS`` lists
     env keys to persist into SQLite so Settings reflects the launch configuration.
     """
-    from app.services.repo_data_guard import is_repo_data_readonly
-
     apply_launch_env_file()
+    try:
+        return _persist_launch_env_overrides_to_store()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Skipping launch env persist: app store unavailable",
+            exc_info=True,
+        )
+        return []
+
+
+def _persist_launch_env_overrides_to_store() -> list[str]:
+    from app.services.repo_data_guard import is_repo_data_readonly
 
     if is_repo_data_readonly():
         return []

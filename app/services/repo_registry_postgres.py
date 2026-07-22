@@ -8,7 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.config import AI_CRASH_FIX_CRASH_DB_URL
-from app.services.postgres_schema import ensure_app_postgres_schema
+from app.services.postgres_schema import connect_postgres, ensure_app_postgres_schema
 from app.services.repo_registry_store import (
     RepoEntry,
     RepoIndexStatus,
@@ -52,7 +52,7 @@ class PostgresRepoRegistryStore:
             ensure_app_postgres_schema(conn)
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self.db_path, row_factory=dict_row)
+        return connect_postgres(self.db_path, row_factory=dict_row)
 
     def list_repos(self) -> list[RepoEntry]:
         with self._connect() as conn:

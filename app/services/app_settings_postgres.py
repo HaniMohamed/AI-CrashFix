@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Json
 
 from app.config import AI_CRASH_FIX_CRASH_DB_URL
-from app.services.postgres_schema import ensure_app_postgres_schema
+from app.services.postgres_schema import connect_postgres, ensure_app_postgres_schema
 from app.services.user_context import resolve_user_id
 
 
@@ -36,7 +36,7 @@ class PostgresAppSettingsStore:
         self._cache: dict[str, Any] | None = None
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self.db_path, row_factory=dict_row)
+        return connect_postgres(self.db_path, row_factory=dict_row)
 
     def _invalidate_cache(self) -> None:
         self._cache = None
