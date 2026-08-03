@@ -16,7 +16,7 @@ func usageAndExit(code: Int32) -> Never {
   stderrLog(
     """
     Usage:
-      open -a "AI Crash Fix" --args [options]
+      open -a "Fixora" --args [options]
 
     Options (mapped to backend env vars):
       --llm-provider <openai|gemini|gosi-brain>     -> LLM_PROVIDER
@@ -48,12 +48,12 @@ func usageAndExit(code: Int32) -> Never {
         and shown on the in-app Settings page (overriding previous saved values).
 
     Example:
-      open -a "AI Crash Fix" --args --llm-provider openai --openai-model gpt-4o-mini --openai-url https://api.openai.com/v1 --openai-api-key $OPENAI_API_KEY
+      open -a "Fixora" --args --llm-provider openai --openai-model gpt-4o-mini --openai-url https://api.openai.com/v1 --openai-api-key $OPENAI_API_KEY
 
     Long secrets (recommended):
       ./scripts/run_macos_app.sh ~/gosi-launch.env
       # or:
-      open -a "AI Crash Fix" --args --env-file ~/gosi-launch.env
+      open -a "Fixora" --args --env-file ~/gosi-launch.env
     """
   )
   exit(code)
@@ -253,7 +253,7 @@ func findFreePort() throws -> Int {
 }
 
 func resourcePath() -> String {
-  // .../AI Crash Fix.app/Contents/MacOS/<exe> -> Resources is sibling under Contents
+  // .../Fixora.app/Contents/MacOS/<exe> -> Resources is sibling under Contents
   let execURL = URL(fileURLWithPath: CommandLine.arguments[0])
   let contentsURL = execURL.deletingLastPathComponent().deletingLastPathComponent()
   return contentsURL.appendingPathComponent("Resources").path
@@ -262,7 +262,7 @@ func resourcePath() -> String {
 func applicationSupportDir() -> URL {
   let fm = FileManager.default
   let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-  let dir = base.appendingPathComponent("AI Crash Fix", isDirectory: true)
+  let dir = base.appendingPathComponent("Fixora", isDirectory: true)
   try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
   return dir
 }
@@ -319,7 +319,7 @@ final class LauncherUI {
       backing: .buffered,
       defer: false
     )
-    window.title = "AI Crash Fix"
+    window.title = "Fixora"
     window.center()
     window.isReleasedWhenClosed = false
 
@@ -436,7 +436,7 @@ func installMenuBar(getBaseUrl: @escaping () -> String, terminateBackend: @escap
   let openAction = OpenUiAction(getBaseUrl: getBaseUrl)
   let quitAction = QuitAction(terminateBackend: terminateBackend)
   // add app name as title on top of menu
-  let appNameItem = NSMenuItem(title: "AI Crash Fix", action: nil, keyEquivalent: "")
+  let appNameItem = NSMenuItem(title: "Fixora", action: nil, keyEquivalent: "")
   appNameItem.isEnabled = false
   appNameItem.target = nil
   menu.addItem(appNameItem)
@@ -526,7 +526,7 @@ proc.terminationHandler = { p in
   appendLine("Backend exited with code \(p.terminationStatus)", to: logURL)
   DispatchQueue.main.async {
     ui.showFailure(
-      title: "AI Crash Fix stopped",
+      title: "Fixora stopped",
       message: "The backend process exited (code \(p.terminationStatus)).\n\nLogs:\n\(backendLogURL.path)"
     )
     NSApp.terminate(nil)

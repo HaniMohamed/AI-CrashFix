@@ -1,11 +1,11 @@
 {
-    "name": "AI Crash Fix",
-    "short_name": "AI Crash Fix",
+    "name": "Fixora",
+    "short_name": "Fixora",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0A0E1A",
     "theme_color": "#6366F1",
-    "description": "Crash-to-fix automation dashboard for the AI Crash Fix pipeline.",
+    "description": "Crash-to-fix automation dashboard for the Fixora pipeline.",
     "orientation": "any",
     "prefer_related_applications": false,
     "icons": [

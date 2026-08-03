@@ -83,7 +83,7 @@ class _LogsPageState extends ConsumerState<LogsPage>
           const SizedBox(height: AppSpacing.sm),
           Text(
             'Backend and launcher output from the server data directory '
-            '(macOS: ~/Library/Application Support/AI Crash Fix/).',
+            '(macOS: ~/Library/Application Support/Fixora/).',
             style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
           ),
           const SizedBox(height: AppSpacing.lg),

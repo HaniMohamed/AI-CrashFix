@@ -116,10 +116,17 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
                   if (page.items.isEmpty) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxxl),
-                      child: const EmptyState(
+                      child: EmptyState(
                         icon: Icons.bug_report_outlined,
-                        title: 'No crashes match these filters',
-                        subtitle: 'Adjust filters or run the pipeline to ingest more crashes.',
+                        title: 'No crashes yet',
+                        subtitle:
+                            'Run a mock batch from New Run or Help → setup wizard, '
+                            'or fetch live Crashlytics once GCP tables are configured.',
+                        action: TextButton.icon(
+                          onPressed: () => context.go('/runs/new'),
+                          icon: const Icon(Icons.play_arrow),
+                          label: const Text('Start a run'),
+                        ),
                       ),
                     );
                   }

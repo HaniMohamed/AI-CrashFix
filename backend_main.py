@@ -38,7 +38,7 @@ def _start_parent_watchdog() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="AI Crash Fix backend (FastAPI) for desktop bundling.")
+    parser = argparse.ArgumentParser(description="Fixora backend (FastAPI) for desktop bundling.")
     parser.add_argument("--host", default=os.environ.get("AI_CRASH_FIX_HOST", "127.0.0.1"))
     parser.add_argument(
         "--port",

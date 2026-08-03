@@ -323,6 +323,13 @@ class RepoRegistryStore:
     def delete_repo(self, repo_key: str) -> None:
         self._impl.delete_repo(repo_key)
 
+
+    def get_app_state(self, key: str) -> str | None:
+        return self._impl.get_app_state(key)
+
+    def set_app_state(self, key: str, value: str | None) -> None:
+        self._impl.set_app_state(key, value)
+
     def get_index_status(self, repo_key: str) -> RepoIndexStatus | None:
         return self._impl.get_index_status(repo_key)
 

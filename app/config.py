@@ -89,11 +89,8 @@ OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-# GOSI Brain (OpenAI-compatible chat/completions with custom headers)
-GOSI_BRAIN_URL = os.getenv(
-    "GOSI_BRAIN_URL",
-    "https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions",
-)
+# GOSI Brain (optional advanced OpenAI-compatible provider). No org-specific default URL.
+GOSI_BRAIN_URL = (os.getenv("GOSI_BRAIN_URL") or "").strip() or None
 GOSI_BRAIN_MODEL = os.getenv("GOSI_BRAIN_MODEL")
 GOSI_BRAIN_AUTHORIZATION = os.getenv("GOSI_BRAIN_AUTHORIZATION")
 GOSI_BRAIN_API_KEY = os.getenv("GOSI_BRAIN_API_KEY")
@@ -160,13 +157,9 @@ CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT = (os.getenv("CRASHLYTICS_IOS_BUNDLE_ID") or "
 CRASHLYTICS_FETCH_BACKEND = os.getenv("CRASHLYTICS_FETCH_BACKEND", "bigquery").strip().lower()
 BQ_DATASET = os.getenv("BQ_DATASET", "firebase_crashlytics")
 
-# Crashlytics export tables (within BQ_DATASET). Keep defaults aligned with current Firebase export.
-BQ_CRASHLYTICS_ANDROID_TABLE = os.getenv(
-    "BQ_CRASHLYTICS_ANDROID_TABLE", "sa_gov_gosi_taminaty_ANDROID"
-)
-BQ_CRASHLYTICS_IOS_TABLE = os.getenv(
-    "BQ_CRASHLYTICS_IOS_TABLE", "sa_gov_gosi_taminaty_IOS"
-)
+# Crashlytics export tables (within BQ_DATASET). Empty until configured per buyer / repo.
+BQ_CRASHLYTICS_ANDROID_TABLE = (os.getenv("BQ_CRASHLYTICS_ANDROID_TABLE") or "").strip()
+BQ_CRASHLYTICS_IOS_TABLE = (os.getenv("BQ_CRASHLYTICS_IOS_TABLE") or "").strip()
 
 
 JIRA_SERVER_URL = os.getenv("JIRA_SERVER_URL")

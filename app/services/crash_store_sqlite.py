@@ -61,11 +61,11 @@ class SqliteCrashStore:
         if not resolved:
             if sys.platform == "darwin" and bool(getattr(sys, "frozen", False)):
                 resolved = str(
-                    Path.home()
-                    / "Library"
-                    / "Application Support"
-                    / "AI Crash Fix"
-                    / f"{resolved_project}_crash_store.db"
+                    (
+                        __import__("app.brand", fromlist=["resolve_macos_application_support"])
+                        .resolve_macos_application_support()
+                        / f"{resolved_project}_crash_store.db"
+                    )
                 )
             else:
                 resolved = f"db/{resolved_project}_crash_store.db"

@@ -43,9 +43,9 @@ done
 
 VERSION_TAG="${VERSION//+/-}"
 [[ "${VERSION_TAG}" =~ ^[0-9A-Za-z._-]+$ ]] || fail "invalid version: ${VERSION}"
-DMG_PATH="dist/AI-Crash-Fix-${VERSION_TAG}.dmg"
+DMG_PATH="dist/Fixora-${VERSION_TAG}.dmg"
 
-APP_NAME="AI Crash Fix.app"
+APP_NAME="Fixora.app"
 APP_PATH="dist/macos/${APP_NAME}"
 
 need_cmd() {
@@ -71,7 +71,7 @@ resolve_build_python() {
 BUILD_PYTHON="$(resolve_build_python || true)"
 [[ -n "${BUILD_PYTHON}" ]] || fail "python is required on the build machine. Create .venv or set PYTHON=/path/to/python"
 
-echo "==> Building AI Crash Fix DMG (Flutter macOS + bundled backend)"
+echo "==> Building Fixora DMG (Flutter macOS + bundled backend)"
 echo "Repo: ${ROOT_DIR}"
 echo "Using build Python: ${BUILD_PYTHON} ($("${BUILD_PYTHON}" -V 2>&1))"
 echo
@@ -79,10 +79,19 @@ echo
 need_cmd flutter
 need_cmd hdiutil
 
-# App icon: regenerate from favicon when missing or favicon is newer.
+# App icon: prefer Fixora master PNG; fall back to regenerating from favicon.svg.
 ICNS="packaging/macos/AppIcon.icns"
+ICON_MASTER="packaging/macos/fixora_icon_1024.png"
 FAVICON="frontend/web/favicon.svg"
-if [[ -f "${FAVICON}" ]]; then
+if [[ -f "${ICON_MASTER}" ]]; then
+  if [[ ! -f "${ICNS}" ]] || [[ "${ICON_MASTER}" -nt "${ICNS}" ]]; then
+    need_cmd iconutil
+    need_cmd sips
+    echo "==> Generating AppIcon.icns from ${ICON_MASTER}"
+    ./scripts/macos_make_icns.sh "${ICON_MASTER}"
+    echo
+  fi
+elif [[ -f "${FAVICON}" ]]; then
   if [[ ! -f "${ICNS}" ]] || [[ "${FAVICON}" -nt "${ICNS}" ]]; then
     need_cmd qlmanage
     need_cmd iconutil
@@ -93,24 +102,32 @@ if [[ -f "${FAVICON}" ]]; then
   fi
 fi
 
-# Sync Flutter AppIcon.appiconset from the same favicon (Dock icon).
-if [[ -f "${FAVICON}" ]]; then
-  ICONSET="frontend/macos/Runner/Assets.xcassets/AppIcon.appiconset"
+# Sync Flutter AppIcon.appiconset (Dock icon) from Fixora master PNG when present.
+ICONSET="frontend/macos/Runner/Assets.xcassets/AppIcon.appiconset"
+ICON_SRC=""
+if [[ -f "${ICON_MASTER}" ]]; then
+  ICON_SRC="${ICON_MASTER}"
+elif [[ -f "${FAVICON}" ]]; then
+  ICON_SRC="${FAVICON}"
+fi
+if [[ -n "${ICON_SRC}" ]]; then
   NEED_SYNC=0
-  if [[ ! -f "${ICONSET}/app_icon_1024.png" ]] || [[ "${FAVICON}" -nt "${ICONSET}/app_icon_1024.png" ]]; then
+  if [[ ! -f "${ICONSET}/app_icon_1024.png" ]] || [[ "${ICON_SRC}" -nt "${ICONSET}/app_icon_1024.png" ]]; then
     NEED_SYNC=1
   fi
   if [[ "${NEED_SYNC}" -eq 1 ]]; then
-    need_cmd qlmanage
     need_cmd sips
-    echo "==> Syncing Flutter AppIcon.appiconset from ${FAVICON}"
+    echo "==> Syncing Flutter AppIcon.appiconset from ${ICON_SRC}"
     TMP_DIR="dist/.tmp-flutter-icons"
     rm -rf "${TMP_DIR}"
-    mkdir -p "${TMP_DIR}"
-    qlmanage -t -s 1024 -o "${TMP_DIR}" "${FAVICON}" >/dev/null 2>&1 || fail "Failed to rasterize favicon"
-    PNG="$(ls -1 "${TMP_DIR}"/*.png 2>/dev/null | head -n 1 || true)"
-    [[ -n "${PNG}" ]] || fail "qlmanage did not produce a PNG"
-    mkdir -p "${ICONSET}"
+    mkdir -p "${TMP_DIR}" "${ICONSET}"
+    PNG="${ICON_SRC}"
+    if [[ "${ICON_SRC}" == *.svg ]]; then
+      need_cmd qlmanage
+      qlmanage -t -s 1024 -o "${TMP_DIR}" "${ICON_SRC}" >/dev/null 2>&1 || fail "Failed to rasterize favicon"
+      PNG="$(ls -1 "${TMP_DIR}"/*.png 2>/dev/null | head -n 1 || true)"
+      [[ -n "${PNG}" ]] || fail "qlmanage did not produce a PNG"
+    fi
     sips -z 16 16 "${PNG}" --out "${ICONSET}/app_icon_16.png" >/dev/null
     sips -z 32 32 "${PNG}" --out "${ICONSET}/app_icon_32.png" >/dev/null
     sips -z 64 64 "${PNG}" --out "${ICONSET}/app_icon_64.png" >/dev/null
@@ -182,10 +199,10 @@ echo "==> Step 5: Verify DMG contents"
 VERIFY_ATTACH="$(hdiutil attach -nobrowse -readonly "${DMG_PATH}")"
 VERIFY_MNT="$(echo "${VERIFY_ATTACH}" | sed -n 's/.*\(\/Volumes\/.*\)$/\1/p' | tail -1)"
 [[ -n "${VERIFY_MNT}" ]] || fail "Could not mount DMG for verification"
-VERIFY_BACKEND="${VERIFY_MNT}/AI Crash Fix.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+VERIFY_BACKEND="${VERIFY_MNT}/Fixora.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
 if [[ ! -x "${VERIFY_BACKEND}" ]]; then
   hdiutil detach "${VERIFY_MNT}" -quiet >/dev/null 2>&1 || true
-  fail "DMG is missing embedded backend at AI Crash Fix.app/Contents/Resources/backend/..."
+  fail "DMG is missing embedded backend at Fixora.app/Contents/Resources/backend/..."
 fi
 hdiutil detach "${VERIFY_MNT}" -quiet >/dev/null 2>&1 || true
 echo "DMG backend OK"
@@ -195,7 +212,7 @@ echo "Done."
 echo "- App: ${APP_PATH}"
 echo "- DMG: ${DMG_PATH}"
 echo
-echo "Install: open the DMG, drag AI Crash Fix.app to Applications, then launch from /Applications."
+echo "Install: open the DMG, drag Fixora.app to Applications, then launch from /Applications."
 echo "If macOS blocks the first launch: right-click → Open, or:"
-echo "  xattr -cr \"/Applications/AI Crash Fix.app\""
+echo "  xattr -cr \"/Applications/Fixora.app\""
 echo "Closing the app window (or Quit) stops the embedded backend process."

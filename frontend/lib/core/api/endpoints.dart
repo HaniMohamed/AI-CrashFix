@@ -2,6 +2,9 @@ class Endpoints {
   Endpoints._();
 
   static const String health = '/api/health';
+  static const String setupStatus = '/api/setup/status';
+  static const String setupProgress = '/api/setup/progress';
+  static const String settings = '/api/settings';
   static const String runs = '/api/runs';
   static const String crashes = '/api/crashes';
   static const String analytics = '/api/analytics';

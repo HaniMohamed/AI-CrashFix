@@ -1,6 +1,6 @@
 # macOS packaging (DMG)
 
-This doc describes how to build `AI Crash Fix.app` and package it into a `.dmg`
+This doc describes how to build `Fixora.app` and package it into a `.dmg`
 for internal distribution on macOS **without requiring teammates to install
 Python/Flutter/ripgrep**.
 
@@ -10,7 +10,7 @@ Python/Flutter/ripgrep**.
 - **Backend executable**: PyInstaller-built `ai_crash_fix_backend` under
   `Contents/Resources/backend/ai_crash_fix_backend/`
 - **ripgrep**: `Contents/Resources/bin/rg` (via `AI_CRASH_FIX_RG_PATH`)
-- **Writable state**: `~/Library/Application Support/AI Crash Fix/` (`AI_CRASH_FIX_DATA_DIR`)
+- **Writable state**: `~/Library/Application Support/Fixora/` (`AI_CRASH_FIX_DATA_DIR`)
   — same folder as the previous menubar launcher (repos, settings, crash DBs, clones)
 
 App Sandbox is **disabled** on purpose. A sandboxed build stores data under
@@ -34,9 +34,9 @@ until you remove it.
 ## Bundle layout
 
 ```
-AI Crash Fix.app/
+Fixora.app/
   Contents/
-    MacOS/AI Crash Fix
+    MacOS/Fixora
     Resources/
       AppIcon.icns
       backend/ai_crash_fix_backend/   # PyInstaller onedir
@@ -75,16 +75,16 @@ export LLM_PROVIDER=openai
 export OPENAI_URL="https://api.openai.com/v1"
 export OPENAI_MODEL="gpt-4o-mini"
 export OPENAI_API_KEY="sk-REPLACE_ME"
-open "dist/macos/AI Crash Fix.app"
+open "dist/macos/Fixora.app"
 # or:
-# "./dist/macos/AI Crash Fix.app/Contents/MacOS/AI Crash Fix"
+# "./dist/macos/Fixora.app/Contents/MacOS/Fixora"
 ```
 
 On recent macOS you can also pass env via `open` (short values only — a full
 JWT often triggers **"command too long"** / `ARG_MAX`):
 
 ```bash
-open --env LLM_PROVIDER=openai --env OPENAI_API_KEY=sk-REPLACE_ME -a "AI Crash Fix"
+open --env LLM_PROVIDER=openai --env OPENAI_API_KEY=sk-REPLACE_ME -a "Fixora"
 ```
 
 ### GOSI Brain (recommended: env file)
@@ -110,14 +110,14 @@ Then launch with the helper (exports the file into the process and sets
 ```bash
 ./scripts/run_macos_app.sh ~/gosi-launch.env
 # or with an explicit .app path:
-./scripts/run_macos_app.sh ~/gosi-launch.env "dist/macos/AI Crash Fix.app"
+./scripts/run_macos_app.sh ~/gosi-launch.env "dist/macos/Fixora.app"
 ```
 
 Alternatively:
 
 ```bash
 export AI_CRASH_FIX_ENV_FILE=~/gosi-launch.env
-"./dist/macos/AI Crash Fix.app/Contents/MacOS/AI Crash Fix"
+"./dist/macos/Fixora.app/Contents/MacOS/Fixora"
 ```
 
 Crash store:
@@ -159,8 +159,8 @@ Manual verification:
 
 Output:
 
-- `dist/macos/AI Crash Fix.app`
-- `dist/AI-Crash-Fix.dmg`
+- `dist/macos/Fixora.app`
+- `dist/Fixora.dmg`
 
 ### App icon
 
@@ -184,7 +184,7 @@ Or from a custom 1024×1024 PNG:
 
 ```bash
 ./scripts/build_macos_app.sh
-# → dist/macos/AI Crash Fix.app
+# → dist/macos/Fixora.app
 ```
 
 2) Backend (PyInstaller):
@@ -199,7 +199,7 @@ Flutter **web** assets are optional in the freeze (native macOS UI does not need
 3) Inject backend + ripgrep, then **re-sign** (required):
 
 ```bash
-APP="dist/macos/AI Crash Fix.app"
+APP="dist/macos/Fixora.app"
 mkdir -p "$APP/Contents/Resources/backend" "$APP/Contents/Resources/bin"
 rm -rf "$APP/Contents/Resources/backend/ai_crash_fix_backend"
 ditto "dist/ai_crash_fix_backend" "$APP/Contents/Resources/backend/ai_crash_fix_backend"
@@ -216,24 +216,24 @@ the app from the DMG into `/Applications` (UI shows API offline).
 
 ```bash
 ./scripts/build_dmg.sh
-# → dist/AI-Crash-Fix.dmg
+# → dist/Fixora.dmg
 ```
 
 ## Install from DMG
 
-1. Open `AI-Crash-Fix.dmg`
-2. Drag **AI Crash Fix.app** into **Applications** (do not run it from the DMG)
+1. Open `Fixora.dmg`
+2. Drag **Fixora.app** into **Applications** (do not run it from the DMG)
 3. Launch from `/Applications`
 4. If macOS blocks the first open: right-click → **Open**, or clear quarantine:
 
 ```bash
-xattr -cr "/Applications/AI Crash Fix.app"
+xattr -cr "/Applications/Fixora.app"
 ```
 
 Confirm the install includes the backend:
 
 ```bash
-ls -la "/Applications/AI Crash Fix.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+ls -la "/Applications/Fixora.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
 ```
 
 ## Lifecycle
@@ -257,8 +257,8 @@ If you have a Developer ID identity, sign before building the DMG (replaces adho
 ```bash
 codesign --force --deep --sign "Developer ID Application: <Your Org>" \
   --entitlements frontend/macos/Runner/Release.entitlements \
-  "dist/macos/AI Crash Fix.app"
-codesign --verify --deep --strict "dist/macos/AI Crash Fix.app"
+  "dist/macos/Fixora.app"
+codesign --verify --deep --strict "dist/macos/Fixora.app"
 ```
 
 If you distribute outside the org or want the smoothest first-run experience,

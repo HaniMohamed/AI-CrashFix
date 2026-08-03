@@ -1,5 +1,5 @@
 name: ai_crash_fix_ui
-description: Flutter UI for the AI Crash Fix pipeline (web + macOS).
+description: Flutter UI for the Fixora pipeline (web + macOS).
 publish_to: "none"
 version: 0.1.0+1
 

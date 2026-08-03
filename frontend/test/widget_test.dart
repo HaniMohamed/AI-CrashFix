@@ -15,7 +15,7 @@ import 'package:ai_crash_fix_ui/app/router.dart';
 void main() {
   testWidgets('App boots', (WidgetTester tester) async {
     await tester.pumpWidget(
-      ProviderScope(child: AiCrashFixApp(router: createAppRouter())),
+      ProviderScope(child: FixoraApp(router: createAppRouter())),
     );
     await tester.pump();
 

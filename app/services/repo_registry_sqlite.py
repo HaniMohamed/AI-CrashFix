@@ -369,6 +369,39 @@ class SqliteRepoRegistryStore:
             conn.execute("DELETE FROM repo_indexes WHERE repo_key = ?", (key,))
             conn.commit()
 
+
+    def get_app_state(self, key: str) -> str | None:
+        k = (key or "").strip()
+        if not k:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT v FROM app_state WHERE k = ?",
+                (k,),
+            ).fetchone()
+        if not row:
+            return None
+        v = row[0]
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
+
+    def set_app_state(self, key: str, value: str | None) -> None:
+        k = (key or "").strip()
+        if not k:
+            raise ValueError("app_state key is required")
+        with self._connect() as conn:
+            if value is None or not str(value).strip():
+                conn.execute("DELETE FROM app_state WHERE k = ?", (k,))
+            else:
+                conn.execute(
+                    "INSERT INTO app_state(k, v) VALUES(?, ?) "
+                    "ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+                    (k, str(value).strip()),
+                )
+            conn.commit()
+
     def get_index_status(self, repo_key: str) -> RepoIndexStatus | None:
         key = (repo_key or "").strip()
         if not key:

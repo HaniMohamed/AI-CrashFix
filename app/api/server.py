@@ -1,4 +1,4 @@
-"""FastAPI app exposing the AI Crash Fix pipeline as an HTTP service.
+"""FastAPI app exposing the Fixora pipeline as an HTTP service.
 
 Endpoints
 ---------
@@ -50,7 +50,7 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Crash Fix API",
+    title="Fixora API",
     description=(
         "HTTP layer over the LangGraph crash-fix pipeline. Streams per-step "
         "graph events as NDJSON and exposes the crash store for read-only access."
@@ -236,6 +236,52 @@ async def health() -> Dict[str, Any]:
         "crash_store": crash_store,
         "gosi_brain_launch": gosi_launch,
     }
+
+
+
+@app.get("/api/setup/status")
+async def setup_status() -> Dict[str, Any]:
+    """Buyer-facing readiness checklist for the Fixora Setup Wizard."""
+    from app.services.setup_status import compute_setup_status
+
+    return await asyncio.to_thread(compute_setup_status)
+
+
+class SetupProgressRequest(BaseModel):
+    setup_path: Optional[str] = None  # mock | production
+    mark_complete: Optional[bool] = None
+    clear_complete: Optional[bool] = None
+
+
+@app.post("/api/setup/progress")
+async def setup_progress(req: SetupProgressRequest) -> Dict[str, Any]:
+    """Persist setup path / completion flags in app_state."""
+    from datetime import datetime, timezone
+
+    from app.services.repo_data_guard import ensure_repo_data_writable
+    from app.services.repo_registry_store import RepoRegistryStore
+    from app.services.setup_status import (
+        SETUP_COMPLETED_KEY,
+        SETUP_PATH_KEY,
+        compute_setup_status,
+    )
+
+    ensure_repo_data_writable()
+    store = RepoRegistryStore()
+    if req.setup_path is not None:
+        path = (req.setup_path or "").strip().lower()
+        if path and path not in ("mock", "production"):
+            raise HTTPException(status_code=400, detail="setup_path must be mock or production")
+        store.set_app_state(SETUP_PATH_KEY, path or None)
+    if req.clear_complete:
+        store.set_app_state(SETUP_COMPLETED_KEY, None)
+    if req.mark_complete:
+        store.set_app_state(
+            SETUP_COMPLETED_KEY,
+            datetime.now(timezone.utc).isoformat(),
+        )
+    return await asyncio.to_thread(compute_setup_status)
+
 
 
 @app.get("/api/logs/meta")

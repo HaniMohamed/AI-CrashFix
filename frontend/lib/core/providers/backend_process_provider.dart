@@ -185,7 +185,7 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
         'The DMG/app was likely built without re-signing after injecting the '
         'backend, or the install is incomplete. Rebuild with '
         './scripts/build_macos_dmg_all.sh, reinstall to /Applications, then '
-        'run: xattr -cr "/Applications/AI Crash Fix.app"',
+        'run: xattr -cr "/Applications/Fixora.app"',
       );
     }
 
@@ -320,7 +320,7 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
     if (home.isEmpty) {
       return Directory.systemTemp.path;
     }
-    final dir = Directory('$home/Library/Application Support/AI Crash Fix');
+    final dir = Directory('$home/Library/Application Support/Fixora');
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
     }

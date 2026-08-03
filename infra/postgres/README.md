@@ -1,4 +1,4 @@
-# Self-hosted Postgres for AI Crash Fix crash store
+# Self-hosted Postgres for Fixora crash store
 
 Team-shared crash pipeline state uses Postgres when the backend sets
 `AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres` and `AI_CRASH_FIX_CRASH_DB_URL`.

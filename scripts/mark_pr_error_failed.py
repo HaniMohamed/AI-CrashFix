@@ -6,7 +6,7 @@ failed so they can be re-run from the UI (Re-run requires status == failed).
 Usage:
   # Preview matches (default)
   python scripts/mark_pr_error_failed.py \\
-    --db "/Users/hanihussein/Library/Application Support/AI Crash Fix/db/taminaty-2e06a_64759a75c5be_crash_store.db"
+    --db "/Users/hanihussein/Library/Application Support/Fixora/db/taminaty-2e06a_64759a75c5be_crash_store.db"
 
   # Apply updates
   python scripts/mark_pr_error_failed.py --db "<path>" --apply

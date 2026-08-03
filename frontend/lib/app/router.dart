@@ -9,6 +9,7 @@ import '../features/runs/new_run_page.dart';
 import '../features/runs/run_live_page.dart';
 import '../features/logs/logs_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/help/help_page.dart';
 import '../features/shell/app_shell.dart';
 
 String _initialLocationFromUrl() {
@@ -98,6 +99,11 @@ GoRouter createAppRouter() => GoRouter(
               path: '/settings',
               pageBuilder: (_, _) =>
                   const NoTransitionPage(child: SettingsPage()),
+            ),
+            GoRoute(
+              path: '/help',
+              pageBuilder: (_, _) =>
+                  const NoTransitionPage(child: HelpPage()),
             ),
           ],
         ),

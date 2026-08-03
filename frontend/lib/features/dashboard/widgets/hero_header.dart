@@ -48,7 +48,7 @@ class HeroHeader extends StatelessWidget {
                         borderRadius: AppRadii.all(AppRadii.pill),
                       ),
                       child: Text(
-                        'AI \u00B7 LANGGRAPH \u00B7 LIVE',
+                        'FIXORA \u00B7 LANGGRAPH \u00B7 LIVE',
                         style: theme.labelSmall?.copyWith(color: Colors.white, letterSpacing: 1.4),
                       ),
                     ).animate().fade(duration: 400.ms).slideY(begin: -0.4),

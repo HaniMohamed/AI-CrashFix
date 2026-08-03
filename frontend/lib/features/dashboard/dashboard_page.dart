@@ -6,6 +6,7 @@ import '../../app/theme/spacing.dart';
 import '../../core/models/analytics.dart';
 import '../../core/providers/analytics_provider.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../../shared/widgets/coach_mark.dart';
 import 'widgets/hero_header.dart';
 import 'widgets/kpi_strip.dart';
 import 'widgets/pipeline_funnel.dart';
@@ -46,6 +47,14 @@ class DashboardPage extends ConsumerWidget {
               ),
             ),
             const HeroHeader(),
+            const SizedBox(height: AppSpacing.lg),
+            const CoachMark(
+              id: 'dashboard',
+              title: 'Dashboard tip',
+              body:
+                  'KPIs refresh when you switch repos or pull to refresh. '
+                  'Use New Run for a live pipeline, or Help for the setup checklist.',
+            ),
             const SizedBox(height: AppSpacing.xl),
             async.when(
               loading: () => const KpiStrip(loading: true),

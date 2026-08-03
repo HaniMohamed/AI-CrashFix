@@ -121,7 +121,7 @@ def _sanitize_jira_summary(summary: str, *, max_len: int = 255) -> str:
     """Jira rejects summaries that contain newline characters; keep a single-line title."""
     text = re.sub(r"\s+", " ", (summary or "").replace("\u00a0", " ")).strip()
     if not text:
-        text = "[AI Crash Fix] Crash"
+        text = "[Fixora] Crash"
     if len(text) > max_len:
         text = text[: max_len - 1].rstrip() + "…"
     return text
@@ -487,7 +487,7 @@ def format_mr_description_block(*, pr_url: str, pr_branch: str | None = None) ->
     branch = (pr_branch or "").strip()
     lines = [
         "----",
-        "h3. AI Crash Fix — Merge Request",
+        "h3. Fixora — Merge Request",
         f"*MR:* [Open MR|{url}]" if url else "*MR:* (missing)",
     ]
     if branch:

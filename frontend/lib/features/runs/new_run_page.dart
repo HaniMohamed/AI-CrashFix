@@ -9,6 +9,7 @@ import '../../core/models/run_request.dart';
 import '../../core/providers/config_provider.dart';
 import '../../core/providers/run_session_provider.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../../shared/widgets/coach_mark.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
 
@@ -69,6 +70,14 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
               Text(
                 'Configure every flag the API accepts and stream live events on the next page.',
                 style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              const CoachMark(
+                id: 'new_run',
+                title: 'First run tip',
+                body:
+                    'Start with Mock + Skip Jira to validate LLM + repo mapping without cloud tickets. '
+                    'Turn Mock off once Crashlytics credentials and tables are set on the repo.',
               ),
               const SizedBox(height: AppSpacing.xl),
               config.when(

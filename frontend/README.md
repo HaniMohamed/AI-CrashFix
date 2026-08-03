@@ -1,6 +1,6 @@
-# AI Crash Fix - Flutter UI
+# Fixora - Flutter UI
 
-A Flutter app (web + macOS) that wraps the AI Crash Fix HTTP API. It is a dashboard,
+A Flutter app (web + macOS) that wraps the Fixora HTTP API. It is a dashboard,
 crash explorer, run launcher, live NDJSON consumer, and settings viewer.
 
 On macOS release builds the app can embed a PyInstaller backend and stop it on quit
@@ -13,7 +13,7 @@ frontend/
     index.html              boot loader (centered ring on dark gradient) + Flutter bootstrap
     manifest.json
   lib/
-    main.dart               entry point: ProviderScope(AiCrashFixApp)
+    main.dart               entry point: ProviderScope(FixoraApp)
     app/
       app.dart              MaterialApp.router with light + dark themes
       app_settings.dart     Riverpod-backed settings (API base URL, theme mode) persisted via SharedPreferences

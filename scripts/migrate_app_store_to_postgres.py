@@ -8,7 +8,7 @@ Example:
 
   python scripts/migrate_app_store_to_postgres.py \\
     --user-id cr231120 \\
-    --data-dir "/Users/hanihussein/Library/Application Support/AI Crash Fix" \\
+    --data-dir "/Users/hanihussein/Library/Application Support/Fixora" \\
     --url "$AI_CRASH_FIX_CRASH_DB_URL"
 """
 

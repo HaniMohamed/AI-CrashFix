@@ -39,10 +39,10 @@ class SettingsPage extends ConsumerWidget {
               Text('Settings', style: theme.displaySmall),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Theme is stored in the browser; the API base URL follows build/runtime defaults (not editable here). '
-                'LLM provider and keys are configured on the server (SQLite / .env); this page shows them read-only. '
-                'Crashlytics, Jira, and GitLab are configured per repo (read-only summary below for the selected repo). '
-                'On a shared Postgres store, repos and settings are scoped to the machine user ID.',
+                'Configure Fixora here. Values are saved in the app settings store (SQLite or Postgres) and '
+                'override bootstrap .env on the next request — no restart needed for most keys. '
+                'Per-repo Crashlytics / Jira / GitLab fields in Manage repos override these globals. '
+                'Theme is stored locally on this device.',
                 style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.xl),
@@ -50,7 +50,9 @@ class SettingsPage extends ConsumerWidget {
               const SizedBox(height: AppSpacing.lg),
               _MachineUserCard(async: backendSettings),
               const SizedBox(height: AppSpacing.lg),
-              _ReadOnlyLlmSection(async: backendSettings),
+              _LlmSection(async: backendSettings),
+              const SizedBox(height: AppSpacing.lg),
+              _GlobalIntegrationsSection(async: backendSettings),
               const SizedBox(height: AppSpacing.lg),
               const _RepoIntegrationPanel(),
               const SizedBox(height: AppSpacing.lg),
@@ -63,16 +65,16 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-class _ReadOnlyLlmSection extends ConsumerStatefulWidget {
+class _LlmSection extends ConsumerStatefulWidget {
   final AsyncValue<BackendSettingsState> async;
-  const _ReadOnlyLlmSection({required this.async});
+  const _LlmSection({required this.async});
 
   @override
-  ConsumerState<_ReadOnlyLlmSection> createState() =>
-      _ReadOnlyLlmSectionState();
+  ConsumerState<_LlmSection> createState() =>
+      _LlmSectionState();
 }
 
-class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
+class _LlmSectionState extends ConsumerState<_LlmSection> {
   late final TextEditingController _geminiModelCtrl;
   late final TextEditingController _googleKeyCtrl;
   late final TextEditingController _openaiUrlCtrl;
@@ -88,6 +90,8 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
   double _gosiTemperature = 0.7;
   String _gosiStreaming = 'auto';
   bool _didSync = false;
+  bool _saving = false;
+  String? _saveMsg;
 
   @override
   void initState() {
@@ -119,6 +123,50 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
     _gosiApiKeyCtrl.dispose();
     _gosiAuthCtrl.dispose();
     super.dispose();
+  }
+
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _saveMsg = null;
+    });
+    try {
+      final llm = <String, dynamic>{
+        'provider': _provider,
+        'gemini_model': _geminiModelCtrl.text.trim(),
+        'openai_url': _openaiUrlCtrl.text.trim(),
+        'openai_model': _openaiModelCtrl.text.trim(),
+        'gosi_brain_url': _gosiUrlCtrl.text.trim(),
+        'gosi_brain_model': _gosiModelCtrl.text.trim(),
+        'gosi_brain_oauth_identity_domain_name': _gosiOauthDomainCtrl.text.trim(),
+        'gosi_brain_user_id': _gosiUserIdCtrl.text.trim(),
+        'gosi_brain_temperature': _gosiTemperature,
+        'gosi_brain_streaming': _gosiStreaming,
+      };
+      if (_googleKeyCtrl.text.trim().isNotEmpty) {
+        llm['google_api_key'] = _googleKeyCtrl.text.trim();
+      }
+      if (_openaiKeyCtrl.text.trim().isNotEmpty) {
+        llm['openai_api_key'] = _openaiKeyCtrl.text.trim();
+      }
+      if (_gosiApiKeyCtrl.text.trim().isNotEmpty) {
+        llm['gosi_brain_api_key'] = _gosiApiKeyCtrl.text.trim();
+      }
+      if (_gosiAuthCtrl.text.trim().isNotEmpty) {
+        llm['gosi_brain_authorization'] = _gosiAuthCtrl.text.trim();
+      }
+      await ref.read(backendSettingsProvider.notifier).save({'llm': llm});
+      _googleKeyCtrl.clear();
+      _openaiKeyCtrl.clear();
+      _gosiApiKeyCtrl.clear();
+      _gosiAuthCtrl.clear();
+      setState(() => _saveMsg = 'Saved.');
+    } catch (e) {
+      setState(() => _saveMsg = 'Save failed: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -193,32 +241,27 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'The active provider and credentials are configured on the server; secrets are never shown.',
+                'Choose a provider and save. Secrets are write-only (never returned by the API).',
                 style: theme.bodySmall?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.md),
-              ExcludeFocus(
-                child: IgnorePointer(
-                  child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'gemini', label: Text('Gemini')),
-                      ButtonSegment(value: 'openai', label: Text('OpenAI')),
-                      ButtonSegment(
-                        value: 'gosi-brain',
-                        label: Text('GOSI Brain'),
-                      ),
-                    ],
-                    selected: {_provider},
-                    onSelectionChanged: (_) {},
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'gemini', label: Text('Gemini')),
+                  ButtonSegment(value: 'openai', label: Text('OpenAI')),
+                  ButtonSegment(
+                    value: 'gosi-brain',
+                    label: Text('Advanced'),
                   ),
-                ),
+                ],
+                selected: {_provider},
+                onSelectionChanged: (s) => setState(() => _provider = s.first),
               ),
               const SizedBox(height: AppSpacing.lg),
               if (_provider == 'gemini') ...[
                 TextField(
                   controller: _geminiModelCtrl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
+                                    decoration: const InputDecoration(
                     labelText: 'Gemini model',
                     hintText: 'gemini-2.5-flash',
                   ),
@@ -226,8 +269,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _googleKeyCtrl,
-                  readOnly: true,
-                  decoration: InputDecoration(
+                                    decoration: InputDecoration(
                     labelText: 'Google API key',
                     helperText: hasGoogle
                         ? 'Configured on server (value hidden)'
@@ -238,8 +280,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
               ] else if (_provider == 'openai') ...[
                 TextField(
                   controller: _openaiUrlCtrl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
+                                    decoration: const InputDecoration(
                     labelText: 'OpenAI base URL',
                     hintText: 'https://api.openai.com/v1',
                   ),
@@ -247,8 +288,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _openaiModelCtrl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
+                                    decoration: const InputDecoration(
                     labelText: 'Model name',
                     hintText: 'gpt-4o-mini',
                   ),
@@ -256,8 +296,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _openaiKeyCtrl,
-                  readOnly: true,
-                  decoration: InputDecoration(
+                                    decoration: InputDecoration(
                     labelText: 'OpenAI API key',
                     helperText: hasOpenai
                         ? 'Configured on server (value hidden)'
@@ -268,24 +307,20 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
               ] else ...[
                 TextField(
                   controller: _gosiUrlCtrl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
+                                    decoration: const InputDecoration(
                     labelText: 'API URL',
-                    hintText:
-                        'https://intsol.gosi.gov.sa/v1/iwaiapiproxy/chat/completions',
+                    hintText: 'https://your-gateway.example/v1/chat/completions',
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiModelCtrl,
-                  readOnly: true,
-                  decoration: const InputDecoration(labelText: 'Model name'),
+                                    decoration: const InputDecoration(labelText: 'Model name'),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiOauthDomainCtrl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
+                                    decoration: const InputDecoration(
                     labelText: 'OAuth identity domain name',
                     hintText: 'MobileDomain',
                   ),
@@ -293,8 +328,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiUserIdCtrl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
+                                    decoration: const InputDecoration(
                     labelText: 'User ID (custom_session)',
                     hintText: 'PersonNumber from JWT',
                   ),
@@ -319,13 +353,12 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                   max: 1,
                   divisions: 20,
                   label: _gosiTemperature.toStringAsFixed(2),
-                  onChanged: null,
+                  onChanged: (v) => setState(() => _gosiTemperature = v),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiAuthCtrl,
-                  readOnly: true,
-                  decoration: InputDecoration(
+                                    decoration: InputDecoration(
                     labelText: 'Authorization header value',
                     helperText: hasGosiAuth
                         ? 'Configured on server (value hidden)'
@@ -336,8 +369,7 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _gosiApiKeyCtrl,
-                  readOnly: true,
-                  decoration: InputDecoration(
+                                    decoration: InputDecoration(
                     labelText: 'API key (x-apikey)',
                     helperText: hasGosiApi
                         ? 'Configured on server (value hidden)'
@@ -346,7 +378,238 @@ class _ReadOnlyLlmSectionState extends ConsumerState<_ReadOnlyLlmSection> {
                   obscureText: true,
                 ),
               ],
+              const SizedBox(height: AppSpacing.lg),
+              if (_saveMsg != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: Text(
+                    _saveMsg!,
+                    style: theme.bodySmall?.copyWith(
+                      color: _saveMsg!.startsWith('Save failed')
+                          ? palette.danger
+                          : palette.success,
+                    ),
+                  ),
+                ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _saving || s.repoDataReadonly ? null : _save,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(_saving ? 'Saving…' : 'Save LLM settings'),
+                ),
+              ),
             ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _GlobalIntegrationsSection extends ConsumerStatefulWidget {
+  final AsyncValue<BackendSettingsState> async;
+  const _GlobalIntegrationsSection({required this.async});
+
+  @override
+  ConsumerState<_GlobalIntegrationsSection> createState() =>
+      _GlobalIntegrationsSectionState();
+}
+
+class _GlobalIntegrationsSectionState
+    extends ConsumerState<_GlobalIntegrationsSection> {
+  final _bqProjectCtrl = TextEditingController();
+  final _jiraUrlCtrl = TextEditingController();
+  final _jiraEmailCtrl = TextEditingController();
+  final _jiraTokenCtrl = TextEditingController();
+  final _jiraAuthCtrl = TextEditingController(text: 'auto');
+  final _gitlabUrlCtrl = TextEditingController();
+  final _gitlabTokenCtrl = TextEditingController();
+  bool _didSync = false;
+  bool _saving = false;
+  String? _msg;
+
+  @override
+  void dispose() {
+    _bqProjectCtrl.dispose();
+    _jiraUrlCtrl.dispose();
+    _jiraEmailCtrl.dispose();
+    _jiraTokenCtrl.dispose();
+    _jiraAuthCtrl.dispose();
+    _gitlabUrlCtrl.dispose();
+    _gitlabTokenCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _msg = null;
+    });
+    try {
+      await ref.read(backendSettingsProvider.notifier).save({
+        'crashlytics': {
+          'bq_project_id': _bqProjectCtrl.text.trim(),
+        },
+        'jira': {
+          'server_url': _jiraUrlCtrl.text.trim(),
+          'email': _jiraEmailCtrl.text.trim(),
+          'auth': _jiraAuthCtrl.text.trim(),
+          if (_jiraTokenCtrl.text.trim().isNotEmpty)
+            'token': _jiraTokenCtrl.text.trim(),
+        },
+        'gitlab': {
+          'server_url': _gitlabUrlCtrl.text.trim(),
+          if (_gitlabTokenCtrl.text.trim().isNotEmpty)
+            'token': _gitlabTokenCtrl.text.trim(),
+        },
+      });
+      _jiraTokenCtrl.clear();
+      _gitlabTokenCtrl.clear();
+      setState(() => _msg = 'Saved global defaults.');
+    } catch (e) {
+      setState(() => _msg = 'Save failed: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return GlassCard(
+      child: widget.async.when(
+        loading: () => const ShimmerCard(height: 240),
+        error: (e, _) => ErrorBanner(
+          message: 'Failed to load settings: $e',
+          onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
+        ),
+        data: (s) {
+          final crash = s.section('crashlytics');
+          final jira = s.section('jira');
+          final gl = s.section('gitlab');
+          if (!_didSync) {
+            _didSync = true;
+            _bqProjectCtrl.text = (crash['bq_project_id'] ?? '').toString();
+            _jiraUrlCtrl.text = (jira['server_url'] ?? '').toString();
+            _jiraEmailCtrl.text = (jira['email'] ?? '').toString();
+            _jiraAuthCtrl.text = (jira['auth'] ?? 'auto').toString();
+            _gitlabUrlCtrl.text = (gl['server_url'] ?? '').toString();
+          }
+          final readonly = s.repoDataReadonly;
+          return Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.tune, color: palette.primary),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text('Global integrations', style: theme.headlineSmall),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Defaults used when a repo does not override them. '
+                  'Upload GCP credentials via Manage repos or the setup wizard. '
+                  'Tokens are write-only.',
+                  style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                TextField(
+                  controller: _bqProjectCtrl,
+                  enabled: !readonly,
+                  decoration: const InputDecoration(
+                    labelText: 'BQ / Firebase project ID',
+                    helperText: 'Global default; repo Firebase project ID can override',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text('Jira', style: theme.titleMedium),
+                const SizedBox(height: AppSpacing.sm),
+                TextField(
+                  controller: _jiraUrlCtrl,
+                  enabled: !readonly,
+                  decoration: const InputDecoration(labelText: 'Jira server URL'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _jiraEmailCtrl,
+                  enabled: !readonly,
+                  decoration: const InputDecoration(
+                    labelText: 'Jira email (Cloud)',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _jiraAuthCtrl,
+                  enabled: !readonly,
+                  decoration: const InputDecoration(
+                    labelText: 'Jira auth',
+                    helperText: 'auto | basic | bearer',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _jiraTokenCtrl,
+                  enabled: !readonly,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Jira token',
+                    helperText: jira['has_token'] == true
+                        ? 'Token saved (enter new value to replace)'
+                        : 'Not set',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Text('GitLab', style: theme.titleMedium),
+                const SizedBox(height: AppSpacing.sm),
+                TextField(
+                  controller: _gitlabUrlCtrl,
+                  enabled: !readonly,
+                  decoration:
+                      const InputDecoration(labelText: 'GitLab server URL'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _gitlabTokenCtrl,
+                  enabled: !readonly,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'GitLab token',
+                    helperText: gl['has_token'] == true
+                        ? 'Token saved (enter new value to replace)'
+                        : 'Not set',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                if (_msg != null)
+                  Text(
+                    _msg!,
+                    style: theme.bodySmall?.copyWith(
+                      color: _msg!.startsWith('Save failed')
+                          ? palette.danger
+                          : palette.success,
+                    ),
+                  ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: _saving || readonly ? null : _save,
+                    icon: const Icon(Icons.save_outlined),
+                    label: Text(_saving ? 'Saving…' : 'Save globals'),
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -793,7 +1056,7 @@ class _AboutCard extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'macOS app version from the bundled package metadata.',
+                'Fixora macOS / web UI version from package metadata.',
                 style: theme.bodySmall?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.md),

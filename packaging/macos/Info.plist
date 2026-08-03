@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>AI Crash Fix</string>
+  <string>Fixora</string>
   <key>CFBundleDisplayName</key>
-  <string>AI Crash Fix</string>
+  <string>Fixora</string>
   <key>CFBundleIdentifier</key>
   <string>com.internal.aicrashfix</string>
   <key>CFBundleVersion</key>

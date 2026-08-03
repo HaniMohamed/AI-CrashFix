@@ -334,6 +334,53 @@ class PostgresRepoRegistryStore:
                 )
             conn.commit()
 
+
+    def get_app_state(self, key: str) -> str | None:
+        from app.services.user_context import resolve_user_id
+
+        k = (key or "").strip()
+        if not k:
+            return None
+        user_id = resolve_user_id(required=True)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT v FROM app_state WHERE user_id = %s AND k = %s",
+                    (user_id, k),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        v = row[0]
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
+
+    def set_app_state(self, key: str, value: str | None) -> None:
+        from app.services.user_context import resolve_user_id
+
+        k = (key or "").strip()
+        if not k:
+            raise ValueError("app_state key is required")
+        user_id = resolve_user_id(required=True)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                if value is None or not str(value).strip():
+                    cur.execute(
+                        "DELETE FROM app_state WHERE user_id = %s AND k = %s",
+                        (user_id, k),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO app_state(user_id, k, v) VALUES (%s, %s, %s)
+                        ON CONFLICT (user_id, k) DO UPDATE SET v = EXCLUDED.v
+                        """,
+                        (user_id, k, str(value).strip()),
+                    )
+            conn.commit()
+
     def get_index_status(self, repo_key: str) -> RepoIndexStatus | None:
         key = (repo_key or "").strip()
         if not key:

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Color tokens for the AI Crash Fix UI.
+/// Color tokens for the Fixora UI.
 ///
 /// Dark-mode-first; the light variant mirrors the same accents over light
 /// surfaces. Tokens here are referenced through [AppTheme] / [AppPalette]

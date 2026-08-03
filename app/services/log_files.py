@@ -20,7 +20,9 @@ def resolve_data_dir() -> Path | None:
         except Exception:
             return None
     if sys.platform == "darwin":
-        return (Path.home() / "Library" / "Application Support" / "AI Crash Fix").resolve()
+        from app.brand import resolve_macos_application_support
+
+        return resolve_macos_application_support()
     return None
 
 
@@ -91,7 +93,8 @@ def read_log_chunk(
         hint = (
             f"Log file not found at {path_str}. "
             "The macOS app launcher writes backend.log and launcher.log under "
-            "~/Library/Application Support/AI Crash Fix/ when started from the .app bundle."
+            "~/Library/Application Support/Fixora/ when started from the .app bundle "
+            "(legacy installs may still use AI Crash Fix/)."
         )
         return LogReadResult(
             source=src,

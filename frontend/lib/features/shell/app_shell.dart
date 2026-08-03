@@ -8,10 +8,11 @@ import '../../core/providers/backend_process_provider.dart';
 import '../../core/providers/crashes_provider.dart';
 import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
+import '../../core/providers/setup_status_provider.dart';
 import '../dashboard/widgets/hero_header.dart';
+import '../setup/setup_wizard_dialog.dart';
 import 'sidebar.dart';
 import 'topbar.dart';
-import 'repo_manage_dialog.dart';
 
 /// Layout chrome shared by all top-level routes. Sidebar collapses on small
 /// screens; topbar carries health pill, theme toggle, and base URL popover.
@@ -69,7 +70,10 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     final repoAsync = ref.watch(repoRegistryProvider);
     final healthAsync = ref.watch(healthProvider);
+    final setupAsync = ref.watch(setupStatusProvider);
     final hasRepos = repoAsync.valueOrNull?.repos.isNotEmpty == true;
+    final setupIncomplete = setupAsync.valueOrNull?.needsWizard == true ||
+        (setupAsync.hasValue && !hasRepos && setupAsync.valueOrNull?.setupComplete != true);
 
     Widget shellWithTopbar({
       required Widget body,
@@ -159,7 +163,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                             'AI_CRASH_FIX_CRASH_DB_URL, then retry.'
                         : 'The embedded backend may have stopped. Retry restarts it. '
                             'If this keeps happening, check backend logs under '
-                            '~/Library/Application Support/AI Crash Fix/.',
+                            '~/Library/Application Support/Fixora/.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: AppSpacing.xl),
@@ -208,10 +212,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   Text(
-                    'Launch AI Crash Fix from the CodeFaster app so it can write '
+                    'Launch Fixora from the CodeFaster app so it can write '
                     'a fresh ~/crash_fix_gosi_brain_conf.env with your GOSI Brain '
                     'credentials. Quit this app, launch from CodeFaster, then open '
-                    'AI Crash Fix again.',
+                    'Fixora again.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -305,12 +309,10 @@ class _AppShellState extends ConsumerState<AppShell> {
       );
     }
 
-    // Hard gate: if no repos configured, keep the user in onboarding and block navigation,
-    // even if they opened the app via a deep link.
-    if (repoAsync.hasValue && !hasRepos) {
+    // Hard gate: incomplete Fixora setup (wizard) blocks navigation.
+    if (repoAsync.hasValue && setupAsync.hasValue && setupIncomplete) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
-        // Force dashboard behind the dialog; deep links must not be usable before onboarding.
         if (widget.currentPath != '/') {
           context.go('/');
         }
@@ -322,21 +324,17 @@ class _AppShellState extends ConsumerState<AppShell> {
           await showDialog<void>(
             context: context,
             barrierDismissible: repoDataReadonly,
-            builder: (ctx) => ManageReposDialog(
-              allowClose: repoDataReadonly,
-              onDelete: (repoKey, repoName) async {
-                // Deletion is allowed, but there shouldn't be any repos here anyway.
-                // Keep signature compatible with the dialog.
-              },
-            ),
+            builder: (ctx) => SetupWizardDialog(allowClose: repoDataReadonly),
           );
+          if (mounted) {
+            ref.invalidate(setupStatusProvider);
+            ref.invalidate(repoRegistryProvider);
+          }
         } finally {
           if (mounted) _forcedDialogOpen = false;
         }
       });
 
-      // Do not mount DashboardPage here: it watches analytics and would show JSON/HTML errors
-      // while the API is misconfigured. Hero + copy only; repo dialog carries the real work.
       return shellWithTopbar(
         absorbSidebar: true,
         body: AbsorbPointer(
@@ -354,8 +352,8 @@ class _AppShellState extends ConsumerState<AppShell> {
                 const HeroHeader(),
                 const SizedBox(height: AppSpacing.xl),
                 Text(
-                  'Add your first repository using the dialog above. '
-                  'If the API URL is wrong, use the field at the top of that dialog.',
+                  'Complete the Fixora setup wizard to continue. '
+                  'You can re-open Help anytime after setup for tips and checklists.',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),

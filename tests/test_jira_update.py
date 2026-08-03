@@ -18,7 +18,7 @@ def test_format_mr_description_block_includes_url_and_branch() -> None:
         pr_url="https://gitlab.example.com/mr/1",
         pr_branch="fix/DE-1-crash",
     )
-    assert "h3. AI Crash Fix — Merge Request" in block
+    assert "h3. Fixora — Merge Request" in block
     assert "https://gitlab.example.com/mr/1" in block
     assert "fix/DE-1-crash" in block
     assert block.startswith("----")

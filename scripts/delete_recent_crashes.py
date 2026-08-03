@@ -11,7 +11,7 @@ Dry-run by default; pass --apply to delete.
 Examples:
   # Preview SQLite (last 2 days by created_at)
   python scripts/delete_recent_crashes.py \\
-    --db "$HOME/Library/Application Support/AI Crash Fix/db/<project>_<repo>_crash_store.db"
+    --db "$HOME/Library/Application Support/Fixora/db/<project>_<repo>_crash_store.db"
 
   # Delete last 2 days from that SQLite DB
   python scripts/delete_recent_crashes.py --db "<path>" --apply

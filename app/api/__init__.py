@@ -1,4 +1,4 @@
-"""HTTP/streaming API layer for the AI Crash Fix pipeline.
+"""HTTP/streaming API layer for the Fixora pipeline.
 
 This package wraps the existing graph/runner so a UI can:
 - start a run (batch or single crash) and consume per-step events as NDJSON

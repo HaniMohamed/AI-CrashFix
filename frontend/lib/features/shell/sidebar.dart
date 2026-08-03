@@ -61,6 +61,12 @@ const sidebarItems = <SidebarItem>[
     activeIcon: Icons.tune,
     path: '/settings',
   ),
+  SidebarItem(
+    label: 'Help',
+    icon: Icons.help_outline,
+    activeIcon: Icons.help,
+    path: '/help',
+  ),
 ];
 
 class AppSidebar extends StatelessWidget {
@@ -109,7 +115,7 @@ class AppSidebar extends StatelessWidget {
                         const Icon(Icons.auto_awesome, size: 14, color: Colors.white),
                         const SizedBox(width: 6),
                         Text(
-                          'AI Crash Fix',
+                          'Fixora',
                           style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white),
                         ),
                       ],
@@ -183,7 +189,7 @@ class _Brand extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'AI Crash Fix',
+                  'Fixora',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 Text(

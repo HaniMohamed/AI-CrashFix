@@ -21,7 +21,7 @@ ENV_FILE="${1:-}"
 APP_PATH="${2:-}"
 
 if [[ -z "$ENV_FILE" ]]; then
-  echo "Usage: $0 <env-file> [path-to-AI Crash Fix.app]" >&2
+  echo "Usage: $0 <env-file> [path-to-Fixora.app]" >&2
   exit 2
 fi
 
@@ -34,10 +34,10 @@ ENV_FILE="$(cd "$(dirname "$ENV_FILE")" && pwd)/$(basename "$ENV_FILE")"
 
 if [[ -z "$APP_PATH" ]]; then
   ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-  APP_PATH="$ROOT/dist/macos/AI Crash Fix.app"
+  APP_PATH="$ROOT/dist/macos/Fixora.app"
 fi
 
-BIN="$APP_PATH/Contents/MacOS/AI Crash Fix"
+BIN="$APP_PATH/Contents/MacOS/Fixora"
 if [[ ! -x "$BIN" ]]; then
   # Some builds use underscore name from Swift launcher era
   if [[ -x "$APP_PATH/Contents/MacOS/AI_Crash_Fix" ]]; then

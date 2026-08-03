@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the Flutter macOS release app and stage it at dist/macos/AI Crash Fix.app
+# Build the Flutter macOS release app and stage it at dist/macos/Fixora.app
 # (backend + rg are injected by build_macos_dmg_all.sh / callers).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT_DIR}/dist/macos"
-APP_NAME="AI Crash Fix.app"
+APP_NAME="Fixora.app"
 APP_DIR="${OUT_DIR}/${APP_NAME}"
 
 need_cmd() {
@@ -69,7 +69,7 @@ popd >/dev/null
 SRC_APP=""
 for candidate in \
   "${ROOT_DIR}/frontend/build/macos/Build/Products/Release/${APP_NAME}" \
-  "${ROOT_DIR}/frontend/build/macos/Build/Products/Release/AI Crash Fix.app"
+  "${ROOT_DIR}/frontend/build/macos/Build/Products/Release/Fixora.app"
 do
   if [[ -d "${candidate}" ]]; then
     SRC_APP="${candidate}"
@@ -96,7 +96,7 @@ if [[ -f "${ROOT_DIR}/packaging/macos/AppIcon.icns" ]]; then
 fi
 
 # Guard: App Sandbox must be off so the app reads the same
-# ~/Library/Application Support/AI Crash Fix/ data as the legacy launcher.
+# ~/Library/Application Support/Fixora/ data as the legacy launcher.
 if command -v codesign >/dev/null 2>&1; then
   ENTITLEMENTS_DUMP="$(mktemp)"
   if codesign -d --entitlements :- "${APP_DIR}" >"${ENTITLEMENTS_DUMP}" 2>/dev/null; then

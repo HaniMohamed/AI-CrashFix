@@ -106,6 +106,32 @@ class CrashlyticsService:
             )
         return None
 
+    def _require_bq_tables(self) -> tuple[str, str, str]:
+        """Return (dataset, android_table, ios_table) or raise a clear config error."""
+        if getattr(self, "_effective", None) is not None:
+            dataset = (self._effective.bq_dataset or "").strip()
+            android = (self._effective.bq_android_table or "").strip()
+            ios = (self._effective.bq_ios_table or "").strip()
+        else:
+            dataset = (BQ_DATASET or "").strip()
+            android = (BQ_CRASHLYTICS_ANDROID_TABLE or "").strip()
+            ios = (BQ_CRASHLYTICS_IOS_TABLE or "").strip()
+        missing = []
+        if not dataset:
+            missing.append("BQ_DATASET")
+        if not android:
+            missing.append("BQ_CRASHLYTICS_ANDROID_TABLE")
+        if not ios:
+            missing.append("BQ_CRASHLYTICS_IOS_TABLE")
+        if missing:
+            raise RuntimeError(
+                "Crashlytics BigQuery tables are not configured ("
+                + ", ".join(missing)
+                + "). Set them on the Flutter repo in Manage repositories "
+                "(or global Settings / bootstrap env)."
+            )
+        return dataset, android, ios
+
     def fetch_recent_crashes(self, limit=10):
         """
         Fetch latest crash events from BigQuery or Cloud Logging (see CRASHLYTICS_FETCH_BACKEND).
@@ -156,12 +182,9 @@ class CrashlyticsService:
             )
 
         assert self.project_id is not None
-        if getattr(self, "_effective", None) is not None:
-            android_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_android_table}`"
-            ios_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_ios_table}`"
-        else:
-            android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
-            ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
+        dataset, android_name, ios_name = self._require_bq_tables()
+        android_table = f"`{self.project_id}.{dataset}.{android_name}`"
+        ios_table = f"`{self.project_id}.{dataset}.{ios_name}`"
 
         query = f"""
         WITH unioned AS (
@@ -255,12 +278,9 @@ class CrashlyticsService:
         # Crashlytics export is split by app/platform into concrete tables.
         # We union Android + iOS into a single stream and then apply a global LIMIT.
         assert self.project_id is not None
-        if getattr(self, "_effective", None) is not None:
-            android_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_android_table}`"
-            ios_table = f"`{self.project_id}.{self._effective.bq_dataset}.{self._effective.bq_ios_table}`"
-        else:
-            android_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_ANDROID_TABLE}`"
-            ios_table = f"`{self.project_id}.{BQ_DATASET}.{BQ_CRASHLYTICS_IOS_TABLE}`"
+        dataset, android_name, ios_name = self._require_bq_tables()
+        android_table = f"`{self.project_id}.{dataset}.{android_name}`"
+        ios_table = f"`{self.project_id}.{dataset}.{ios_name}`"
 
         query = f"""
         WITH unioned AS (

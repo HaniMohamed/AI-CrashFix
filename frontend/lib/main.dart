@@ -9,5 +9,5 @@ import 'app/url_strategy_stub.dart'
 void main() {
   configureUrlStrategy();
   final router = createAppRouter();
-  runApp(ProviderScope(child: AiCrashFixApp(router: router)));
+  runApp(ProviderScope(child: FixoraApp(router: router)));
 }

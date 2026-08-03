@@ -8,16 +8,16 @@ import 'app_settings.dart';
 import '../core/providers/backend_process_provider.dart';
 import 'theme/app_theme.dart';
 
-class AiCrashFixApp extends ConsumerStatefulWidget {
+class FixoraApp extends ConsumerStatefulWidget {
   final GoRouter router;
-  const AiCrashFixApp({super.key, required this.router});
-  const AiCrashFixApp.withRouter({super.key, required this.router});
+  const FixoraApp({super.key, required this.router});
+  const FixoraApp.withRouter({super.key, required this.router});
 
   @override
-  ConsumerState<AiCrashFixApp> createState() => _AiCrashFixAppState();
+  ConsumerState<FixoraApp> createState() => _FixoraAppState();
 }
 
-class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
+class _FixoraAppState extends ConsumerState<FixoraApp>
     with WidgetsBindingObserver {
   @override
   void initState() {
@@ -50,7 +50,7 @@ class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
     final backend = ref.watch(backendProcessProvider);
     return async.when(
       loading: () => MaterialApp(
-        title: 'AI Crash Fix',
+        title: 'Fixora',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
         home: const Scaffold(
@@ -60,7 +60,7 @@ class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
         ),
       ),
       error: (e, _) => MaterialApp(
-        title: 'AI Crash Fix',
+        title: 'Fixora',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
         home: Scaffold(
@@ -85,7 +85,7 @@ class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
       data: (settings) {
         if (backend.isLoading) {
           return MaterialApp(
-            title: 'AI Crash Fix',
+            title: 'Fixora',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.dark(),
             home: const Scaffold(
@@ -95,7 +95,7 @@ class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
         }
         if (backend.hasError) {
           return MaterialApp(
-            title: 'AI Crash Fix',
+            title: 'Fixora',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.dark(),
             home: Scaffold(
@@ -120,7 +120,7 @@ class _AiCrashFixAppState extends ConsumerState<AiCrashFixApp>
           );
         }
         return MaterialApp.router(
-          title: 'AI Crash Fix',
+          title: 'Fixora',
           debugShowCheckedModeBanner: false,
           themeMode: settings.themeMode,
           theme: AppTheme.light(),

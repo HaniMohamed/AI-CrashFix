@@ -6,7 +6,7 @@ set -euo pipefail
 
 APP_PATH="${1:-}"
 if [[ -z "${APP_PATH}" || ! -d "${APP_PATH}" ]]; then
-  echo "Usage: $0 /path/to/AI Crash Fix.app" >&2
+  echo "Usage: $0 /path/to/Fixora.app" >&2
   exit 2
 fi
 

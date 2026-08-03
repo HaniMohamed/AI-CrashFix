@@ -4,16 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT_DIR}/dist"
 MACOS_DIR="${OUT_DIR}/macos"
-APP_NAME="AI Crash Fix.app"
+APP_NAME="Fixora.app"
 APP_PATH="${MACOS_DIR}/${APP_NAME}"
-DMG_VOLNAME="AI Crash Fix"
+DMG_VOLNAME="Fixora"
 DMG_BG_SVG="${ROOT_DIR}/packaging/macos/dmg_background.svg"
 
 usage() {
   echo "Usage: $0 <version>" >&2
   echo "       $0 --version <version>" >&2
   echo "Example: $0 1.2.3" >&2
-  echo "         $0 1.2.3+4   # → dist/AI-Crash-Fix-1.2.3-4.dmg" >&2
+  echo "         $0 1.2.3+4   # → dist/Fixora-1.2.3-4.dmg" >&2
   exit 2
 }
 
@@ -52,7 +52,7 @@ if [[ ! "${VERSION_TAG}" =~ ^[0-9A-Za-z._-]+$ ]]; then
   exit 2
 fi
 
-DMG_PATH="${OUT_DIR}/AI-Crash-Fix-${VERSION_TAG}.dmg"
+DMG_PATH="${OUT_DIR}/Fixora-${VERSION_TAG}.dmg"
 
 if [[ ! -d "${APP_PATH}" ]]; then
   echo "Missing app bundle at: ${APP_PATH}"
@@ -103,7 +103,7 @@ customize_dmg() {
   command -v qlmanage >/dev/null 2>&1 || return 1
 
   # Attach and grab device + mount point. Volume name contains spaces
-  # ("AI Crash Fix") so never use awk $NF for the path.
+  # ("Fixora") so never use awk $NF for the path.
   local attach_out mount_point device
   attach_out="$(hdiutil attach -readwrite -noverify -noautoopen "${RW_DMG}")"
   mount_point="$(echo "${attach_out}" | sed -n 's/.*\(\/Volumes\/.*\)$/\1/p' | tail -1)"

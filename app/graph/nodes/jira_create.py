@@ -24,7 +24,7 @@ def jira_create(state):
             )
         return state
 
-    summary = state.get("summary") or f"[AI Crash Fix] {exception or crash_id or 'Crash'}"
+    summary = state.get("summary") or f"[Fixora] {exception or crash_id or 'Crash'}"
 
     if state.get("description"):
         description = state.get("description")

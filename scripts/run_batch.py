@@ -52,7 +52,7 @@ def _initial_state_for_crash(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Fetch N recent crashes and process each via the AI Crash Fix graph."
+        description="Fetch N recent crashes and process each via the Fixora graph."
     )
     parser.add_argument(
         "--limit",
