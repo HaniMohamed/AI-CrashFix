@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Protocol
@@ -7,6 +8,11 @@ from typing import Protocol
 from app.config import AI_CRASH_FIX_CRASH_STORE_BACKEND
 from app.services.crash_store_postgres import PostgresCrashStore, check_postgres_crash_store
 from app.services.crash_store_sqlite import SqliteCrashStore
+
+_log = logging.getLogger(__name__)
+
+# Set by ensure_crash_store_available() when Postgres is unreachable.
+_CRASH_STORE_FALLBACK: dict[str, object] | None = None
 
 
 class CrashStoreBackend(Protocol):
@@ -64,6 +70,76 @@ def uses_postgres_crash_store() -> bool:
     return crash_store_backend_name() == "postgres"
 
 
+def _crash_store_strict() -> bool:
+    return (os.getenv("AI_CRASH_FIX_CRASH_STORE_STRICT") or "").strip() == "1"
+
+
+def _sync_crash_store_config_from_environ() -> None:
+    """Keep ``app.config`` module attrs aligned with live process env."""
+    import app.config as cfg
+
+    cfg.AI_CRASH_FIX_CRASH_STORE_BACKEND = (
+        (os.getenv("AI_CRASH_FIX_CRASH_STORE_BACKEND") or "sqlite").strip().lower()
+        or "sqlite"
+    )
+    cfg.AI_CRASH_FIX_CRASH_DB_URL = (
+        (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip() or None
+    )
+
+
+def ensure_crash_store_available() -> dict[str, object]:
+    """If Postgres is configured but unreachable, fall back to local SQLite.
+
+    Team launch env files often pin ``AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres``.
+    When that host is down (VPN off, Docker stopped), Fixora would otherwise hard-block
+    the UI. Falling back keeps LLM/settings from the same env file while using a
+    local crash store.
+
+    Set ``AI_CRASH_FIX_CRASH_STORE_STRICT=1`` to keep the hard failure instead.
+    """
+    global _CRASH_STORE_FALLBACK, _CRASH_STORE_HEALTH_CACHE, _CRASH_STORE_HEALTH_CACHED_AT
+
+    _sync_crash_store_config_from_environ()
+    _CRASH_STORE_FALLBACK = None
+
+    try:
+        backend = crash_store_backend_name()
+    except ValueError as exc:
+        return {"backend": "unknown", "ok": False, "error": str(exc)}
+
+    if backend != "postgres":
+        return {"backend": backend, "ok": True, "error": None}
+
+    ok, error = check_postgres_crash_store()
+    if ok:
+        return {"backend": "postgres", "ok": True, "error": None}
+
+    if _crash_store_strict():
+        return {"backend": "postgres", "ok": False, "error": error}
+
+    _log.warning(
+        "Postgres crash store unreachable (%s); falling back to local SQLite for this session",
+        error,
+    )
+    os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = "sqlite"
+    _sync_crash_store_config_from_environ()
+    _CRASH_STORE_FALLBACK = {
+        "from": "postgres",
+        "to": "sqlite",
+        "error": error,
+    }
+    # Force next health() call to re-read backend=sqlite.
+    _CRASH_STORE_HEALTH_CACHE = None
+    _CRASH_STORE_HEALTH_CACHED_AT = 0.0
+    return {
+        "backend": "sqlite",
+        "ok": True,
+        "error": None,
+        "fallback_from": "postgres",
+        "fallback_reason": error,
+    }
+
+
 _CRASH_STORE_HEALTH_CACHE: dict[str, object] | None = None
 _CRASH_STORE_HEALTH_CACHED_AT = 0.0
 _CRASH_STORE_HEALTH_TTL_SEC = 10.0
@@ -98,6 +174,9 @@ def crash_store_health(*, force: bool = False) -> dict[str, object]:
         payload = {"backend": backend, "ok": ok, "error": error}
     else:
         payload = {"backend": backend, "ok": True, "error": None}
+        if _CRASH_STORE_FALLBACK:
+            payload["fallback_from"] = _CRASH_STORE_FALLBACK.get("from")
+            payload["fallback_reason"] = _CRASH_STORE_FALLBACK.get("error")
 
     _CRASH_STORE_HEALTH_CACHE = payload
     _CRASH_STORE_HEALTH_CACHED_AT = now

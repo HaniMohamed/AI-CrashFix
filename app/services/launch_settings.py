@@ -6,6 +6,11 @@ from pathlib import Path
 from app.services.app_settings_store import AppSettingsStore
 
 DEFAULT_LAUNCH_ENV_FILENAME = "crash_fix_gosi_brain_conf.env"
+# Prefer Fixora-branded paths before the legacy GOSI/CodeFaster filename.
+FIXORA_LAUNCH_ENV_FILENAMES: tuple[str, ...] = (
+    "Library/Application Support/Fixora/launch.env",
+    "fixora.env",
+)
 
 # Env keys from `open --args` / launcher / env-file that map to editable app_settings.
 _APP_SETTINGS_ENV_KEYS: frozenset[str] = frozenset(
@@ -57,6 +62,14 @@ def _coerce_value(key: str, raw: str) -> str | float:
 
 def default_launch_env_file_path() -> Path:
     return Path.home() / DEFAULT_LAUNCH_ENV_FILENAME
+
+
+def auto_launch_env_candidates() -> list[Path]:
+    """Ordered candidates when ``AI_CRASH_FIX_AUTO_LAUNCH_ENV=1``."""
+    home = Path.home()
+    out: list[Path] = [home / rel for rel in FIXORA_LAUNCH_ENV_FILENAMES]
+    out.append(home / DEFAULT_LAUNCH_ENV_FILENAME)
+    return out
 
 
 def env_file_nonempty(path: Path) -> bool:
@@ -114,9 +127,9 @@ def _resolve_launch_env_file_path() -> Path | None:
         return path if path.is_file() else None
     if (os.environ.get("AI_CRASH_FIX_AUTO_LAUNCH_ENV") or "").strip() != "1":
         return None
-    default = default_launch_env_file_path()
-    if env_file_nonempty(default):
-        return default
+    for candidate in auto_launch_env_candidates():
+        if env_file_nonempty(candidate):
+            return candidate
     return None
 
 
@@ -124,8 +137,8 @@ def apply_launch_env_file() -> list[str]:
     """
     Load ``AI_CRASH_FIX_ENV_FILE`` into ``os.environ``.
 
-    When ``AI_CRASH_FIX_ENV_FILE`` is unset, auto-detect a non-empty
-    ``~/crash_fix_gosi_brain_conf.env`` (macOS standalone / CodeFaster host).
+    When ``AI_CRASH_FIX_ENV_FILE`` is unset, auto-detect a non-empty Fixora or
+    legacy launch env file (macOS standalone / CodeFaster host).
 
     Avoids macOS ``ARG_MAX`` / "command too long" when JWTs and keys are too large
     for ``open --args`` / ``open --env``. Only the short file path needs to be on

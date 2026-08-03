@@ -38,13 +38,22 @@ from starlette.staticfiles import StaticFiles
 from app.api.analytics import compute_analytics
 from app.api.events import ERROR, to_ndjson
 from app.api.runner import stream_run
-from app.services.crash_store import CrashStore, crash_store_health, uses_postgres_crash_store
-from app.services.launch_settings import persist_launch_env_overrides
+from app.services.crash_store import (
+    CrashStore,
+    crash_store_health,
+    ensure_crash_store_available,
+    uses_postgres_crash_store,
+)
+from app.services.launch_settings import apply_launch_env_file, persist_launch_env_overrides
 from app.services.repo_registry_store import RepoRegistryStore
 
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    # Load team/buyer launch env first, then fall back to SQLite if Postgres is
+    # down, then persist settings into whichever store is active.
+    apply_launch_env_file()
+    ensure_crash_store_available()
     persist_launch_env_overrides()
     yield
 

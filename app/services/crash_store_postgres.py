@@ -31,7 +31,11 @@ _ALL_COLUMNS = (
 
 
 def _crash_db_url() -> str:
-    url = (AI_CRASH_FIX_CRASH_DB_URL or "").strip()
+    # Prefer live process env (launch .env applied at startup) over import-time config.
+    url = (
+        (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip()
+        or (AI_CRASH_FIX_CRASH_DB_URL or "").strip()
+    )
     if not url:
         raise ValueError(
             "AI_CRASH_FIX_CRASH_DB_URL is required when AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres"

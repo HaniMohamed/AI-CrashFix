@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from typing import Any
 
@@ -14,7 +15,10 @@ from app.services.user_context import resolve_user_id
 
 
 def _db_url() -> str:
-    url = (AI_CRASH_FIX_CRASH_DB_URL or "").strip()
+    url = (
+        (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip()
+        or (AI_CRASH_FIX_CRASH_DB_URL or "").strip()
+    )
     if not url:
         raise ValueError(
             "AI_CRASH_FIX_CRASH_DB_URL is required when AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres"

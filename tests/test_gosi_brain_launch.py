@@ -30,6 +30,33 @@ def test_apply_launch_env_file_auto_detects_home_default(
     assert os.environ["GOSI_BRAIN_AUTHORIZATION"] == "Bearer token"
 
 
+def test_apply_launch_env_file_prefers_fixora_env_over_legacy(
+    monkeypatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    (home / "crash_fix_gosi_brain_conf.env").write_text(
+        "LLM_PROVIDER=gosi-brain\n",
+        encoding="utf-8",
+    )
+    fixora = home / "fixora.env"
+    fixora.write_text(
+        "AI_CRASH_FIX_CRASH_STORE_BACKEND=sqlite\nLLM_PROVIDER=openai\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AI_CRASH_FIX_AUTO_LAUNCH_ENV", "1")
+    monkeypatch.delenv("AI_CRASH_FIX_ENV_FILE", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("AI_CRASH_FIX_LAUNCH_ENV_KEYS", raising=False)
+
+    applied = apply_launch_env_file()
+    assert "LLM_PROVIDER" in applied
+    assert os.environ["AI_CRASH_FIX_ENV_FILE"] == str(fixora.resolve())
+    assert os.environ["LLM_PROVIDER"] == "openai"
+    assert os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] == "sqlite"
+
+
 def test_gosi_brain_launch_health_blocks_missing_env(monkeypatch, tmp_path: Path) -> None:
     from app.services.app_settings_store import AppSettingsStore
     from app.services.gosi_brain_launch import gosi_brain_launch_health

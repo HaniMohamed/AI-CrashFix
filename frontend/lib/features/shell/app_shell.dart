@@ -159,11 +159,12 @@ class _AppShellState extends ConsumerState<AppShell> {
                   const SizedBox(height: AppSpacing.lg),
                   Text(
                     health?.crashStoreUnhealthy == true
-                        ? 'Start the team Postgres instance (see infra/postgres) and verify '
-                            'AI_CRASH_FIX_CRASH_DB_URL, then retry.'
+                        ? 'Team Postgres is unreachable. Start it (see infra/postgres), or '
+                            'use a local SQLite launch env (AI_CRASH_FIX_CRASH_STORE_BACKEND=sqlite). '
+                            'Then retry.'
                         : 'The embedded backend may have stopped. Retry restarts it. '
                             'If this keeps happening, check backend logs under '
-                            '~/Library/Application Support/Fixora/.',
+                            '~/Library/Application Support/Fixora/',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: AppSpacing.xl),
