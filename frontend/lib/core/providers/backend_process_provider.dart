@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../app/brand.dart';
+
 /// Starts and manages the packaged FastAPI backend for desktop builds.
 ///
 /// Web: does nothing (assumes backend is external).
@@ -179,7 +181,7 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
       final exe = Platform.resolvedExecutable;
       final contentsDir = Directory(exe).parent.parent.path;
       final expected =
-          '$contentsDir/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend';
+          '$contentsDir/Resources/backend/$kBackendProcessName/$kBackendProcessName';
       throw StateError(
         'Embedded backend binary not found at:\n$expected\n\n'
         'The DMG/app was likely built without re-signing after injecting the '
@@ -301,9 +303,14 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
     // Built macOS .app: .../Contents/MacOS/<exe> → .../Contents/Resources/...
     final exe = Platform.resolvedExecutable;
     final contentsDir = Directory(exe).parent.parent.path;
-    final candidate =
-        '$contentsDir/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend';
-    if (File(candidate).existsSync()) return candidate;
+    final candidates = <String>[
+      '$contentsDir/Resources/backend/$kBackendProcessName/$kBackendProcessName',
+      // Pre-rebrand PyInstaller output
+      '$contentsDir/Resources/backend/$kBackendProcessNameLegacy/$kBackendProcessNameLegacy',
+    ];
+    for (final candidate in candidates) {
+      if (File(candidate).existsSync()) return candidate;
+    }
 
     return null;
   }

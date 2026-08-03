@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<!-- Must stay false: sandboxed builds cannot see the shared
-	     ~/Library/Application Support/AI Crash Fix/ data used by prior builds. -->
+	     ~/Library/Application Support/Fixora/ data (legacy: AI Crash Fix/). -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<key>com.apple.security.cs.allow-jit</key>

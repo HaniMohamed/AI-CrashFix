@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/spacing.dart';
+import '../../../shared/widgets/fixora_mark.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../../shared/widgets/gradient_button.dart';
 
@@ -41,16 +42,22 @@ class HeroHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        gradient: palette.brandGradient,
-                        borderRadius: AppRadii.all(AppRadii.pill),
-                      ),
-                      child: Text(
-                        'FIXORA \u00B7 LANGGRAPH \u00B7 LIVE',
-                        style: theme.labelSmall?.copyWith(color: Colors.white, letterSpacing: 1.4),
-                      ),
+                    Row(
+                      children: [
+                        const FixoraMark(size: 22, radius: 6, elevated: false),
+                        const SizedBox(width: AppSpacing.sm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            gradient: palette.brandGradient,
+                            borderRadius: AppRadii.all(AppRadii.pill),
+                          ),
+                          child: Text(
+                            'FIXORA \u00B7 LANGGRAPH \u00B7 LIVE',
+                            style: theme.labelSmall?.copyWith(color: Colors.white, letterSpacing: 1.4),
+                          ),
+                        ),
+                      ],
                     ).animate().fade(duration: 400.ms).slideY(begin: -0.4),
                     const SizedBox(height: AppSpacing.lg),
                     Text(

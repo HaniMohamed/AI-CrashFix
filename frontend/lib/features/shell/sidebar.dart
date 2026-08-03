@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../shared/widgets/app_version_label.dart';
+import '../../shared/widgets/fixora_mark.dart';
 
 class SidebarItem {
   final String label;
@@ -112,15 +113,14 @@ class AppSidebar extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.auto_awesome, size: 14, color: Colors.white),
+                        const FixoraMark(size: 18, radius: 5, elevated: false),
                         const SizedBox(width: 6),
                         Text(
                           'Fixora',
                           style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 4),
+                    ),                    const SizedBox(height: 4),
                     Text(
                       'Crashes \u2192 fix \u2192 PR\non autopilot.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -158,25 +158,10 @@ class _Brand extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final mark = Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        gradient: palette.brandGradient,
-        borderRadius: AppRadii.all(AppRadii.md),
-        boxShadow: [
-          BoxShadow(
-            color: palette.primary.withValues(alpha: 0.45),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
-    );
+    const mark = FixoraMark(size: 36);
 
     if (collapsed) {
-      return Padding(padding: const EdgeInsets.all(8.0), child: mark);
+      return const Padding(padding: EdgeInsets.all(8.0), child: mark);
     }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -207,7 +192,6 @@ class _Brand extends StatelessWidget {
     );
   }
 }
-
 class _SidebarTile extends StatelessWidget {
   final SidebarItem item;
   final bool active;

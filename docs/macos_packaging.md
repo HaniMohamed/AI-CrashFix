@@ -7,8 +7,8 @@ Python/Flutter/ripgrep**.
 ## What gets bundled
 
 - **Flutter macOS app** (Dock icon, native window) — UI is Flutter desktop, not a browser
-- **Backend executable**: PyInstaller-built `ai_crash_fix_backend` under
-  `Contents/Resources/backend/ai_crash_fix_backend/`
+- **Backend executable**: PyInstaller-built `Fixora Backend` under
+  `Contents/Resources/backend/Fixora Backend/`
 - **ripgrep**: `Contents/Resources/bin/rg` (via `AI_CRASH_FIX_RG_PATH`)
 - **Writable state**: `~/Library/Application Support/Fixora/` (`AI_CRASH_FIX_DATA_DIR`)
   — same folder as the previous menubar launcher (repos, settings, crash DBs, clones)
@@ -39,7 +39,7 @@ Fixora.app/
     MacOS/Fixora
     Resources/
       AppIcon.icns
-      backend/ai_crash_fix_backend/   # PyInstaller onedir
+      backend/Fixora Backend/   # PyInstaller onedir (Activity Monitor name)
       bin/rg
 ```
 
@@ -191,7 +191,7 @@ Or from a custom 1024×1024 PNG:
 
 ```bash
 ./scripts/build_backend_pyinstaller.sh
-# → dist/ai_crash_fix_backend/ai_crash_fix_backend
+# → dist/Fixora Backend/Fixora Backend
 ```
 
 Flutter **web** assets are optional in the freeze (native macOS UI does not need them).
@@ -200,9 +200,10 @@ Flutter **web** assets are optional in the freeze (native macOS UI does not need
 
 ```bash
 APP="dist/macos/Fixora.app"
+BACKEND_NAME="Fixora Backend"
 mkdir -p "$APP/Contents/Resources/backend" "$APP/Contents/Resources/bin"
-rm -rf "$APP/Contents/Resources/backend/ai_crash_fix_backend"
-ditto "dist/ai_crash_fix_backend" "$APP/Contents/Resources/backend/ai_crash_fix_backend"
+rm -rf "$APP/Contents/Resources/backend/${BACKEND_NAME}"
+ditto "dist/${BACKEND_NAME}" "$APP/Contents/Resources/backend/${BACKEND_NAME}"
 ditto "/opt/homebrew/bin/rg" "$APP/Contents/Resources/bin/rg"
 chmod +x "$APP/Contents/Resources/bin/rg"
 ./scripts/resign_macos_app.sh "$APP"
@@ -233,7 +234,7 @@ xattr -cr "/Applications/Fixora.app"
 Confirm the install includes the backend:
 
 ```bash
-ls -la "/Applications/Fixora.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+ls -la "/Applications/Fixora.app/Contents/Resources/backend/Fixora Backend/Fixora Backend"
 ```
 
 ## Lifecycle

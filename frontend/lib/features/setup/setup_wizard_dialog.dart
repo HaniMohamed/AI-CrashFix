@@ -12,6 +12,7 @@ import '../../core/providers/repo_registry_provider.dart';
 import '../../core/providers/run_session_provider.dart';
 import '../../core/providers/setup_status_provider.dart';
 import '../../core/models/run_request.dart';
+import '../../shared/widgets/fixora_mark.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
 import '../../util/service_account_json_pick.dart';
@@ -321,7 +322,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.rocket_launch_outlined, color: palette.primary),
+                  const FixoraMark(size: 28, elevated: false),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
@@ -335,8 +336,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
                       icon: const Icon(Icons.close),
                     ),
                 ],
-              ),
-              const SizedBox(height: AppSpacing.sm),
+              ),              const SizedBox(height: AppSpacing.sm),
               Text(
                 'Step ${_step + 1} of ${_titles.length}: ${_titles[_step]}',
                 style: theme.bodyMedium?.copyWith(color: palette.textSecondary),

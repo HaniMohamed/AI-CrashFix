@@ -24,7 +24,7 @@ def _default_index_base(*, repo_root: str | None) -> Path:
 
     We intentionally store this alongside the checked-out repo (typically under
     `workspace_projects/<project_id>/...`) so the cache lifecycle is tied to the
-    project clone, not the AI Crash Fix app repo.
+    project clone, not the Fixora app repo.
     """
     root = (repo_root or "").strip()
     if root:
@@ -50,7 +50,7 @@ def _maybe_migrate_legacy_index(
     if not repo_key or not commit_sha or not repo_root:
         return
 
-    # Old base was always relative to the AI Crash Fix app working directory.
+    # Old base was always relative to the Fixora app working directory.
     old_base = (Path.cwd() / "db" / "ast_index").resolve()
     old_dir = (old_base / repo_key / commit_sha).resolve()
     new_dir = (new_base / repo_key / commit_sha).resolve()

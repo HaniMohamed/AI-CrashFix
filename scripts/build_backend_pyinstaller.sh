@@ -47,7 +47,9 @@ done
 
 "${BUILD_PYTHON}" -m PyInstaller "${PYINSTALLER_EXTRA[@]+"${PYINSTALLER_EXTRA[@]}"}" packaging/pyinstaller/backend.spec
 
-BUNDLE_DIR="dist/ai_crash_fix_backend/_internal"
+# Must match app.brand.BACKEND_PROCESS_NAME / packaging/pyinstaller/backend.spec
+BACKEND_NAME="Fixora Backend"
+BUNDLE_DIR="dist/${BACKEND_NAME}/_internal"
 if [[ ! -d "${BUNDLE_DIR}" ]]; then
   echo "ERROR: Missing PyInstaller bundle at ${BUNDLE_DIR}" >&2
   exit 1
@@ -62,5 +64,5 @@ if ! find "${BUNDLE_DIR}/psycopg_binary" -name '*.so' -print -quit | grep -q .; 
 fi
 
 echo
-echo "Built backend bundle at: dist/ai_crash_fix_backend/"
-echo "Backend executable:      dist/ai_crash_fix_backend/ai_crash_fix_backend"
+echo "Built backend bundle at: dist/${BACKEND_NAME}/"
+echo "Backend executable:      dist/${BACKEND_NAME}/${BACKEND_NAME}"

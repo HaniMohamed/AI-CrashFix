@@ -13,7 +13,12 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENTITLEMENTS="${2:-${ROOT_DIR}/frontend/macos/Runner/Release.entitlements}"
 
-BACKEND_BIN="${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+BACKEND_NAME="Fixora Backend"
+BACKEND_BIN="${APP_PATH}/Contents/Resources/backend/${BACKEND_NAME}/${BACKEND_NAME}"
+# Legacy PyInstaller name (pre-Fixora rebrand)
+if [[ ! -x "${BACKEND_BIN}" ]]; then
+  BACKEND_BIN="${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+fi
 if [[ ! -x "${BACKEND_BIN}" ]]; then
   echo "ERROR: Missing embedded backend at: ${BACKEND_BIN}" >&2
   exit 1

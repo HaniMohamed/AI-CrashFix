@@ -254,7 +254,7 @@ def parse_dart(
 
         match = PACKAGE_DART_REGEX.search(line)
         if match:
-            # For AI Crash Fix repo mapping, package: frames are usually Flutter/Dart SDK noise.
+            # For Fixora repo mapping, package: frames are usually Flutter/Dart SDK noise.
             # Only map them if they can be resolved to an actual repo file without guessing.
             package = match.group("package")
             path = match.group("path")

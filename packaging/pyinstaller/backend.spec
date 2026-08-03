@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-# PyInstaller spec for the AI Crash Fix FastAPI backend.
+# PyInstaller spec for the Fixora FastAPI backend.
 #
 # Build:
 #   python -m PyInstaller packaging/pyinstaller/backend.spec
 #
-# Output binary:
-#   dist/ai_crash_fix_backend
+# Output binary (Activity Monitor process name):
+#   dist/Fixora Backend/Fixora Backend
 
 import sys
 from pathlib import Path
@@ -16,6 +16,9 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 # NOTE: PyInstaller executes spec files via `exec()` and does not guarantee `__file__`.
 # We require running the build from the repo root so we can resolve paths reliably.
 PROJECT_ROOT = Path.cwd().resolve()
+
+# Must match app.brand.BACKEND_PROCESS_NAME (shown in Activity Monitor / ps).
+BACKEND_NAME = "Fixora Backend"
 
 hiddenimports = []
 hiddenimports += collect_submodules("app")
@@ -76,7 +79,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="ai_crash_fix_backend",
+    name=BACKEND_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -97,6 +100,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="ai_crash_fix_backend",
+    name=BACKEND_NAME,
 )
-

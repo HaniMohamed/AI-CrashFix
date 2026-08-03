@@ -269,12 +269,19 @@ func applicationSupportDir() -> URL {
 
 func resolveBackendExecutable(backendPath: String) -> String {
   // Support both:
-  // - onefile/hand-copied binary: .../bin/ai_crash_fix_backend
-  // - onedir bundle:            .../bin/ai_crash_fix_backend/ai_crash_fix_backend
+  // - onefile/hand-copied binary: .../bin/Fixora Backend
+  // - onedir bundle:            .../bin/Fixora Backend/Fixora Backend
+  // - legacy:                   .../bin/ai_crash_fix_backend[/ai_crash_fix_backend]
   var isDir: ObjCBool = false
   if FileManager.default.fileExists(atPath: backendPath, isDirectory: &isDir), isDir.boolValue {
-    let nested = URL(fileURLWithPath: backendPath).appendingPathComponent("ai_crash_fix_backend").path
-    return nested
+    let base = URL(fileURLWithPath: backendPath)
+    for name in ["Fixora Backend", "ai_crash_fix_backend"] {
+      let nested = base.appendingPathComponent(name).path
+      if FileManager.default.isExecutableFile(atPath: nested) {
+        return nested
+      }
+    }
+    return base.appendingPathComponent("Fixora Backend").path
   }
   return backendPath
 }
@@ -379,7 +386,7 @@ app.setActivationPolicy(.accessory)
 
 let res = resourcePath()
 let binDir = URL(fileURLWithPath: res).appendingPathComponent("bin", isDirectory: true).path
-let backendPath = Env.get("AI_CRASH_FIX_BACKEND_BIN") ?? (binDir + "/ai_crash_fix_backend")
+let backendPath = Env.get("AI_CRASH_FIX_BACKEND_BIN") ?? (binDir + "/Fixora Backend")
 let rgPath = binDir + "/rg"
 
 final class OpenUiAction: NSObject {

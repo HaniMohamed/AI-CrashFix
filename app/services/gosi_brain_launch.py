@@ -20,16 +20,16 @@ def gosi_brain_launch_health() -> dict[str, Any]:
     When LLM provider is gosi-brain, require a non-empty
     ``~/crash_fix_gosi_brain_conf.env`` with a present, non-expired
     ``GOSI_BRAIN_AUTHORIZATION`` JWT.
+
+    Never raises — settings/store outages must not 500 ``/api/health``.
     """
-    resolver = SettingsResolver()
-    provider = resolver.effective_llm_provider()
     env_path = default_launch_env_file_path()
     present = env_path.is_file()
     nonempty = env_file_nonempty(env_path) if present else False
 
     base: dict[str, Any] = {
-        "required": provider == "gosi-brain",
-        "provider": provider,
+        "required": False,
+        "provider": None,
         "env_file_path": str(env_path),
         "env_file_present": present,
         "env_file_nonempty": nonempty,
@@ -39,6 +39,18 @@ def gosi_brain_launch_health() -> dict[str, Any]:
         "reason": None,
         "ok": True,
     }
+
+    try:
+        resolver = SettingsResolver()
+        provider = resolver.effective_llm_provider()
+    except Exception as exc:
+        base["ok"] = True
+        base["reason"] = "settings_unavailable"
+        base["detail"] = str(exc)
+        return base
+
+    base["provider"] = provider
+    base["required"] = provider == "gosi-brain"
 
     if provider != "gosi-brain":
         return base

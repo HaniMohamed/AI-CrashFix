@@ -10,6 +10,7 @@ import '../../core/providers/backend_settings_provider.dart';
 import '../../core/providers/repo_effective_config_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../../shared/widgets/fixora_mark.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/loading_shimmer.dart';
 
@@ -1049,7 +1050,7 @@ class _AboutCard extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  Icon(Icons.info_outline, color: palette.primary),
+                  const FixoraMark(size: 28, elevated: false),
                   const SizedBox(width: AppSpacing.sm),
                   Text('About', style: theme.headlineSmall),
                 ],

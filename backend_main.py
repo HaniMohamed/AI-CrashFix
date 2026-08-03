@@ -7,6 +7,24 @@ import threading
 import time
 
 
+def _set_process_title() -> None:
+    """Prefer a Fixora-branded name in Activity Monitor / ps when possible."""
+    title = "Fixora Backend"
+    try:
+        import setproctitle  # type: ignore
+
+        setproctitle.setproctitle(title)
+        return
+    except Exception:
+        pass
+    try:
+        # Best-effort on Unix; Activity Monitor primarily uses the executable name.
+        if hasattr(sys, "argv") and sys.argv:
+            sys.argv[0] = title
+    except Exception:
+        pass
+
+
 def _start_parent_watchdog() -> None:
     """Exit when the Flutter/parent process dies (covers Force Quit / missed SIGTERM)."""
     raw = (os.environ.get("AI_CRASH_FIX_PARENT_PID") or "").strip()
@@ -38,6 +56,7 @@ def _start_parent_watchdog() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _set_process_title()
     parser = argparse.ArgumentParser(description="Fixora backend (FastAPI) for desktop bundling.")
     parser.add_argument("--host", default=os.environ.get("AI_CRASH_FIX_HOST", "127.0.0.1"))
     parser.add_argument(

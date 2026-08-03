@@ -163,24 +163,27 @@ echo
 
 echo "==> Step 2: Build backend (PyInstaller)"
 # Desktop UI is native Flutter — web assets are optional in the freeze.
+# BACKEND_NAME must match app.brand.BACKEND_PROCESS_NAME (Activity Monitor).
+BACKEND_NAME="Fixora Backend"
 ./scripts/build_backend_pyinstaller.sh --noconfirm
-[[ -d "dist/ai_crash_fix_backend" ]] || fail "Missing dist/ai_crash_fix_backend (PyInstaller output)"
-[[ -x "dist/ai_crash_fix_backend/ai_crash_fix_backend" ]] || fail "Missing backend executable dist/ai_crash_fix_backend/ai_crash_fix_backend"
+[[ -d "dist/${BACKEND_NAME}" ]] || fail "Missing dist/${BACKEND_NAME} (PyInstaller output)"
+[[ -x "dist/${BACKEND_NAME}/${BACKEND_NAME}" ]] || fail "Missing backend executable dist/${BACKEND_NAME}/${BACKEND_NAME}"
 echo
 
 echo "==> Step 3: Bundle backend + rg into .app"
 mkdir -p "${APP_PATH}/Contents/Resources/backend"
 mkdir -p "${APP_PATH}/Contents/Resources/bin"
 
+rm -rf "${APP_PATH}/Contents/Resources/backend/${BACKEND_NAME}"
 rm -rf "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
 # ditto preserves macOS metadata better than cp -R for large bundles.
-ditto "dist/ai_crash_fix_backend" "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend"
+ditto "dist/${BACKEND_NAME}" "${APP_PATH}/Contents/Resources/backend/${BACKEND_NAME}"
 
 ditto "${RG_PATH}" "${APP_PATH}/Contents/Resources/bin/rg"
 chmod +x "${APP_PATH}/Contents/Resources/bin/rg"
-chmod +x "${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend" || true
+chmod +x "${APP_PATH}/Contents/Resources/backend/${BACKEND_NAME}/${BACKEND_NAME}" || true
 
-BACKEND_BIN="${APP_PATH}/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+BACKEND_BIN="${APP_PATH}/Contents/Resources/backend/${BACKEND_NAME}/${BACKEND_NAME}"
 [[ -x "${BACKEND_BIN}" ]] || fail "Backend missing after bundle inject: ${BACKEND_BIN}"
 
 echo "==> Step 3b: Re-sign .app (required after injecting backend)"
@@ -199,7 +202,7 @@ echo "==> Step 5: Verify DMG contents"
 VERIFY_ATTACH="$(hdiutil attach -nobrowse -readonly "${DMG_PATH}")"
 VERIFY_MNT="$(echo "${VERIFY_ATTACH}" | sed -n 's/.*\(\/Volumes\/.*\)$/\1/p' | tail -1)"
 [[ -n "${VERIFY_MNT}" ]] || fail "Could not mount DMG for verification"
-VERIFY_BACKEND="${VERIFY_MNT}/Fixora.app/Contents/Resources/backend/ai_crash_fix_backend/ai_crash_fix_backend"
+VERIFY_BACKEND="${VERIFY_MNT}/Fixora.app/Contents/Resources/backend/${BACKEND_NAME}/${BACKEND_NAME}"
 if [[ ! -x "${VERIFY_BACKEND}" ]]; then
   hdiutil detach "${VERIFY_MNT}" -quiet >/dev/null 2>&1 || true
   fail "DMG is missing embedded backend at Fixora.app/Contents/Resources/backend/..."

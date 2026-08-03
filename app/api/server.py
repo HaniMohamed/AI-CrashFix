@@ -225,14 +225,41 @@ async def health() -> Dict[str, Any]:
     from app.services.repo_data_guard import is_repo_data_readonly
     from app.services.user_context import resolve_user_id
 
-    crash_store = await asyncio.to_thread(crash_store_health)
-    gosi_launch = await asyncio.to_thread(gosi_brain_launch_health)
+    try:
+        crash_store = await asyncio.to_thread(crash_store_health)
+    except Exception as exc:
+        crash_store = {
+            "backend": "unknown",
+            "ok": False,
+            "error": str(exc),
+        }
+
+    try:
+        gosi_launch = await asyncio.to_thread(gosi_brain_launch_health)
+    except Exception as exc:
+        gosi_launch = {
+            "required": False,
+            "ok": True,
+            "reason": "health_check_failed",
+            "detail": str(exc),
+        }
+
+    try:
+        repo_ro = is_repo_data_readonly()
+    except Exception:
+        repo_ro = False
+
+    try:
+        user_id = resolve_user_id(required=False)
+    except Exception:
+        user_id = None
+
     # `ok` means the API process is up. Crash-store health is separate so a
     # Postgres blip does not make the UI treat the backend as dead.
     return {
         "ok": True,
-        "user_id": resolve_user_id(required=False),
-        "repo_data_readonly": is_repo_data_readonly(),
+        "user_id": user_id,
+        "repo_data_readonly": repo_ro,
         "crash_store": crash_store,
         "gosi_brain_launch": gosi_launch,
     }
