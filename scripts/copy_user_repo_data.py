@@ -68,6 +68,7 @@ _REPO_COLUMNS = (
     "gitlab_project",
     "crashlytics_android_package",
     "crashlytics_ios_bundle_id",
+    "google_application_credentials",
     "created_at",
     "updated_at",
     "last_selected_at",

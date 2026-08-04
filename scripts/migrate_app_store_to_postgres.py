@@ -46,6 +46,7 @@ _REPO_COLUMNS = (
     "repo_url",
     "repo_ref",
     "firebase_project_id",
+    "google_application_credentials",
     "access_token",
     "packages_dirs",
     "crashlytics_fetch_backend",

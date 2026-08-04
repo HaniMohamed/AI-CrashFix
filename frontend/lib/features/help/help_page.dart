@@ -105,16 +105,20 @@ class HelpPage extends ConsumerWidget {
                 title: 'Getting started',
                 body:
                     '1) Open Fixora (DMG or local). 2) Complete the setup wizard: '
-                    'pick mock or production, save an LLM key, optionally add GCP / Jira / GitLab, '
-                    'then add your Flutter repo. 3) Run a mock batch to verify the pipeline. '
-                    'Day-to-day secrets live in Settings — bootstrap .env is only for store backend / team mode.',
+                    'pick mock or production, save an LLM key, optionally add Jira / GitLab, '
+                    'then add your Flutter repo. For production Crashlytics, set the GCP '
+                    'project ID and upload a service account on that repo in Manage repositories. '
+                    '3) Run a mock batch to verify the pipeline. '
+                    'Day-to-day secrets live in Settings / Manage repos — bootstrap .env is only '
+                    'for store backend / team mode (and CLI fallback).',
               ),
               const _HelpTopic(
                 title: 'Crashlytics tables',
                 body:
                     'Firebase exports Crashlytics events to BigQuery tables named like '
-                    '<package>_ANDROID and <package>_IOS. Set dataset + table names on each '
-                    'repo in Manage repositories. Cloud Logging backend is an alternative if you '
+                    '<package>_ANDROID and <package>_IOS. Set Firebase/GCP project ID, '
+                    'service account JSON, dataset + table names on each repo in Manage '
+                    'repositories. Cloud Logging backend is an alternative if you '
                     'route Crashlytics logs instead of BigQuery export.',
               ),
               const _HelpTopic(

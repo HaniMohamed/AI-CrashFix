@@ -40,20 +40,28 @@ class CrashlyticsService:
 
     def __init__(self, *, mock: bool = False, project_id: str | None = None, repo_key: str | None = None):
         self._mock = bool(mock)
+        self._repo_key = (repo_key or "").strip() or None
         # Effective config: repo-scoped -> global settings -> env
         try:
             from app.services.settings_resolver import SettingsResolver
 
-            self._effective = SettingsResolver().effective_crashlytics(repo_key=repo_key)
+            self._effective = SettingsResolver().effective_crashlytics(repo_key=self._repo_key)
             self._backend = _resolve_crashlytics_backend(self._effective.backend)
             self._android_package_default = self._effective.android_package_default
             self._ios_bundle_id_default = self._effective.ios_bundle_id_default
+            effective_project = (self._effective.firebase_project_id or "").strip() or None
         except Exception:
             self._effective = None
             self._backend = _resolve_crashlytics_backend(CRASHLYTICS_FETCH_BACKEND)
             self._android_package_default = CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
             self._ios_bundle_id_default = CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
-        self.project_id = (project_id or "").strip() or (BQ_PROJECT_ID or "").strip() or None
+            effective_project = None
+        self.project_id = (
+            (project_id or "").strip()
+            or effective_project
+            or (BQ_PROJECT_ID or "").strip()
+            or None
+        )
         self.client = None
         self._logging_client = None
 
@@ -61,7 +69,7 @@ class CrashlyticsService:
         if self._mock:
             return
 
-        credentials = self._load_credentials(mock=self._mock)
+        credentials = self._load_credentials(mock=self._mock, repo_key=self._repo_key)
 
         if self._backend == "bigquery":
             if bigquery is None:
@@ -89,7 +97,7 @@ class CrashlyticsService:
         self._logging_client = cloud_logging.Client(project=self.project_id, credentials=credentials)
 
     @staticmethod
-    def _load_credentials(*, mock: bool = False):
+    def _load_credentials(*, mock: bool = False, repo_key: str | None = None):
         """BigQuery and Cloud Logging expect a google-auth Credentials object (not a path string)."""
         if mock:
             return None
@@ -97,7 +105,9 @@ class CrashlyticsService:
         try:
             from app.services.settings_resolver import SettingsResolver
 
-            creds = SettingsResolver().effective_google_application_credentials()
+            creds = SettingsResolver().effective_google_application_credentials(
+                repo_key=repo_key
+            )
         except Exception:
             creds = GOOGLE_APPLICATION_CREDENTIALS
         if creds and service_account is not None:

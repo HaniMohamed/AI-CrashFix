@@ -8,12 +8,12 @@ You do **not** need to maintain a root `.env` for day-to-day use. Configure via 
 
 | Layer | Use for | Where |
 |-------|---------|--------|
-| Bootstrap env | Store backend, DB URL, data dir, machine user id | `.env` / `AI_CRASH_FIX_ENV_FILE` (rarely) |
-| Settings store | LLM keys, GCP path, Jira/GitLab servers + tokens | UI → `POST /api/settings` |
-| Repo registry | Per Flutter app: tables, Jira project, GitLab path | Manage repositories |
+| Bootstrap env | Store backend, DB URL, data dir, machine user id; CLI fallback for GCP | `.env` / `AI_CRASH_FIX_ENV_FILE` (rarely) |
+| Settings store | LLM keys, Jira/GitLab servers + tokens | UI → `POST /api/settings` |
+| Repo registry | Per Flutter app: GCP project ID, SA JSON, Crashlytics tables, Jira/GitLab project | Manage repositories |
 | Client prefs | Theme, API base URL (web), dismissed tips | SharedPreferences |
 
-Precedence: **repo → settings store → bootstrap env**.
+Precedence for Crashlytics GCP: **repo → bootstrap env** (headless/CLI only). Product UI does not use a global BQ project or service account.
 
 Internal env prefixes remain `AI_CRASH_FIX_*` for compatibility.
 
@@ -73,11 +73,10 @@ Then open the UI and finish the wizard. Each teammate needs a distinct `AI_CRASH
 
 1. Wizard → Production  
 2. LLM key  
-3. Upload GCP service account JSON + BQ project ID  
-4. Optional Jira + GitLab globals  
-5. Add Flutter repo with Crashlytics dataset/tables (+ package/bundle IDs)  
-6. Refresh repo to build Dart symbol index  
-7. New Run with Mock off  
+3. Optional Jira + GitLab globals  
+4. Add Flutter repo with Firebase/GCP project ID, upload service account JSON, and Crashlytics dataset/tables (+ package/bundle IDs)  
+5. Refresh repo to build Dart symbol index  
+6. New Run with Mock off  
 
 ## Help in the app
 

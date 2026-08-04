@@ -69,6 +69,7 @@ class RepoEntry:
     gitlab_project: str | None
     crashlytics_android_package: str | None
     crashlytics_ios_bundle_id: str | None
+    has_google_application_credentials: bool
     created_at: str
     updated_at: str
     last_selected_at: str | None
@@ -166,6 +167,7 @@ def row_to_repo_entry(row: Any) -> RepoEntry:
     pdirs = normalize_packages_dirs(_row_get(row, "packages_dirs"))
     access = _row_get(row, "access_token")
     jira_tok = _row_get(row, "jira_token")
+    gcp_creds = _row_get(row, "google_application_credentials")
     created = _ts_field(_row_get(row, "created_at")) or ""
     updated = _ts_field(_row_get(row, "updated_at")) or ""
     return RepoEntry(
@@ -191,6 +193,9 @@ def row_to_repo_entry(row: Any) -> RepoEntry:
         gitlab_project=_row_get(row, "gitlab_project") or None,
         crashlytics_android_package=_row_get(row, "crashlytics_android_package") or None,
         crashlytics_ios_bundle_id=_row_get(row, "crashlytics_ios_bundle_id") or None,
+        has_google_application_credentials=bool(
+            (str(gcp_creds).strip() if gcp_creds is not None else "")
+        ),
         created_at=created,
         updated_at=updated,
         last_selected_at=_ts_field(_row_get(row, "last_selected_at")),
@@ -310,6 +315,12 @@ class RepoRegistryStore:
 
     def get_jira_token(self, repo_key: str) -> str | None:
         return self._impl.get_jira_token(repo_key)
+
+    def get_google_application_credentials(self, repo_key: str) -> str | None:
+        return self._impl.get_google_application_credentials(repo_key)
+
+    def set_google_application_credentials(self, repo_key: str, path: str | None) -> RepoEntry:
+        return self._impl.set_google_application_credentials(repo_key, path)
 
     def get_active_repo_key(self) -> str | None:
         return self._impl.get_active_repo_key()

@@ -55,6 +55,17 @@ async def _lifespan(_app: FastAPI):
     apply_launch_env_file()
     ensure_crash_store_available()
     persist_launch_env_overrides()
+    try:
+        from app.services.gcp_repo_migration import migrate_global_gcp_to_repos
+
+        migrate_global_gcp_to_repos()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Skipping GCP→repo migration",
+            exc_info=True,
+        )
     yield
 
 
@@ -718,19 +729,12 @@ async def get_repo_effective_config(repo_key: str) -> Dict[str, Any]:
     jira = r.effective_jira(repo_key=key)
     gl = r.effective_gitlab(repo_key=key)
 
-    def _store_str(sk: str) -> str | None:
-        v = store.get(k=sk)
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-        return None
-
     fp_repo = (entry.firebase_project_id or "").strip() or None
-    bq_project = fp_repo or _store_str("BQ_PROJECT_ID") or ((cfg.BQ_PROJECT_ID or "").strip() or None)
-    firebase_console = (
-        _store_str("FIREBASE_CONSOLE_PROJECT_ID")
-        or ((cfg.FIREBASE_CONSOLE_PROJECT_ID or "").strip() or None)
+    bq_project = crash.firebase_project_id or fp_repo
+    firebase_console = bq_project or (
+        (cfg.FIREBASE_CONSOLE_PROJECT_ID or "").strip() or None
     )
-    creds_path = r.effective_google_application_credentials()
+    creds_path = crash.google_application_credentials
     android_default = crash.android_package_default
     ios_default = crash.ios_bundle_id_default
 
@@ -742,6 +746,9 @@ async def get_repo_effective_config(repo_key: str) -> Dict[str, Any]:
             "repo_ref": entry.repo_ref,
             "packages_dirs": list(entry.packages_dirs or []),
             "has_git_access_token": bool(entry.has_token),
+            "has_google_application_credentials": bool(
+                entry.has_google_application_credentials
+            ),
         },
         "crashlytics": {
             "supported_fetch_backends": ["bigquery", "cloud_logging"],
@@ -987,13 +994,8 @@ async def get_settings() -> Dict[str, Any]:
             "has_gosi_brain_authorization": bool((gb.get("authorization") or "").strip()),
         },
         "crashlytics": {
-            "google_application_credentials": eff_str(
-                "GOOGLE_APPLICATION_CREDENTIALS", cfg.GOOGLE_APPLICATION_CREDENTIALS
-            ),
-            "bq_project_id": eff_str("BQ_PROJECT_ID", cfg.BQ_PROJECT_ID),
-            "firebase_console_project_id": eff_str(
-                "FIREBASE_CONSOLE_PROJECT_ID", cfg.FIREBASE_CONSOLE_PROJECT_ID
-            ),
+            # GCP project + SA JSON are per-repo (see Manage repos / effective-config).
+            "scope": "per_repo",
             "android_package_default": eff_str(
                 "CRASHLYTICS_ANDROID_PACKAGE", cfg.CRASHLYTICS_ANDROID_PACKAGE_DEFAULT
             ),
@@ -1087,11 +1089,10 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     set_if_present(req.llm, "gosi_brain_idle_timeout", "GOSI_BRAIN_IDLE_TIMEOUT")
     set_if_present(req.llm, "gosi_brain_waf_content_shield", "GOSI_BRAIN_WAF_CONTENT_SHIELD")
 
-    set_if_present(req.crashlytics, "google_application_credentials", "GOOGLE_APPLICATION_CREDENTIALS")
-    set_if_present(req.crashlytics, "bq_project_id", "BQ_PROJECT_ID")
-    set_if_present(req.crashlytics, "firebase_console_project_id", "FIREBASE_CONSOLE_PROJECT_ID")
     set_if_present(req.crashlytics, "android_package_default", "CRASHLYTICS_ANDROID_PACKAGE")
     set_if_present(req.crashlytics, "ios_bundle_id_default", "CRASHLYTICS_IOS_BUNDLE_ID")
+    # BQ project ID + service account JSON are per-repo (Manage repos). Ignore legacy
+    # global crashlytics.bq_project_id / google_application_credentials if sent.
 
     set_if_present(req.jira, "server_url", "JIRA_SERVER_URL")
     set_if_present(req.jira, "verify_ssl", "JIRA_VERIFY_SSL")
@@ -1113,44 +1114,52 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     return {"saved": True}
 
 
-@app.post("/api/settings/google_credentials")
-async def upload_google_credentials(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """
-    Upload a GCP service account JSON file and persist its path as
-    GOOGLE_APPLICATION_CREDENTIALS override.
-    """
-    from app.services.app_settings_store import AppSettingsStore
+@app.post("/api/repos/{repo_key}/google_credentials")
+async def upload_repo_google_credentials(
+    repo_key: str,
+    file: UploadFile = File(...),
+) -> Dict[str, Any]:
+    """Upload a GCP service account JSON and attach it to this repository."""
     from app.services.repo_data_guard import ensure_repo_data_writable
+    from app.services.repo_gcp_credentials import save_repo_google_credentials
 
     ensure_repo_data_writable()
-    from app import config as cfg
-    import json
-    from datetime import datetime
-    from pathlib import Path
-
     raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
     try:
-        parsed = json.loads(raw.decode("utf-8", errors="strict"))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
-    if not isinstance(parsed, dict):
-        raise HTTPException(status_code=400, detail="Invalid JSON: expected object")
-    if not parsed.get("type"):
-        raise HTTPException(status_code=400, detail="Invalid service account JSON (missing 'type')")
+        entry, path = save_repo_google_credentials(repo_key=repo_key, raw=raw)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {
+        "uploaded": True,
+        "path": path,
+        "repo_key": entry.repo_key,
+        "has_google_application_credentials": entry.has_google_application_credentials,
+    }
 
-    base = Path((cfg.WORKSPACE_PROJECTS_DIR or "workspace_projects").strip() or "workspace_projects")
-    if not base.is_absolute():
-        base = (Path.cwd() / base).resolve()
-    target_dir = (base / "_credentials").resolve()
-    target_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    target = target_dir / f"gcp_credentials_{ts}.json"
-    target.write_bytes(raw)
 
-    AppSettingsStore().set(k="GOOGLE_APPLICATION_CREDENTIALS", v=str(target))
-    return {"uploaded": True, "path": str(target)}
+@app.post("/api/settings/google_credentials")
+async def upload_google_credentials(
+    file: UploadFile = File(...),
+    repo_key: Optional[str] = Query(
+        None,
+        description="Required. Attach credentials to this repo (legacy global upload removed).",
+    ),
+) -> Dict[str, Any]:
+    """
+    Legacy path: requires ``repo_key`` and delegates to per-repo upload.
+    """
+    key = (repo_key or "").strip()
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "GCP service account JSON is configured per repository. "
+                "POST /api/repos/{repo_key}/google_credentials (or pass ?repo_key=...)."
+            ),
+        )
+    return await upload_repo_google_credentials(repo_key=key, file=file)
 
 
 def _resolve_web_root() -> Path | None:

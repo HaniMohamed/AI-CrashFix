@@ -472,7 +472,6 @@ class _GlobalIntegrationsSection extends ConsumerStatefulWidget {
 
 class _GlobalIntegrationsSectionState
     extends ConsumerState<_GlobalIntegrationsSection> {
-  final _bqProjectCtrl = TextEditingController();
   final _jiraUrlCtrl = TextEditingController();
   final _jiraEmailCtrl = TextEditingController();
   final _jiraTokenCtrl = TextEditingController();
@@ -485,7 +484,6 @@ class _GlobalIntegrationsSectionState
 
   @override
   void dispose() {
-    _bqProjectCtrl.dispose();
     _jiraUrlCtrl.dispose();
     _jiraEmailCtrl.dispose();
     _jiraTokenCtrl.dispose();
@@ -502,9 +500,6 @@ class _GlobalIntegrationsSectionState
     });
     try {
       await ref.read(backendSettingsProvider.notifier).save({
-        'crashlytics': {
-          'bq_project_id': _bqProjectCtrl.text.trim(),
-        },
         'jira': {
           'server_url': _jiraUrlCtrl.text.trim(),
           'email': _jiraEmailCtrl.text.trim(),
@@ -540,12 +535,10 @@ class _GlobalIntegrationsSectionState
           onRetry: () => ref.read(backendSettingsProvider.notifier).refresh(),
         ),
         data: (s) {
-          final crash = s.section('crashlytics');
           final jira = s.section('jira');
           final gl = s.section('gitlab');
           if (!_didSync) {
             _didSync = true;
-            _bqProjectCtrl.text = (crash['bq_project_id'] ?? '').toString();
             _jiraUrlCtrl.text = (jira['server_url'] ?? '').toString();
             _jiraEmailCtrl.text = (jira['email'] ?? '').toString();
             _jiraAuthCtrl.text = (jira['auth'] ?? 'auto').toString();
@@ -566,21 +559,12 @@ class _GlobalIntegrationsSectionState
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Defaults used when a repo does not override them. '
-                  'Upload GCP credentials via Manage repos or the setup wizard. '
+                  'Jira and GitLab server defaults used when a repo does not override them. '
+                  'GCP project ID and service account are configured per repository in Manage repos. '
                   'Tokens are write-only.',
                   style: theme.bodySmall?.copyWith(color: palette.textSecondary),
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                TextField(
-                  controller: _bqProjectCtrl,
-                  enabled: !readonly,
-                  decoration: const InputDecoration(
-                    labelText: 'BQ / Firebase project ID',
-                    helperText: 'Global default; repo Firebase project ID can override',
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
                 Text('Jira', style: theme.titleMedium),
                 const SizedBox(height: AppSpacing.sm),
                 TextField(
@@ -756,7 +740,7 @@ class _RepoIntegrationPanel extends ConsumerWidget {
                     const SizedBox(height: AppSpacing.sm),
                     Text(
                       'Effective values for “${active.name}”. Tokens are never shown—only whether they are set. '
-                      'Change these in Manage repos (and Crashlytics/GCP defaults via server .env or uploaded service account JSON).',
+                      'Change Crashlytics/GCP, Jira, and GitLab overrides in Manage repos.',
                       style: theme.bodySmall?.copyWith(
                         color: palette.textSecondary,
                       ),

@@ -86,6 +86,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   bool _gcpCredsUploading = false;
   String? _gcpCredsLastMessage;
   bool _gcpCredsLastError = false;
+  bool _hasGcpCreds = false;
 
   static const _crashBackendOptions = <String>['cloud_logging', 'bigquery'];
   static const bool _debug = kDebugMode;
@@ -232,6 +233,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
         _jiraCreateMode = 'standalone';
       }
       _jiraParentIssueKeyCtrl.text = (r.jiraParentIssueKey ?? '').toString();
+      _hasGcpCreds = r.hasGoogleApplicationCredentials;
+      _gcpCredsLastMessage = null;
+      _gcpCredsLastError = false;
       _expandedPanelIndex = 0;
     });
     _loadRepoStatus();
@@ -258,6 +262,15 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   }
 
   Future<void> _pickAndUploadGcpCredentials() async {
+    final key = (_editingRepoKey ?? '').trim();
+    if (key.isEmpty) {
+      setState(() {
+        _gcpCredsLastMessage =
+            'Save the repository first, then upload the service account JSON.';
+        _gcpCredsLastError = true;
+      });
+      return;
+    }
     final picked = await pickServiceAccountJsonFile();
     if (!mounted) return;
     if (picked == null) return;
@@ -280,7 +293,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     try {
       final api = ref.read(apiClientProvider);
       await api.postMultipartFile(
-        Endpoints.googleCredentials,
+        Endpoints.repoGoogleCredentials(key),
         bytes: bytes,
         filename: name,
       );
@@ -288,10 +301,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       setState(() {
         _gcpCredsUploading = false;
         _gcpCredsLastError = false;
+        _hasGcpCreds = true;
         _gcpCredsLastMessage =
-            'Saved on the server. The backend uses this key for Crashlytics '
-            '(BigQuery or Cloud Logging, depending on the backend you chose).';
+            'Saved for this repository. Crashlytics uses this key for BigQuery '
+            'or Cloud Logging (depending on the backend you chose).';
       });
+      await ref.read(repoRegistryProvider.notifier).refresh();
       await ref.read(configProvider.notifier).refresh();
     } catch (e) {
       if (!mounted) return;
@@ -330,6 +345,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _editingRepoKey = null;
       _repoStatus = null;
       _expandedPanelIndex = 0;
+      _hasGcpCreds = false;
+      _gcpCredsLastMessage = null;
+      _gcpCredsLastError = false;
     });
     _nameCtrl.clear();
     _urlCtrl.clear();
@@ -580,6 +598,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                       .toString()
                                       .trim()
                                       .isNotEmpty ||
+                                  r.hasGoogleApplicationCredentials ||
                                   r.hasToken == true ||
                                   r.hasJiraToken ||
                                   (r.jiraServerUrl ?? '')
@@ -608,6 +627,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                       _Chip(
                                         label:
                                             'Firebase: ${(r.firebaseProjectId ?? '').toString().trim()}',
+                                        palette: palette,
+                                        theme: theme,
+                                      ),
+                                    if (r.hasGoogleApplicationCredentials)
+                                      _Chip(
+                                        label: 'GCP credentials',
                                         palette: palette,
                                         theme: theme,
                                       ),
@@ -891,10 +916,10 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                           enabled: fieldsEnabled,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
-                            labelText: 'Firebase project ID',
+                            labelText: 'Firebase / GCP project ID',
                             hintText: 'e.g. my-firebase-project',
                             helperText:
-                                'GCP / Firebase project id used for Crashlytics queries.',
+                                'Required for live Crashlytics — GCP project for this repo only.',
                             prefixIcon: const Icon(Icons.cloud_outlined),
                             suffixIcon: _firebaseProjectIdCtrl.text.trim().isEmpty
                                 ? null
@@ -927,8 +952,21 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                             label: Text(
                               _gcpCredsUploading
                                   ? 'Uploading credentials…'
-                                  : 'Upload GCP service account JSON',
+                                  : _hasGcpCreds
+                                      ? 'Replace GCP service account JSON'
+                                      : 'Upload GCP service account JSON',
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _hasGcpCreds
+                              ? 'Service account configured for this repository.'
+                              : 'Not configured — required for live Crashlytics on this repo.',
+                          style: theme.bodySmall?.copyWith(
+                            color: _hasGcpCreds
+                                ? palette.success
+                                : palette.textMuted,
                           ),
                         ),
                         const SizedBox(height: 6),

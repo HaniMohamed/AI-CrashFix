@@ -16,6 +16,8 @@ class EffectiveCrashlyticsConfig:
     bq_ios_table: str
     android_package_default: str | None
     ios_bundle_id_default: str | None
+    firebase_project_id: str | None
+    google_application_credentials: str | None
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,8 @@ class SettingsResolver:
     """
     Resolve effective configuration using precedence:
       repo-scoped (if repo_key provided) -> global app_settings -> env (.env via app.config)
+
+    GCP project ID and service-account JSON are repo-owned (plus bootstrap .env for CLI).
     """
 
     def __init__(self) -> None:
@@ -67,8 +71,24 @@ class SettingsResolver:
         # Stored as plain string; never returned in /api/settings but used here.
         return self._app_str(key)
 
-    def effective_google_application_credentials(self) -> str | None:
-        return self._app_str("GOOGLE_APPLICATION_CREDENTIALS") or (cfg.GOOGLE_APPLICATION_CREDENTIALS or None)
+    def effective_google_application_credentials(
+        self, *, repo_key: str | None = None
+    ) -> str | None:
+        rk = (repo_key or "").strip()
+        if rk:
+            path = self._repos.get_google_application_credentials(rk)
+            if path:
+                return path
+        # Bootstrap / CLI only — not app_settings (product UI is per-repo).
+        return (cfg.GOOGLE_APPLICATION_CREDENTIALS or "").strip() or None
+
+    def effective_firebase_project_id(self, *, repo_key: str | None = None) -> str | None:
+        rk = (repo_key or "").strip()
+        if rk:
+            repo = self._repos.get_repo(rk)
+            if repo and (repo.firebase_project_id or "").strip():
+                return (repo.firebase_project_id or "").strip()
+        return (cfg.BQ_PROJECT_ID or "").strip() or None
 
     def effective_llm_provider(self) -> str:
         raw = self._app_str("LLM_PROVIDER") or (cfg.LLM_PROVIDER or "gemini")
@@ -235,6 +255,8 @@ class SettingsResolver:
             or self._app_str("CRASHLYTICS_IOS_BUNDLE_ID")
             or cfg.CRASHLYTICS_IOS_BUNDLE_ID_DEFAULT
         )
+        fpid = self.effective_firebase_project_id(repo_key=repo_key)
+        creds = self.effective_google_application_credentials(repo_key=repo_key)
         return EffectiveCrashlyticsConfig(
             backend=(backend or "bigquery").strip().lower(),
             bq_dataset=(dataset or "firebase_crashlytics").strip(),
@@ -242,6 +264,8 @@ class SettingsResolver:
             bq_ios_table=(ios_table or "").strip(),
             android_package_default=(android_pkg or "").strip() or None,
             ios_bundle_id_default=(ios_bundle or "").strip() or None,
+            firebase_project_id=fpid,
+            google_application_credentials=creds,
         )
 
     def effective_jira(self, *, repo_key: str | None) -> EffectiveJiraConfig:

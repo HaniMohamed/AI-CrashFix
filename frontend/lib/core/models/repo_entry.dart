@@ -21,6 +21,7 @@ class RepoEntry {
   final String? gitlabProject;
   final String? crashlyticsAndroidPackage;
   final String? crashlyticsIosBundleId;
+  final bool hasGoogleApplicationCredentials;
 
   const RepoEntry({
     required this.repoKey,
@@ -45,6 +46,7 @@ class RepoEntry {
     this.gitlabProject,
     this.crashlyticsAndroidPackage,
     this.crashlyticsIosBundleId,
+    this.hasGoogleApplicationCredentials = false,
   });
 
   factory RepoEntry.fromJson(Map<String, dynamic> j) => RepoEntry(
@@ -111,6 +113,8 @@ class RepoEntry {
             (j['crashlytics_ios_bundle_id'] as String?)?.trim().isEmpty ?? true
                 ? null
                 : (j['crashlytics_ios_bundle_id'] as String?)?.trim(),
+        hasGoogleApplicationCredentials:
+            j['has_google_application_credentials'] == true,
       );
 
   static String _normalizeJiraCreateMode(dynamic raw) {

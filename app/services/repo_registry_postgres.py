@@ -259,6 +259,55 @@ class PostgresRepoRegistryStore:
             return None
         return s
 
+    def get_google_application_credentials(self, repo_key: str) -> str | None:
+        key = (repo_key or "").strip()
+        if not key:
+            return None
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT google_application_credentials
+                    FROM repos WHERE user_id = %s AND repo_key = %s
+                    """,
+                    (self.user_id, key),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        v = row.get("google_application_credentials")
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s or s.lower() in {"none", "null"}:
+            return None
+        return s
+
+    def set_google_application_credentials(self, repo_key: str, path: str | None) -> RepoEntry:
+        key = (repo_key or "").strip()
+        if not key:
+            raise ValueError("repo_key is required")
+        entry = self.get_repo(key)
+        if entry is None:
+            raise LookupError(f"repo_key={key!r} not found")
+        creds = (path or "").strip() or None
+        now = datetime.utcnow()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE repos
+                    SET google_application_credentials = %s, updated_at = %s
+                    WHERE user_id = %s AND repo_key = %s
+                    """,
+                    (creds, now, self.user_id, key),
+                )
+            conn.commit()
+        out = self.get_repo(key)
+        if out is None:
+            raise RuntimeError("Failed to update google_application_credentials")
+        return out
+
     def get_active_repo_key(self) -> str | None:
         with self._connect() as conn:
             with conn.cursor() as cur:

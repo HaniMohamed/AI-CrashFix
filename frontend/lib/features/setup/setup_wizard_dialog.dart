@@ -5,8 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../app/brand.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
-import '../../core/api/endpoints.dart';
-import '../../core/providers/api_provider.dart';
 import '../../core/providers/backend_settings_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import '../../core/providers/run_session_provider.dart';
@@ -15,7 +13,6 @@ import '../../core/models/run_request.dart';
 import '../../shared/widgets/fixora_mark.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
-import '../../util/service_account_json_pick.dart';
 import '../shell/repo_manage_dialog.dart';
 
 /// Multi-step Fixora onboarding. Shown as a modal when setup is incomplete,
@@ -74,11 +71,6 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
   final _gosiAuthCtrl = TextEditingController();
   final _gosiApiKeyCtrl = TextEditingController();
 
-  // Crashlytics
-  final _bqProjectCtrl = TextEditingController();
-  bool _credsUploading = false;
-  bool _hasCreds = false;
-
   // Integrations
   final _jiraUrlCtrl = TextEditingController();
   final _jiraEmailCtrl = TextEditingController();
@@ -89,7 +81,6 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
   static const _titles = [
     'Welcome',
     'LLM provider',
-    'Crashlytics / GCP',
     'Jira & GitLab',
     'Flutter repository',
     'First run',
@@ -106,7 +97,6 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     _gosiModelCtrl.dispose();
     _gosiAuthCtrl.dispose();
     _gosiApiKeyCtrl.dispose();
-    _bqProjectCtrl.dispose();
     _jiraUrlCtrl.dispose();
     _jiraEmailCtrl.dispose();
     _jiraTokenCtrl.dispose();
@@ -159,10 +149,6 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     _openaiModelCtrl.text = (llm['openai_model'] ?? 'gpt-4o-mini').toString();
     _gosiUrlCtrl.text = (llm['gosi_brain_url'] ?? '').toString();
     _gosiModelCtrl.text = (llm['gosi_brain_model'] ?? '').toString();
-    final crash = s.section('crashlytics');
-    _bqProjectCtrl.text = (crash['bq_project_id'] ?? '').toString();
-    _hasCreds =
-        (crash['google_application_credentials'] ?? '').toString().trim().isNotEmpty;
     final jira = s.section('jira');
     _jiraUrlCtrl.text = (jira['server_url'] ?? '').toString();
     _jiraEmailCtrl.text = (jira['email'] ?? '').toString();
@@ -208,55 +194,6 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     }
   }
 
-  Future<void> _saveCrashlytics({required bool skip}) async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      if (!skip) {
-        await ref.read(backendSettingsProvider.notifier).save({
-          'crashlytics': {
-            'bq_project_id': _bqProjectCtrl.text.trim(),
-          },
-        });
-      }
-      await ref.read(setupStatusProvider.notifier).refresh();
-      setState(() => _step = 3);
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _uploadCreds() async {
-    setState(() {
-      _credsUploading = true;
-      _error = null;
-    });
-    try {
-      final picked = await pickServiceAccountJsonFile();
-      if (picked == null) return;
-      final api = ref.read(apiClientProvider);
-      await api.postMultipartFile(
-        Endpoints.googleCredentials,
-        bytes: picked.bytes,
-        filename: picked.name,
-      );
-      setState(() {
-        _hasCreds = true;
-        _info = 'Service account uploaded.';
-      });
-      await ref.read(backendSettingsProvider.notifier).refresh();
-      await ref.read(setupStatusProvider.notifier).refresh();
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _credsUploading = false);
-    }
-  }
-
   Future<void> _saveIntegrations({required bool skip}) async {
     setState(() {
       _busy = true;
@@ -280,7 +217,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
         await ref.read(backendSettingsProvider.notifier).save(payload);
       }
       await ref.read(setupStatusProvider.notifier).refresh();
-      setState(() => _step = 4);
+      setState(() => _step = 3);
     } catch (e) {
       setState(() => _error = '$e');
     } finally {
@@ -320,7 +257,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     await ref.read(setupStatusProvider.notifier).refresh();
     final status = ref.read(setupStatusProvider).valueOrNull;
     if (status != null && status.repoCount > 0 && mounted) {
-      setState(() => _step = 5);
+      setState(() => _step = 4);
     }
   }
 
@@ -447,7 +384,8 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
           children: [
             Text(
               widget.revisiting
-                  ? 'Update LLM, Crashlytics, integrations, or your Flutter repo. '
+                  ? 'Update LLM, integrations, or your Flutter repo '
+                      '(including per-repo GCP Crashlytics credentials). '
                       'Existing secrets stay until you replace them.'
                   : '$kProductName turns Crashlytics crashes into reviewed code fixes, '
                       'optional Jira issues, and draft GitLab merge requests for Flutter apps.',
@@ -462,7 +400,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
                     'Continue editing (${setup!.setupPath}) setup',
                   ),
                   subtitle: const Text(
-                    'Jump back into LLM / Crashlytics / integrations with current values.',
+                    'Jump back into LLM / integrations with current values.',
                   ),
                   onTap: _busy ? null : _continueExistingSetup,
                 ),
@@ -498,7 +436,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
                     color: palette.primary),
                 title: const Text('Production setup'),
                 subtitle: const Text(
-                  'LLM + GCP Crashlytics credentials + Flutter repo. '
+                  'LLM + Flutter repo with GCP project ID and service account. '
                   'Jira and GitLab are optional.',
                 ),
                 onTap: _busy ? null : () => _choosePath('production'),
@@ -616,83 +554,6 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
           ],
         );
       case 2:
-        if (isMock) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Mock path skips live Crashlytics. You can add GCP credentials later in Settings.',
-                style: theme.bodyLarge,
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: _busy ? null : () => setState(() => _step = 1),
-                    child: const Text('Back'),
-                  ),
-                  const Spacer(),
-                  GradientButton(
-                    label: 'Continue',
-                    onPressed: _busy ? null : () => _saveCrashlytics(skip: true),
-                  ),
-                ],
-              ),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Upload a GCP service account JSON with BigQuery (or Cloud Logging) access '
-              'to your Firebase Crashlytics export.',
-              style: theme.bodyMedium?.copyWith(color: palette.textSecondary),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            TextField(
-              controller: _bqProjectCtrl,
-              decoration: const InputDecoration(
-                labelText: 'GCP / BigQuery project ID',
-                helperText: 'Usually the same as your Firebase project ID',
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            OutlinedButton.icon(
-              onPressed: (_busy || _credsUploading) ? null : _uploadCreds,
-              icon: _credsUploading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.upload_file),
-              label: Text(_hasCreds
-                  ? 'Replace service account JSON'
-                  : 'Upload service account JSON'),
-            ),
-            if (_hasCreds) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Text('Credentials on file.',
-                  style: theme.bodySmall?.copyWith(color: palette.success)),
-            ],
-            const SizedBox(height: AppSpacing.xl),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: _busy ? null : () => setState(() => _step = 1),
-                  child: const Text('Back'),
-                ),
-                const Spacer(),
-                GradientButton(
-                  label: _busy ? 'Saving…' : 'Continue',
-                  onPressed: _busy ? null : () => _saveCrashlytics(skip: false),
-                ),
-              ],
-            ),
-          ],
-        );
-      case 3:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -746,7 +607,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             Row(
               children: [
                 TextButton(
-                  onPressed: _busy ? null : () => setState(() => _step = 2),
+                  onPressed: _busy ? null : () => setState(() => _step = 1),
                   child: const Text('Back'),
                 ),
                 TextButton(
@@ -764,13 +625,18 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             ),
           ],
         );
-      case 4:
+      case 3:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Add the Flutter app repository Fixora should analyze. '
-              'Set Crashlytics table names and Jira/GitLab project on that repo.',
+              isMock
+                  ? 'Add any Flutter git repo (token required for private remotes). '
+                      'Mock runs do not need GCP credentials.'
+                  : 'Add the Flutter app repository Fixora should analyze. '
+                      'On that repo, set Firebase / GCP project ID, upload the '
+                      'service account JSON, and Crashlytics dataset/tables '
+                      '(plus package/bundle IDs).',
               style: theme.bodyLarge,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -784,6 +650,14 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
                     : palette.textSecondary,
               ),
             ),
+            if (!isMock) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Production Crashlytics readiness requires project ID + service '
+                'account on the active repo (Manage repositories → Crashlytics).',
+                style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+              ),
+            ],
             const SizedBox(height: AppSpacing.xl),
             GradientButton(
               label: 'Open Manage repositories',
@@ -794,21 +668,21 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             Row(
               children: [
                 TextButton(
-                  onPressed: _busy ? null : () => setState(() => _step = 3),
+                  onPressed: _busy ? null : () => setState(() => _step = 2),
                   child: const Text('Back'),
                 ),
                 const Spacer(),
                 GradientButton(
                   label: 'Continue',
                   onPressed: (setup != null && setup.repoCount > 0 && !_busy)
-                      ? () => setState(() => _step = 5)
+                      ? () => setState(() => _step = 4)
                       : null,
                 ),
               ],
             ),
           ],
         );
-      case 5:
+      case 4:
       default:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -831,7 +705,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             ),
             const SizedBox(height: AppSpacing.lg),
             TextButton(
-              onPressed: _busy ? null : () => setState(() => _step = 4),
+              onPressed: _busy ? null : () => setState(() => _step = 3),
               child: const Text('Back'),
             ),
           ],

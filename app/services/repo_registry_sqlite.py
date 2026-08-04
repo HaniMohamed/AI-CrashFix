@@ -99,6 +99,8 @@ class SqliteRepoRegistryStore:
                 conn.execute("ALTER TABLE repos ADD COLUMN crashlytics_android_package TEXT")
             if "crashlytics_ios_bundle_id" not in existing:
                 conn.execute("ALTER TABLE repos ADD COLUMN crashlytics_ios_bundle_id TEXT")
+            if "google_application_credentials" not in existing:
+                conn.execute("ALTER TABLE repos ADD COLUMN google_application_credentials TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_state (
@@ -309,6 +311,49 @@ class SqliteRepoRegistryStore:
         if s.lower() in {"none", "null"}:
             return None
         return s
+
+    def get_google_application_credentials(self, repo_key: str) -> str | None:
+        key = (repo_key or "").strip()
+        if not key:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT google_application_credentials FROM repos WHERE repo_key = ?",
+                (key,),
+            ).fetchone()
+        if not row:
+            return None
+        v = row[0]
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s or s.lower() in {"none", "null"}:
+            return None
+        return s
+
+    def set_google_application_credentials(self, repo_key: str, path: str | None) -> RepoEntry:
+        key = (repo_key or "").strip()
+        if not key:
+            raise ValueError("repo_key is required")
+        entry = self.get_repo(key)
+        if entry is None:
+            raise LookupError(f"repo_key={key!r} not found")
+        creds = (path or "").strip() or None
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE repos
+                SET google_application_credentials = ?, updated_at = ?
+                WHERE repo_key = ?
+                """,
+                (creds, now, key),
+            )
+            conn.commit()
+        out = self.get_repo(key)
+        if out is None:
+            raise RuntimeError("Failed to update google_application_credentials")
+        return out
 
     def get_active_repo_key(self) -> str | None:
         with self._connect() as conn:

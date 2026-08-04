@@ -86,21 +86,19 @@ def _compute_setup_status_inner() -> dict[str, Any]:
     else:
         llm_detail = f"Unknown LLM provider: {provider}"
 
-    creds = resolver.effective_google_application_credentials()
-    bq_project = None
-    try:
-        from app.services.app_settings_store import AppSettingsStore
-        from app import config as cfg
-
-        kv = AppSettingsStore().get_all()
-        raw = kv.get("BQ_PROJECT_ID")
-        if isinstance(raw, str) and raw.strip():
-            bq_project = raw.strip()
-        else:
-            bq_project = (cfg.BQ_PROJECT_ID or "").strip() or None
-    except Exception:
-        bq_project = None
-
+    # Crashlytics / GCP is per-repo: project ID + SA JSON on the active repo
+    # (else any configured repo). Mock path skips this requirement.
+    active_for_gcp = repos.get_active_repo()
+    gcp_repo = active_for_gcp
+    if gcp_repo is None:
+        for candidate in repos.list_repos():
+            if (candidate.firebase_project_id or "").strip() or candidate.has_google_application_credentials:
+                gcp_repo = candidate
+                break
+    gcp_repo_key = gcp_repo.repo_key if gcp_repo else None
+    crash = resolver.effective_crashlytics(repo_key=gcp_repo_key)
+    creds = crash.google_application_credentials
+    bq_project = crash.firebase_project_id
     crashlytics_ok = bool((creds or "").strip()) and bool(bq_project)
 
     jira = resolver.effective_jira(repo_key=None)
@@ -165,9 +163,13 @@ def _compute_setup_status_inner() -> dict[str, Any]:
             "ok": crashlytics_ok if setup_path != "mock" else True,
             "detail": None
             if crashlytics_ok or setup_path == "mock"
-            else "Upload a GCP service account JSON and set BQ project ID",
+            else (
+                "On the Flutter repository, set Firebase/GCP project ID and upload a "
+                "service account JSON (Manage repos or Setup wizard)."
+            ),
             "has_credentials": bool((creds or "").strip()),
             "has_bq_project": bool(bq_project),
+            "repo_key": gcp_repo_key,
         },
         {
             "id": "jira",

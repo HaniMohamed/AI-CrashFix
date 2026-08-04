@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS repos (
   gitlab_project TEXT,
   crashlytics_android_package TEXT,
   crashlytics_ios_bundle_id TEXT,
+  google_application_credentials TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_selected_at TIMESTAMPTZ,
@@ -118,6 +119,9 @@ def ensure_app_postgres_schema(conn: psycopg.Connection) -> None:
         # Existing DBs may predate created_by_user_id — add then index.
         cur.execute(
             "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS created_by_user_id TEXT"
+        )
+        cur.execute(
+            "ALTER TABLE repos ADD COLUMN IF NOT EXISTS google_application_credentials TEXT"
         )
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_crashes_created_by ON crashes (created_by_user_id)"

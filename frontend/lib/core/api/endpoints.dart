@@ -13,6 +13,8 @@ class Endpoints {
   static String configForRepo(String repoKey) =>
       '$config?repo_key=${Uri.encodeQueryComponent(repoKey)}';
   static const String googleCredentials = '/api/settings/google_credentials';
+  static String repoGoogleCredentials(String repoKey) =>
+      '${repoByKey(repoKey)}/google_credentials';
   static const String repos = '/api/repos';
   static const String activeRepo = '/api/repos/active';
   static const String selectRepo = '/api/repos/select';
