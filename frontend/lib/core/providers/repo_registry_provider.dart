@@ -143,9 +143,6 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     String? bqCrashlyticsAndroidTable,
     String? bqCrashlyticsIosTable,
     String? jiraProjectKey,
-    String? jiraServerUrl,
-    String? jiraEmail,
-    String? jiraToken,
     String? jiraIssueType,
     String? jiraCreateFields,
     String? jiraCreateMode,
@@ -174,10 +171,6 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
         'bq_crashlytics_ios_table': bqCrashlyticsIosTable.trim(),
       if (jiraProjectKey != null && jiraProjectKey.trim().isNotEmpty)
         'jira_project_key': jiraProjectKey.trim(),
-      if (jiraServerUrl != null && jiraServerUrl.trim().isNotEmpty)
-        'jira_server_url': jiraServerUrl.trim(),
-      if (jiraEmail != null && jiraEmail.trim().isNotEmpty) 'jira_email': jiraEmail.trim(),
-      if (jiraToken != null && jiraToken.trim().isNotEmpty) 'jira_token': jiraToken.trim(),
       if (jiraIssueType != null && jiraIssueType.trim().isNotEmpty)
         'jira_issue_type': jiraIssueType.trim(),
       // Always persist (empty string clears the per-repo override).

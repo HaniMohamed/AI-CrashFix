@@ -308,6 +308,33 @@ class PostgresRepoRegistryStore:
             raise RuntimeError("Failed to update google_application_credentials")
         return out
 
+    def clear_legacy_repo_jira_base_config(self, repo_key: str) -> RepoEntry:
+        key = (repo_key or "").strip()
+        if not key:
+            raise ValueError("repo_key is required")
+        entry = self.get_repo(key)
+        if entry is None:
+            raise LookupError(f"repo_key={key!r} not found")
+        now = datetime.utcnow()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE repos
+                    SET jira_server_url = NULL,
+                        jira_email = NULL,
+                        jira_token = NULL,
+                        updated_at = %s
+                    WHERE user_id = %s AND repo_key = %s
+                    """,
+                    (now, self.user_id, key),
+                )
+            conn.commit()
+        out = self.get_repo(key)
+        if out is None:
+            raise RuntimeError("Failed to clear legacy repo Jira base config")
+        return out
+
     def get_active_repo_key(self) -> str | None:
         with self._connect() as conn:
             with conn.cursor() as cur:

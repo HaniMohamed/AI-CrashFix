@@ -355,6 +355,32 @@ class SqliteRepoRegistryStore:
             raise RuntimeError("Failed to update google_application_credentials")
         return out
 
+    def clear_legacy_repo_jira_base_config(self, repo_key: str) -> RepoEntry:
+        key = (repo_key or "").strip()
+        if not key:
+            raise ValueError("repo_key is required")
+        entry = self.get_repo(key)
+        if entry is None:
+            raise LookupError(f"repo_key={key!r} not found")
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE repos
+                SET jira_server_url = NULL,
+                    jira_email = NULL,
+                    jira_token = NULL,
+                    updated_at = ?
+                WHERE repo_key = ?
+                """,
+                (now, key),
+            )
+            conn.commit()
+        out = self.get_repo(key)
+        if out is None:
+            raise RuntimeError("Failed to clear legacy repo Jira base config")
+        return out
+
     def get_active_repo_key(self) -> str | None:
         with self._connect() as conn:
             row = conn.execute(

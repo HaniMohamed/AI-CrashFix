@@ -322,6 +322,14 @@ class RepoRegistryStore:
     def set_google_application_credentials(self, repo_key: str, path: str | None) -> RepoEntry:
         return self._impl.set_google_application_credentials(repo_key, path)
 
+    def clear_legacy_repo_jira_base_config(self, repo_key: str) -> RepoEntry:
+        """
+        Clear legacy repo-scoped Jira base settings (server/email/token).
+
+        Jira base config is now owned by global/common settings only.
+        """
+        return self._impl.clear_legacy_repo_jira_base_config(repo_key)
+
     def get_active_repo_key(self) -> str | None:
         return self._impl.get_active_repo_key()
 

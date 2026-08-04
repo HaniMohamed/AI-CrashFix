@@ -10,9 +10,6 @@ class RepoEntry {
   final String? bqDataset;
   final String? bqCrashlyticsAndroidTable;
   final String? bqCrashlyticsIosTable;
-  final String? jiraServerUrl;
-  final String? jiraEmail;
-  final bool hasJiraToken;
   final String? jiraIssueType;
   final String? jiraProjectKey;
   final String? jiraCreateFields;
@@ -35,9 +32,6 @@ class RepoEntry {
     this.bqDataset,
     this.bqCrashlyticsAndroidTable,
     this.bqCrashlyticsIosTable,
-    this.jiraServerUrl,
-    this.jiraEmail,
-    this.hasJiraToken = false,
     this.jiraIssueType,
     this.jiraProjectKey,
     this.jiraCreateFields,
@@ -80,13 +74,6 @@ class RepoEntry {
         bqCrashlyticsIosTable: (j['bq_ios_table'] as String?)?.trim().isEmpty ?? true
             ? null
             : (j['bq_ios_table'] as String?)?.trim(),
-        jiraServerUrl: (j['jira_server_url'] as String?)?.trim().isEmpty ?? true
-            ? null
-            : (j['jira_server_url'] as String?)?.trim(),
-        jiraEmail: (j['jira_email'] as String?)?.trim().isEmpty ?? true
-            ? null
-            : (j['jira_email'] as String?)?.trim(),
-        hasJiraToken: j['has_jira_token'] == true,
         jiraIssueType: (j['jira_issue_type'] as String?)?.trim().isEmpty ?? true
             ? null
             : (j['jira_issue_type'] as String?)?.trim(),

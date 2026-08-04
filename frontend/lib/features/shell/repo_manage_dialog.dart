@@ -65,9 +65,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   late final TextEditingController _bqIosTableCtrl;
   late final TextEditingController _androidPackageCtrl;
   late final TextEditingController _iosBundleIdCtrl;
-  late final TextEditingController _jiraServerUrlCtrl;
-  late final TextEditingController _jiraEmailCtrl;
-  late final TextEditingController _jiraTokenCtrl;
   late final TextEditingController _jiraIssueTypeCtrl;
   late final TextEditingController _jiraProjectKeyCtrl;
   late final TextEditingController _jiraCreateFieldsCtrl;
@@ -79,7 +76,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   /// Accordion: at most one panel expanded; `0` = repository (default), `1` = Crashlytics, `2` = integrations.
   int? _expandedPanelIndex = 0;
   bool _showToken = false;
-  bool _showJiraToken = false;
   String? _error;
   String? _editingRepoKey;
   Map<String, dynamic>? _repoStatus;
@@ -106,9 +102,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqIosTableCtrl = TextEditingController();
     _androidPackageCtrl = TextEditingController();
     _iosBundleIdCtrl = TextEditingController();
-    _jiraServerUrlCtrl = TextEditingController();
-    _jiraEmailCtrl = TextEditingController();
-    _jiraTokenCtrl = TextEditingController();
     _jiraIssueTypeCtrl = TextEditingController(text: 'Bug');
     _jiraProjectKeyCtrl = TextEditingController();
     _jiraCreateFieldsCtrl = TextEditingController();
@@ -133,9 +126,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqIosTableCtrl.addListener(onEdit);
     _androidPackageCtrl.addListener(onEdit);
     _iosBundleIdCtrl.addListener(onEdit);
-    _jiraServerUrlCtrl.addListener(onEdit);
-    _jiraEmailCtrl.addListener(onEdit);
-    _jiraTokenCtrl.addListener(onEdit);
     _jiraIssueTypeCtrl.addListener(onEdit);
     _jiraProjectKeyCtrl.addListener(onEdit);
     _jiraCreateFieldsCtrl.addListener(onEdit);
@@ -218,9 +208,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _bqIosTableCtrl.text = (r.bqCrashlyticsIosTable ?? '').toString();
       _androidPackageCtrl.text = (r.crashlyticsAndroidPackage ?? '').toString();
       _iosBundleIdCtrl.text = (r.crashlyticsIosBundleId ?? '').toString();
-      _jiraServerUrlCtrl.text = (r.jiraServerUrl ?? '').toString();
-      _jiraEmailCtrl.text = (r.jiraEmail ?? '').toString();
-      _jiraTokenCtrl.text = '';
       _jiraIssueTypeCtrl.text =
           (r.jiraIssueType ?? '').trim().isEmpty ? 'Bug' : r.jiraIssueType!.trim();
       _jiraProjectKeyCtrl.text = (r.jiraProjectKey ?? '').toString();
@@ -361,9 +348,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqIosTableCtrl.clear();
     _androidPackageCtrl.clear();
     _iosBundleIdCtrl.clear();
-    _jiraServerUrlCtrl.clear();
-    _jiraEmailCtrl.clear();
-    _jiraTokenCtrl.clear();
     _jiraIssueTypeCtrl.text = 'Bug';
     _jiraProjectKeyCtrl.clear();
     _jiraCreateFieldsCtrl.clear();
@@ -385,9 +369,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
     _bqIosTableCtrl.dispose();
     _androidPackageCtrl.dispose();
     _iosBundleIdCtrl.dispose();
-    _jiraServerUrlCtrl.dispose();
-    _jiraEmailCtrl.dispose();
-    _jiraTokenCtrl.dispose();
     _jiraIssueTypeCtrl.dispose();
     _jiraProjectKeyCtrl.dispose();
     _jiraCreateFieldsCtrl.dispose();
@@ -599,12 +580,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                       .trim()
                                       .isNotEmpty ||
                                   r.hasGoogleApplicationCredentials ||
-                                  r.hasToken == true ||
-                                  r.hasJiraToken ||
-                                  (r.jiraServerUrl ?? '')
-                                      .toString()
-                                      .trim()
-                                      .isNotEmpty) ...[
+                                  r.hasToken == true) ...[
                                 const SizedBox(height: 8),
                                 Wrap(
                                   spacing: 8,
@@ -639,12 +615,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                     if (r.hasToken == true)
                                       _Chip(
                                         label: 'Token saved',
-                                        palette: palette,
-                                        theme: theme,
-                                      ),
-                                    if (r.hasJiraToken)
-                                      _Chip(
-                                        label: 'Jira token saved',
                                         palette: palette,
                                         theme: theme,
                                       ),
@@ -1129,7 +1099,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                         ),
                       ),
                       subtitle: Text(
-                        'Jira connection, issue defaults, and repo index status',
+                        'Per-repo Jira issue defaults and repo index status',
                         style: theme.bodySmall?.copyWith(
                           color: palette.textMuted,
                         ),
@@ -1141,91 +1111,10 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextField(
-                          controller: _jiraServerUrlCtrl,
-                          enabled: fieldsEnabled,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            labelText: 'Jira server URL',
-                            hintText: 'https://jira.example.com/',
-                            helperText: _debug
-                                ? 'JIRA_SERVER_URL'
-                                : 'Base URL of your Jira instance.',
-                            prefixIcon: const Icon(Icons.link_outlined),
-                            suffixIcon: _jiraServerUrlCtrl.text.trim().isEmpty
-                                ? null
-                                : IconButton(
-                                    tooltip: 'Clear',
-                                    onPressed: !fieldsEnabled
-                                        ? null
-                                        : () => _jiraServerUrlCtrl.clear(),
-                                    icon: const Icon(Icons.close),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _jiraEmailCtrl,
-                          enabled: fieldsEnabled,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            labelText: 'Jira email (optional)',
-                            hintText: 'user@company.com',
-                            helperText: _debug
-                                ? 'JIRA_EMAIL'
-                                : 'Use with API token (Basic auth). Leave empty for Bearer token only.',
-                            prefixIcon: const Icon(Icons.email_outlined),
-                            suffixIcon: _jiraEmailCtrl.text.trim().isEmpty
-                                ? null
-                                : IconButton(
-                                    tooltip: 'Clear',
-                                    onPressed: !fieldsEnabled
-                                        ? null
-                                        : () => _jiraEmailCtrl.clear(),
-                                    icon: const Icon(Icons.close),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _jiraTokenCtrl,
-                          enabled: fieldsEnabled,
-                          obscureText: !_showJiraToken,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            labelText: 'Jira API token (optional)',
-                            hintText: 'Not shown after save',
-                            helperText: _debug
-                                ? 'JIRA_TOKEN'
-                                : 'Stored on the server only. Leave blank to keep an existing token.',
-                            prefixIcon: const Icon(Icons.key_outlined),
-                            suffixIcon: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  tooltip: _showJiraToken ? 'Hide' : 'Show',
-                                  onPressed: !fieldsEnabled
-                                      ? null
-                                      : () => setState(
-                                            () =>
-                                                _showJiraToken = !_showJiraToken,
-                                          ),
-                                  icon: Icon(
-                                    _showJiraToken
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                  ),
-                                ),
-                                if (_jiraTokenCtrl.text.trim().isNotEmpty)
-                                  IconButton(
-                                    tooltip: 'Clear',
-                                    onPressed: !fieldsEnabled
-                                        ? null
-                                        : () => _jiraTokenCtrl.clear(),
-                                    icon: const Icon(Icons.close),
-                                  ),
-                              ],
-                            ),
+                        Text(
+                          'Jira base URL, email, and token come from global Settings.',
+                          style: theme.bodySmall?.copyWith(
+                            color: palette.textMuted,
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -1621,16 +1510,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               _jiraProjectKeyCtrl.text.trim().isEmpty
                               ? null
                               : _jiraProjectKeyCtrl.text.trim(),
-                          jiraServerUrl:
-                              _jiraServerUrlCtrl.text.trim().isEmpty
-                              ? null
-                              : _jiraServerUrlCtrl.text.trim(),
-                          jiraEmail: _jiraEmailCtrl.text.trim().isEmpty
-                              ? null
-                              : _jiraEmailCtrl.text.trim(),
-                          jiraToken: _jiraTokenCtrl.text.trim().isEmpty
-                              ? null
-                              : _jiraTokenCtrl.text.trim(),
                           jiraIssueType:
                               _jiraIssueTypeCtrl.text.trim().isEmpty
                               ? null

@@ -66,6 +66,19 @@ async def _lifespan(_app: FastAPI):
             "Skipping GCP→repo migration",
             exc_info=True,
         )
+    try:
+        from app.services.repo_common_integrations_migration import (
+            migrate_repo_common_integrations_cleanup,
+        )
+
+        migrate_repo_common_integrations_cleanup()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Skipping legacy repo integration cleanup migration",
+            exc_info=True,
+        )
     yield
 
 
@@ -169,18 +182,6 @@ class RepoUpsertRequest(BaseModel):
     jira_project_key: Optional[str] = Field(
         None,
         description="Optional: per-repo Jira project key override.",
-    )
-    jira_server_url: Optional[str] = Field(
-        None,
-        description="Optional: per-repo Jira base URL (e.g. https://jira.example.com/).",
-    )
-    jira_email: Optional[str] = Field(
-        None,
-        description="Optional: Jira account email for Basic auth with API token.",
-    )
-    jira_token: Optional[str] = Field(
-        None,
-        description="Optional: Jira API token (or PAT). Stored server-side; never returned.",
     )
     jira_issue_type: Optional[str] = Field(
         None,
@@ -545,9 +546,6 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             bq_android_table=req.bq_crashlytics_android_table,
             bq_ios_table=req.bq_crashlytics_ios_table,
             jira_project_key=req.jira_project_key,
-            jira_server_url=req.jira_server_url,
-            jira_email=req.jira_email,
-            jira_token=req.jira_token,
             jira_issue_type=req.jira_issue_type,
             jira_create_fields=req.jira_create_fields,
             jira_create_mode=req.jira_create_mode,

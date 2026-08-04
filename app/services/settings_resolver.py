@@ -271,20 +271,17 @@ class SettingsResolver:
     def effective_jira(self, *, repo_key: str | None) -> EffectiveJiraConfig:
         rk = (repo_key or "").strip()
         repo = self._repos.get_repo(rk) if rk else None
-        repo_token = self._repos.get_jira_token(rk) if rk else None
         issue_default = (cfg.JIRA_ISSUE_TYPE or "Bug").strip() or "Bug"
         it_raw = (repo.jira_issue_type if repo else None) or self._app_str("JIRA_ISSUE_TYPE") or issue_default
         it_norm = (it_raw or "Bug").strip() or "Bug"
         from app.services.repo_registry_store import normalize_jira_create_mode
 
         return EffectiveJiraConfig(
-            server_url=(repo.jira_server_url if repo else None)
-            or self._app_str("JIRA_SERVER_URL")
-            or cfg.JIRA_SERVER_URL,
-            email=(repo.jira_email if repo else None) or self._app_str("JIRA_EMAIL") or cfg.JIRA_EMAIL,
+            server_url=self._app_str("JIRA_SERVER_URL") or cfg.JIRA_SERVER_URL,
+            email=self._app_str("JIRA_EMAIL") or cfg.JIRA_EMAIL,
             verify_ssl=self._app_str("JIRA_VERIFY_SSL") or cfg.JIRA_VERIFY_SSL,
             auth=self._app_str("JIRA_AUTH") or cfg.JIRA_AUTH,
-            token=repo_token or self._app_secret("JIRA_TOKEN") or cfg.JIRA_TOKEN,
+            token=self._app_secret("JIRA_TOKEN") or cfg.JIRA_TOKEN,
             project_key=(repo.jira_project_key if repo else None)
             or self._app_str("JIRA_PROJECT_KEY")
             or cfg.JIRA_PROJECT_KEY,
@@ -314,13 +311,12 @@ class SettingsResolver:
             if repo and repo.repo_url
             else None
         )
-        repo_token = self._repos.get_access_token(rk) if rk else None
         return EffectiveGitlabConfig(
             server_url=self._app_str("GITLAB_SERVER_URL")
             or cfg.GITLAB_SERVER_URL
             or derived_server,
             verify_ssl=self._app_str("GITLAB_VERIFY_SSL") or cfg.GITLAB_VERIFY_SSL,
-            token=self._app_secret("GITLAB_TOKEN") or cfg.GITLAB_TOKEN or repo_token,
+            token=self._app_secret("GITLAB_TOKEN") or cfg.GITLAB_TOKEN,
             ca_bundle=self._app_str("GITLAB_SSL_CA_BUNDLE") or cfg.GITLAB_SSL_CA_BUNDLE,
             project=gl_project or cfg.GITLAB_PROJECT,
         )
