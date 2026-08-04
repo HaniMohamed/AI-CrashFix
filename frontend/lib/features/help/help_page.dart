@@ -85,16 +85,15 @@ class HelpPage extends ConsumerWidget {
                         ),
                         const SizedBox(height: AppSpacing.md),
                         GradientButton(
-                          label: 'Open setup wizard',
+                          label: s.setupComplete
+                              ? 'Edit setup'
+                              : 'Open setup wizard',
                           icon: Icons.rocket_launch_outlined,
-                          onPressed: () async {
-                            await showDialog<void>(
-                              context: context,
-                              builder: (_) =>
-                                  const SetupWizardDialog(allowClose: true),
-                            );
-                            ref.invalidate(setupStatusProvider);
-                          },
+                          onPressed: () => openSetupWizard(
+                            context,
+                            ref,
+                            revisiting: s.setupComplete,
+                          ),
                         ),
                       ],
                     ),

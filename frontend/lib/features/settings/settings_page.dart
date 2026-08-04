@@ -9,10 +9,13 @@ import '../../core/providers/app_version_provider.dart';
 import '../../core/providers/backend_settings_provider.dart';
 import '../../core/providers/repo_effective_config_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
+import '../../core/providers/setup_status_provider.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/fixora_mark.dart';
 import '../../shared/widgets/glass_card.dart';
+import '../../shared/widgets/gradient_button.dart';
 import '../../shared/widgets/loading_shimmer.dart';
+import '../setup/setup_wizard_dialog.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -49,6 +52,8 @@ class SettingsPage extends ConsumerWidget {
               const SizedBox(height: AppSpacing.xl),
               _ConnectionCard(settings: settings),
               const SizedBox(height: AppSpacing.lg),
+              const _SetupWizardCard(),
+              const SizedBox(height: AppSpacing.lg),
               _MachineUserCard(async: backendSettings),
               const SizedBox(height: AppSpacing.lg),
               _LlmSection(async: backendSettings),
@@ -60,6 +65,48 @@ class SettingsPage extends ConsumerWidget {
               const _AboutCard(),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SetupWizardCard extends ConsumerWidget {
+  const _SetupWizardCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final setup = ref.watch(setupStatusProvider);
+
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Setup wizard', style: theme.headlineSmall),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              setup.valueOrNull?.setupComplete == true
+                  ? 'Re-open the guided setup to change LLM, Crashlytics, Jira/GitLab, or repos.'
+                  : 'Finish onboarding, or jump into the wizard to edit any step.',
+              style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            GradientButton(
+              label: setup.valueOrNull?.setupComplete == true
+                  ? 'Edit setup'
+                  : 'Open setup wizard',
+              icon: Icons.rocket_launch_outlined,
+              onPressed: () => openSetupWizard(
+                context,
+                ref,
+                revisiting: setup.valueOrNull?.setupComplete == true,
+              ),
+            ),
+          ],
         ),
       ),
     );

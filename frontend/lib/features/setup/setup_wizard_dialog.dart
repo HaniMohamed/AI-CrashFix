@@ -18,18 +18,46 @@ import '../../shared/widgets/gradient_button.dart';
 import '../../util/service_account_json_pick.dart';
 import '../shell/repo_manage_dialog.dart';
 
-/// Multi-step Fixora onboarding. Shown as a modal when setup is incomplete.
+/// Multi-step Fixora onboarding. Shown as a modal when setup is incomplete,
+/// and reopenable later from Settings / Help to edit the same data.
 class SetupWizardDialog extends ConsumerStatefulWidget {
   final bool allowClose;
-  const SetupWizardDialog({super.key, this.allowClose = false});
+  /// When true, copy existing settings into the form and allow closing anytime.
+  final bool revisiting;
+
+  const SetupWizardDialog({
+    super.key,
+    this.allowClose = false,
+    this.revisiting = false,
+  });
 
   @override
   ConsumerState<SetupWizardDialog> createState() => _SetupWizardDialogState();
 }
 
+/// Opens the setup wizard (first-run or edit). Prefer this helper from Settings/Help.
+Future<void> openSetupWizard(
+  BuildContext context,
+  WidgetRef ref, {
+  bool revisiting = false,
+}) async {
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: revisiting,
+    builder: (_) => SetupWizardDialog(
+      allowClose: true,
+      revisiting: revisiting,
+    ),
+  );
+  ref.invalidate(setupStatusProvider);
+  ref.invalidate(backendSettingsProvider);
+  ref.invalidate(repoRegistryProvider);
+}
+
 class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
   int _step = 0;
   bool _busy = false;
+  bool _bootstrapped = false;
   String? _error;
   String? _info;
 
@@ -85,6 +113,38 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     _gitlabUrlCtrl.dispose();
     _gitlabTokenCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
+  }
+
+  Future<void> _bootstrap() async {
+    if (_bootstrapped) return;
+    _bootstrapped = true;
+    try {
+      await ref.read(backendSettingsProvider.notifier).refresh();
+      await _syncFromSettings();
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _continueExistingSetup() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(backendSettingsProvider.notifier).refresh();
+      await _syncFromSettings();
+      setState(() => _step = 1);
+    } catch (e) {
+      setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _syncFromSettings() async {
@@ -310,6 +370,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     final theme = Theme.of(context).textTheme;
     final setup = ref.watch(setupStatusProvider).valueOrNull;
     final isMock = setup?.setupPath == 'mock';
+    final canClose = widget.allowClose || widget.revisiting;
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -326,11 +387,13 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Set up $kProductName',
+                      widget.revisiting
+                          ? 'Edit $kProductName setup'
+                          : 'Set up $kProductName',
                       style: theme.headlineSmall,
                     ),
                   ),
-                  if (widget.allowClose)
+                  if (canClose)
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close),
@@ -383,16 +446,40 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '$kProductName turns Crashlytics crashes into reviewed code fixes, '
-              'optional Jira issues, and draft GitLab merge requests for Flutter apps.',
+              widget.revisiting
+                  ? 'Update LLM, Crashlytics, integrations, or your Flutter repo. '
+                      'Existing secrets stay until you replace them.'
+                  : '$kProductName turns Crashlytics crashes into reviewed code fixes, '
+                      'optional Jira issues, and draft GitLab merge requests for Flutter apps.',
               style: theme.bodyLarge,
             ),
             const SizedBox(height: AppSpacing.lg),
-            Text(
-              'Choose how you want to start. You can change settings later.',
-              style: theme.bodyMedium?.copyWith(color: palette.textSecondary),
-            ),
-            const SizedBox(height: AppSpacing.xl),
+            if (widget.revisiting && (setup?.setupPath ?? '').isNotEmpty) ...[
+              GlassCard(
+                child: ListTile(
+                  leading: Icon(Icons.edit_outlined, color: palette.primary),
+                  title: Text(
+                    'Continue editing (${setup!.setupPath}) setup',
+                  ),
+                  subtitle: const Text(
+                    'Jump back into LLM / Crashlytics / integrations with current values.',
+                  ),
+                  onTap: _busy ? null : _continueExistingSetup,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Or restart from a path:',
+                style: theme.bodyMedium?.copyWith(color: palette.textSecondary),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ] else
+              Text(
+                'Choose how you want to start. You can change settings later from Settings.',
+                style: theme.bodyMedium?.copyWith(color: palette.textSecondary),
+              ),
+            if (!widget.revisiting || (setup?.setupPath ?? '').isEmpty)
+              const SizedBox(height: AppSpacing.xl),
             GlassCard(
               child: ListTile(
                 leading: Icon(Icons.science_outlined, color: palette.secondary),

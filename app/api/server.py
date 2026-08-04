@@ -234,8 +234,17 @@ async def health() -> Dict[str, Any]:
     from app.services.repo_data_guard import is_repo_data_readonly
     from app.services.user_context import resolve_user_id
 
+    def _probe_crash_store() -> dict[str, object]:
+        payload = crash_store_health(force=True)
+        # Self-heal: team launch env may pin Postgres; if it is down, switch to
+        # SQLite for this process so the UI is not stuck on "DB offline".
+        if payload.get("backend") == "postgres" and payload.get("ok") is not True:
+            ensure_crash_store_available()
+            payload = crash_store_health(force=True)
+        return payload
+
     try:
-        crash_store = await asyncio.to_thread(crash_store_health)
+        crash_store = await asyncio.to_thread(_probe_crash_store)
     except Exception as exc:
         crash_store = {
             "backend": "unknown",
@@ -295,29 +304,58 @@ async def setup_progress(req: SetupProgressRequest) -> Dict[str, Any]:
     from datetime import datetime, timezone
 
     from app.services.repo_data_guard import ensure_repo_data_writable
-    from app.services.repo_registry_store import RepoRegistryStore
     from app.services.setup_status import (
         SETUP_COMPLETED_KEY,
         SETUP_PATH_KEY,
         compute_setup_status,
     )
+    from app.services.repo_registry_store import RepoRegistryStore
 
     ensure_repo_data_writable()
-    store = RepoRegistryStore()
+    reg = RepoRegistryStore()
     if req.setup_path is not None:
-        path = (req.setup_path or "").strip().lower()
-        if path and path not in ("mock", "production"):
+        path = str(req.setup_path).strip().lower()
+        if path not in {"mock", "production"}:
             raise HTTPException(status_code=400, detail="setup_path must be mock or production")
-        store.set_app_state(SETUP_PATH_KEY, path or None)
+        reg.set_app_state(SETUP_PATH_KEY, path)
     if req.clear_complete:
-        store.set_app_state(SETUP_COMPLETED_KEY, None)
+        reg.set_app_state(SETUP_COMPLETED_KEY, None)
     if req.mark_complete:
-        store.set_app_state(
+        reg.set_app_state(
             SETUP_COMPLETED_KEY,
             datetime.now(timezone.utc).isoformat(),
         )
     return await asyncio.to_thread(compute_setup_status)
 
+
+@app.post("/api/setup/use-local-store")
+async def setup_use_local_store() -> Dict[str, Any]:
+    """Force this process onto local SQLite when team Postgres is unreachable."""
+    result = await asyncio.to_thread(ensure_crash_store_available)
+    # Even if already sqlite, or strict mode left postgres failing, force local.
+    if result.get("backend") != "sqlite" or result.get("ok") is not True:
+        import os
+
+        from app.services import crash_store as cs
+
+        os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = "sqlite"
+        os.environ.pop("AI_CRASH_FIX_CRASH_STORE_STRICT", None)
+        cs._sync_crash_store_config_from_environ()
+        cs._CRASH_STORE_FALLBACK = {
+            "from": "postgres",
+            "to": "sqlite",
+            "error": result.get("error") or "forced local store",
+        }
+        cs._CRASH_STORE_HEALTH_CACHE = None
+        result = {
+            "backend": "sqlite",
+            "ok": True,
+            "error": None,
+            "fallback_from": "postgres",
+            "fallback_reason": result.get("error") or "forced local store",
+        }
+    health = await asyncio.to_thread(lambda: crash_store_health(force=True))
+    return {"ok": True, "crash_store": health, "ensure": result}
 
 
 @app.get("/api/logs/meta")

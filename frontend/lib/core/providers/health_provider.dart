@@ -75,6 +75,7 @@ class HealthState {
   final String? crashStoreBackend;
   final bool? crashStoreOk;
   final String? crashStoreError;
+  final String? crashStoreFallbackFrom;
   final String? userId;
   final bool repoDataReadonly;
   final GosiBrainLaunchState gosiBrainLaunch;
@@ -85,6 +86,7 @@ class HealthState {
     this.crashStoreBackend,
     this.crashStoreOk,
     this.crashStoreError,
+    this.crashStoreFallbackFrom,
     this.userId,
     this.repoDataReadonly = false,
     this.gosiBrainLaunch = const GosiBrainLaunchState(),
@@ -96,13 +98,16 @@ class HealthState {
   bool get crashStoreUnhealthy =>
       crashStoreBackend == 'postgres' && crashStoreOk == false;
 
+  bool get usingLocalStoreFallback =>
+      crashStoreFallbackFrom == 'postgres' && crashStoreBackend == 'sqlite';
+
   bool get gosiBrainLaunchBlocked => gosiBrainLaunch.blocked;
 
   String? get userFacingError {
     if (crashStoreUnhealthy) {
       return crashStoreError ??
           'The shared Postgres crash store is unavailable. '
-              'Check that the database is running and AI_CRASH_FIX_CRASH_DB_URL is correct.';
+              'Fixora can switch to a local SQLite store for this session.';
     }
     if (ok == false) {
       return error ?? 'The API is unavailable.';
@@ -156,12 +161,17 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
       String? crashStoreBackend;
       bool? crashStoreOk;
       String? crashStoreError;
+      String? crashStoreFallbackFrom;
       if (crashStore is Map) {
         crashStoreBackend = crashStore['backend']?.toString();
         crashStoreOk = crashStore['ok'] == true;
-        final rawError = crashStore['error'];
+        final rawError = crashStore['error'] ?? crashStore['fallback_reason'];
         if (rawError != null && '$rawError'.trim().isNotEmpty) {
           crashStoreError = '$rawError';
+        }
+        final fb = crashStore['fallback_from'];
+        if (fb != null && '$fb'.trim().isNotEmpty) {
+          crashStoreFallbackFrom = '$fb'.trim();
         }
       }
       final ok = res['ok'] == true;
@@ -182,6 +192,7 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
         crashStoreBackend: crashStoreBackend,
         crashStoreOk: crashStoreOk,
         crashStoreError: crashStoreError,
+        crashStoreFallbackFrom: crashStoreFallbackFrom,
         userId: userId,
         repoDataReadonly: res['repo_data_readonly'] == true,
         gosiBrainLaunch: gosiLaunch,
@@ -219,6 +230,7 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
         crashStoreBackend: _lastGood!.crashStoreBackend,
         crashStoreOk: _lastGood!.crashStoreOk,
         crashStoreError: _lastGood!.crashStoreError,
+        crashStoreFallbackFrom: _lastGood!.crashStoreFallbackFrom,
         userId: _lastGood!.userId,
         repoDataReadonly: _lastGood!.repoDataReadonly,
         gosiBrainLaunch: _lastGood!.gosiBrainLaunch,

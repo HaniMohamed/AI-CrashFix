@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme/spacing.dart';
+import '../../core/api/endpoints.dart';
 import '../../core/providers/analytics_provider.dart';
+import '../../core/providers/api_provider.dart';
 import '../../core/providers/backend_process_provider.dart';
 import '../../core/providers/crashes_provider.dart';
 import '../../core/providers/health_provider.dart';
@@ -127,12 +129,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
 
     final health = healthAsync.valueOrNull;
-    if (healthAsync.hasError ||
-        health?.ok != true ||
-        health?.crashStoreUnhealthy == true) {
-      final title = health?.crashStoreUnhealthy == true
-          ? 'Shared crash database unavailable'
-          : 'Could not reach the API';
+    // Only hard-block when the API itself is unreachable. A dead team Postgres
+    // used to freeze the whole UI; backend now falls back to SQLite, and any
+    // remaining store issue is shown as a soft banner (below).
+    if (healthAsync.hasError || health?.ok != true) {
       final detail = health?.userFacingError ?? '${healthAsync.error}';
       return shellWithTopbar(
         absorbSidebar: false,
@@ -146,7 +146,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    title,
+                    'Could not reach the API',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: AppSpacing.md),
@@ -158,20 +158,14 @@ class _AppShellState extends ConsumerState<AppShell> {
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   Text(
-                    health?.crashStoreUnhealthy == true
-                        ? 'Team Postgres is unreachable. Start it (see infra/postgres), or '
-                            'use a local SQLite launch env (AI_CRASH_FIX_CRASH_STORE_BACKEND=sqlite). '
-                            'Then retry.'
-                        : 'The embedded backend may have stopped. Retry restarts it. '
-                            'If this keeps happening, check backend logs under '
-                            '~/Library/Application Support/Fixora/',
+                    'The embedded backend may have stopped. Retry restarts it. '
+                    'If this keeps happening, check backend logs under '
+                    '~/Library/Application Support/Fixora/',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   FilledButton.icon(
                     onPressed: () {
-                      // Restart embedded backend if it died (e.g. after a bad
-                      // lifecycle kill or crash); then re-check health.
                       ref.invalidate(backendProcessProvider);
                       ref.invalidate(healthProvider);
                       ref.invalidate(repoRegistryProvider);
@@ -179,6 +173,22 @@ class _AppShellState extends ConsumerState<AppShell> {
                     icon: const Icon(Icons.refresh),
                     label: const Text('Retry'),
                   ),
+                  if (health?.crashStoreUnhealthy == true) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        try {
+                          final api = ref.read(apiClientProvider);
+                          await api.postJson(Endpoints.setupUseLocalStore);
+                        } catch (_) {}
+                        ref.invalidate(healthProvider);
+                        ref.invalidate(repoRegistryProvider);
+                        ref.invalidate(setupStatusProvider);
+                      },
+                      icon: const Icon(Icons.storage_outlined),
+                      label: const Text('Use local SQLite instead'),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -384,6 +394,49 @@ class _AppShellState extends ConsumerState<AppShell> {
                     setState(() => _userCollapsed = !_userCollapsed);
                   },
                 ),
+                if (health?.crashStoreUnhealthy == true ||
+                    health?.usingLocalStoreFallback == true)
+                  Material(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                        vertical: AppSpacing.sm,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              health?.crashStoreUnhealthy == true
+                                  ? 'Team Postgres is unreachable. Switch to local SQLite to continue.'
+                                  : 'Using local SQLite because team Postgres is offline.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                          if (health?.crashStoreUnhealthy == true)
+                            TextButton(
+                              onPressed: () async {
+                                try {
+                                  final api = ref.read(apiClientProvider);
+                                  await api.postJson(
+                                    Endpoints.setupUseLocalStore,
+                                  );
+                                } catch (_) {}
+                                ref.invalidate(healthProvider);
+                                ref.invalidate(repoRegistryProvider);
+                              },
+                              child: const Text('Use local SQLite'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 Expanded(child: widget.child),
               ],
             ),

@@ -313,10 +313,15 @@ class _HealthPill extends ConsumerWidget {
     } else {
       final ok = health.value?.ok == true;
       final crashStoreUnhealthy = health.value?.crashStoreUnhealthy == true;
-      dot = ok && !crashStoreUnhealthy ? palette.success : palette.danger;
+      final localFallback = health.value?.usingLocalStoreFallback == true;
       if (crashStoreUnhealthy) {
+        dot = palette.danger;
         label = 'DB offline';
+      } else if (localFallback) {
+        dot = palette.warning;
+        label = 'Local SQLite';
       } else {
+        dot = ok ? palette.success : palette.danger;
         label = ok ? 'API healthy' : 'API offline';
       }
     }
