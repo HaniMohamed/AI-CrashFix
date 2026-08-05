@@ -46,6 +46,8 @@ from app.services.crash_store import (
 )
 from app.services.launch_settings import apply_launch_env_file, persist_launch_env_overrides
 from app.services.repo_registry_store import RepoRegistryStore
+from app.api.auth import router as auth_router
+from app.api.auth_middleware import auth_middleware
 
 
 @asynccontextmanager
@@ -67,6 +69,17 @@ async def _lifespan(_app: FastAPI):
         )
     ensure_crash_store_available()
     persist_launch_env_overrides()
+    try:
+        from app.services.auth_store import AuthStore
+
+        AuthStore()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Auth store init failed",
+            exc_info=True,
+        )
     try:
         from app.services.gcp_repo_migration import migrate_global_gcp_to_repos
 
@@ -113,6 +126,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.middleware("http")(auth_middleware)
+
+app.include_router(auth_router)
 
 
 # ---- Schemas ---------------------------------------------------------------
@@ -254,6 +271,8 @@ async def health() -> Dict[str, Any]:
     # the whole API (which previously looked like "API offline").
     import asyncio
 
+    from app.services.auth_context import get_current_session
+    from app.services.auth_service import AuthService
     from app.services.gosi_brain_launch import gosi_brain_launch_health
     from app.services.repo_data_guard import is_repo_data_readonly
     from app.services.user_context import resolve_user_id
@@ -296,11 +315,24 @@ async def health() -> Dict[str, Any]:
     except Exception:
         user_id = None
 
+    auth_session = get_current_session()
+    auth_payload: Dict[str, Any] = {
+        "authenticated": auth_session is not None,
+    }
+    if auth_session is not None:
+        auth_payload["user"] = auth_session.user.to_public_dict()
+    else:
+        try:
+            auth_payload["bootstrap"] = AuthService().bootstrap_status()
+        except Exception:
+            auth_payload["bootstrap"] = {"needs_admin": False, "has_users": True}
+
     # `ok` means the API process is up. Crash-store health is separate so a
     # Postgres blip does not make the UI treat the backend as dead.
     return {
         "ok": True,
         "user_id": user_id,
+        "auth": auth_payload,
         "repo_data_readonly": repo_ro,
         "crash_store": crash_store,
         "gosi_brain_launch": gosi_launch,

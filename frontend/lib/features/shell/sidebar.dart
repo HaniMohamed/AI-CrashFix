@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
+import '../../core/providers/auth_provider.dart';
 import '../../shared/widgets/app_version_label.dart';
 import '../../shared/widgets/fixora_mark.dart';
 
@@ -70,13 +72,27 @@ const sidebarItems = <SidebarItem>[
   ),
 ];
 
-class AppSidebar extends StatelessWidget {
+const adminSidebarItem = SidebarItem(
+  label: 'Administration',
+  icon: Icons.admin_panel_settings_outlined,
+  activeIcon: Icons.admin_panel_settings,
+  path: '/admin',
+);
+
+List<SidebarItem> sidebarItemsForUser({required bool isAdmin}) {
+  if (!isAdmin) return sidebarItems;
+  return [...sidebarItems, adminSidebarItem];
+}
+
+class AppSidebar extends ConsumerWidget {
   final String currentPath;
   final bool collapsed;
   const AppSidebar({super.key, required this.currentPath, this.collapsed = false});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(authProvider).user?.isAdmin == true;
+    final items = sidebarItemsForUser(isAdmin: isAdmin);
     final palette = context.palette;
     final width = collapsed ? 76.0 : 232.0;
     return AnimatedContainer(
@@ -92,7 +108,7 @@ class AppSidebar extends StatelessWidget {
           const SizedBox(height: AppSpacing.xl),
           _Brand(collapsed: collapsed),
           const SizedBox(height: AppSpacing.xl),
-          ...sidebarItems.map((it) => _SidebarTile(
+          ...items.map((it) => _SidebarTile(
                 item: it,
                 collapsed: collapsed,
                 active: _isActive(it.path),

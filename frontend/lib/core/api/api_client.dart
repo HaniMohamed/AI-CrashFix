@@ -10,11 +10,27 @@ import 'http_client_io.dart' if (dart.library.html) 'http_client_web.dart';
 /// from the browser fetch ReadableStream. Off-web we use the default
 /// [http.Client] which already streams.
 class ApiClient {
-  ApiClient({required this.baseUrl, http.Client? client})
-      : _client = client ?? createHttpClient();
+  ApiClient({
+    required this.baseUrl,
+    http.Client? client,
+    this.authToken,
+    this.onUnauthorized,
+  }) : _client = client ?? createHttpClient();
 
   final String baseUrl;
+  final String? authToken;
+  final void Function()? onUnauthorized;
   final http.Client _client;
+
+  Map<String, String> _headers({bool json = true}) {
+    final headers = <String, String>{};
+    if (json) headers['content-type'] = 'application/json';
+    final token = authToken?.trim();
+    if (token != null && token.isNotEmpty) {
+      headers['authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
 
   Uri _uri(String path, [Map<String, dynamic>? query]) {
     final base = Uri.parse(baseUrl);
@@ -31,14 +47,23 @@ class ApiClient {
   }
 
   Future<dynamic> getJson(String path, {Map<String, dynamic>? query}) async {
-    final res = await _client.get(_uri(path, query));
+    final res = await _client.get(_uri(path, query), headers: _headers());
     return _decodeOrThrow(res);
   }
 
   Future<dynamic> postJson(String path, {Map<String, dynamic>? body}) async {
     final res = await _client.post(
       _uri(path),
-      headers: const {'content-type': 'application/json'},
+      headers: _headers(),
+      body: body == null ? null : jsonEncode(body),
+    );
+    return _decodeOrThrow(res);
+  }
+
+  Future<dynamic> patchJson(String path, {Map<String, dynamic>? body}) async {
+    final res = await _client.patch(
+      _uri(path),
+      headers: _headers(),
       body: body == null ? null : jsonEncode(body),
     );
     return _decodeOrThrow(res);
@@ -52,13 +77,14 @@ class ApiClient {
     String fieldName = 'file',
   }) async {
     final req = http.MultipartRequest('POST', _uri(path))
-      ..files.add(
-        http.MultipartFile.fromBytes(
-          fieldName,
-          bytes,
-          filename: filename,
-        ),
-      );
+      ..headers.addAll(_headers(json: false));
+    req.files.add(
+      http.MultipartFile.fromBytes(
+        fieldName,
+        bytes,
+        filename: filename,
+      ),
+    );
     final streamed = await _client.send(req);
     final res = await http.Response.fromStream(streamed);
     return _decodeOrThrow(res);
@@ -66,7 +92,7 @@ class ApiClient {
 
   Future<dynamic> deleteJson(String path, {Map<String, dynamic>? body}) async {
     final req = http.Request('DELETE', _uri(path))
-      ..headers['content-type'] = 'application/json';
+      ..headers.addAll(_headers());
     if (body != null) {
       req.body = jsonEncode(body);
     }
@@ -82,7 +108,7 @@ class ApiClient {
     Map<String, dynamic>? body,
   }) async {
     final req = http.Request('POST', _uri(path))
-      ..headers['content-type'] = 'application/json'
+      ..headers.addAll(_headers())
       ..headers['accept'] = 'application/x-ndjson';
     if (body != null) {
       req.body = jsonEncode(body);
@@ -94,6 +120,9 @@ class ApiClient {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       if (res.bodyBytes.isEmpty) return null;
       return jsonDecode(utf8.decode(res.bodyBytes));
+    }
+    if (res.statusCode == 401) {
+      onUnauthorized?.call();
     }
     String message = res.body;
     try {

@@ -28,5 +28,20 @@ class Endpoints {
   static const String logsMeta = '/api/logs/meta';
   static String logTail(String source) => '/api/logs/$source';
 
+  static const String authBootstrapStatus = '/api/auth/bootstrap-status';
+  static const String authBootstrapAdmin = '/api/auth/bootstrap-admin';
+  static const String authLogin = '/api/auth/login';
+  static const String authLogout = '/api/auth/logout';
+  static const String authMe = '/api/auth/me';
+  static const String authChangePassword = '/api/auth/change-password';
+  static const String authUsers = '/api/auth/users';
+  static String authUser(String id) => '$authUsers/$id';
+  static String authUserResetPassword(String id) =>
+      '$authUsers/$id/reset-password';
+  static const String authAudit = '/api/auth/audit';
+  static const String authSecuritySettings = '/api/auth/security-settings';
+  static const String authRepoReadonly =
+      '/api/auth/security-settings/repo-readonly';
+
   static String crashById(String id) => '$crashes/$id';
 }

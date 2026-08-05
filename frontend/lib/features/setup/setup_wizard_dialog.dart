@@ -490,7 +490,8 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
                       '(including per-repo GCP Crashlytics credentials). '
                       'Existing secrets stay until you replace them.'
                   : '$kProductName turns Crashlytics crashes into reviewed code fixes, '
-                      'optional Jira issues, and draft GitLab merge requests for Flutter apps.',
+                      'optional Jira issues, and draft GitLab merge requests for Flutter apps.\n\n'
+                      'Sign in is required. On first launch, create an administrator on the sign-in screen.',
               style: theme.bodyLarge,
             ),
             const SizedBox(height: AppSpacing.lg),

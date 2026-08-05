@@ -37,10 +37,16 @@ def resolve_user_id(*, required: bool = False) -> str | None:
     Resolve the current app user id (always normalized lowercase).
 
     Priority:
-    1) ``AI_CRASH_FIX_USER_ID`` (env / config) — if set, GOSI_BRAIN_USER_ID is ignored
-    2) ``GOSI_BRAIN_USER_ID`` from config (legacy fallback only)
+    1) Authenticated session ``tenant_user_id`` (login account)
+    2) ``AI_CRASH_FIX_USER_ID`` (env / config)
+    3) ``GOSI_BRAIN_USER_ID`` from config (legacy fallback only)
     """
     from app import config as cfg
+    from app.services.auth_context import get_current_session
+
+    session = get_current_session()
+    if session is not None:
+        return session.user.tenant_user_id
 
     raw = ai_crash_fix_user_id_raw()
     if not raw:

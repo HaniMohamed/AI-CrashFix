@@ -17,6 +17,33 @@ Precedence for Crashlytics GCP: **repo → bootstrap env** (headless/CLI only). 
 
 Internal env prefixes remain `AI_CRASH_FIX_*` for compatibility.
 
+## Authentication
+
+Fixora requires sign-in for all installs (local SQLite and shared Postgres). The HTTP API is protected except for health checks and the auth bootstrap/login endpoints.
+
+### First launch
+
+1. Launch Fixora when no users exist.
+2. On the **Sign in** screen, choose **Create administrator**.
+3. Enter a username (and optional machine user ID to match existing repo data).
+4. Copy the **one-time temporary password**, sign in, then set a permanent password (minimum 12 characters).
+
+Passwords are stored with Argon2id hashing. Session tokens are stored server-side (SHA-256 of the bearer token); the raw token is kept only in the macOS Keychain via the app.
+
+### Administrators
+
+Admins have an **Administration** sidebar tab to:
+
+- Add users (temporary password shown once)
+- Block / unblock / delete users
+- Reset a user to a new temporary password
+- Tune session lifetime, lockout thresholds, minimum password length
+- Toggle **repo data read-only** for all users
+
+### Team Postgres
+
+Each login account has a **machine user ID** (`tenant_user_id`) that scopes private repos and settings. Shared crash inventory remains per Firebase project. Use distinct machine user IDs per teammate when using shared Postgres.
+
 ## Path A — Packaged macOS app
 
 1. Install `Fixora.app` from the DMG into Applications.

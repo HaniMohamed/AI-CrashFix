@@ -10,4 +10,4 @@ fastapi
 uvicorn[standard]
 python-multipart
 pyinstaller
-psycopg[binary]
+argon2-cffi

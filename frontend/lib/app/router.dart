@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/auth/auth_gate.dart';
+import '../features/auth/change_password_page.dart';
+import '../features/auth/login_page.dart';
+import '../features/admin/admin_page.dart';
 import '../features/crashes/crash_detail_page.dart';
 import '../features/crashes/crashes_list_page.dart';
 import '../features/dashboard/dashboard_page.dart';
@@ -13,10 +17,6 @@ import '../features/help/help_page.dart';
 import '../features/shell/app_shell.dart';
 
 String _initialLocationFromUrl() {
-  // Support hash-style deep links like:
-  //   http://localhost:1234/#/runs/live
-  // by reading the fragment on web. This keeps local dev links working even if
-  // the app is otherwise using path routing.
   if (kIsWeb) {
     final frag = Uri.base.fragment.trim();
     if (frag.startsWith('/')) return frag;
@@ -26,16 +26,9 @@ String _initialLocationFromUrl() {
 }
 
 GoRouter createAppRouter() => GoRouter(
-      // Must be computed at runtime (after web URL strategy is set in `main`),
-      // otherwise deep links like `/#/runs/live` can get lost and the router
-      // will rewrite the URL back to `/`.
       initialLocation: _initialLocationFromUrl(),
       debugLogDiagnostics: kIsWeb,
       redirect: (() {
-        // Only redirect once on web to support opening the app via a hash deep
-        // link (/#/foo) when the platform router reports "/". If we keep doing
-        // this on every navigation, clicking "Dashboard" ("/") can bounce back
-        // to the previous fragment before the URL updates.
         final initialFrag = kIsWeb ? Uri.base.fragment.trim() : '';
         var redirected = false;
         return (context, state) {
@@ -53,9 +46,20 @@ GoRouter createAppRouter() => GoRouter(
         };
       })(),
       routes: [
+        GoRoute(
+          path: '/login',
+          pageBuilder: (_, _) =>
+              const NoTransitionPage(child: LoginPage()),
+        ),
+        GoRoute(
+          path: '/change-password',
+          pageBuilder: (_, _) =>
+              const NoTransitionPage(child: ChangePasswordPage()),
+        ),
         ShellRoute(
-          builder: (context, state, child) =>
-              AppShell(currentPath: state.uri.path, child: child),
+          builder: (context, state, child) => AuthGate(
+            child: AppShell(currentPath: state.uri.path, child: child),
+          ),
           routes: [
             GoRoute(
               path: '/',
@@ -104,6 +108,11 @@ GoRouter createAppRouter() => GoRouter(
               path: '/help',
               pageBuilder: (_, _) =>
                   const NoTransitionPage(child: HelpPage()),
+            ),
+            GoRoute(
+              path: '/admin',
+              pageBuilder: (_, _) =>
+                  const NoTransitionPage(child: AdminPage()),
             ),
           ],
         ),

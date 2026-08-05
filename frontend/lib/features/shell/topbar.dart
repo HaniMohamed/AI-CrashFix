@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
+import '../../core/providers/auth_provider.dart';
 import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import 'repo_delete_dialog.dart';
@@ -46,6 +47,14 @@ class AppTopbar extends ConsumerWidget {
           const SizedBox(width: AppSpacing.md),
           const _ThemeToggle(),
           const SizedBox(width: AppSpacing.md),
+          IconButton(
+            onPressed: () => ref.read(authProvider.notifier).logout().then((_) {
+              if (context.mounted) context.go('/login');
+            }),
+            tooltip: 'Sign out',
+            icon: Icon(Icons.logout, color: palette.textSecondary),
+          ),
+          const SizedBox(width: AppSpacing.sm),
           IconButton(
             onPressed: () => context.go('/runs/new'),
             tooltip: 'Start a new run',
