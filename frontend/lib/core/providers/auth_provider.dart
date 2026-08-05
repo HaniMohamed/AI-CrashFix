@@ -1,12 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
+import '../storage/session_token_store.dart';
 import '../../app/app_settings.dart';
 import '../api/api_client.dart';
 import '../api/endpoints.dart';
 import 'backend_process_provider.dart';
-
-const _tokenStorageKey = 'fixora_session_token';
 
 class AuthUser {
   final String id;
@@ -95,8 +92,6 @@ final baseApiClientProvider = Provider<ApiClient>((ref) {
 });
 
 class AuthNotifier extends Notifier<AuthState> {
-  static const _storage = FlutterSecureStorage();
-
   @override
   AuthState build() {
     Future.microtask(_initialize);
@@ -105,7 +100,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<void> _initialize() async {
     try {
-      final token = await _storage.read(key: _tokenStorageKey);
+      final token = await SessionTokenStore.read();
       if (token != null && token.isNotEmpty) {
         state = state.copyWith(token: token, loading: true);
         await _refreshMe(token);
@@ -199,7 +194,7 @@ class AuthNotifier extends Notifier<AuthState> {
       if (token == null || token.isEmpty) {
         throw Exception('No session token returned');
       }
-      await _storage.write(key: _tokenStorageKey, value: token);
+      await SessionTokenStore.write(token);
       final userMap = (map['user'] as Map).cast<String, dynamic>();
       state = state.copyWith(
         loading: false,
@@ -216,7 +211,7 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<bool> changePassword({
-    required String currentPassword,
+    String? currentPassword,
     required String newPassword,
   }) async {
     final token = state.token;
@@ -229,12 +224,13 @@ class AuthNotifier extends Notifier<AuthState> {
         baseUrl: backend?.baseUrl ?? settings.apiBaseUrl,
         authToken: token,
       );
+      final body = <String, dynamic>{'new_password': newPassword};
+      if (currentPassword != null && currentPassword.isNotEmpty) {
+        body['current_password'] = currentPassword;
+      }
       final res = await client.postJson(
         Endpoints.authChangePassword,
-        body: {
-          'current_password': currentPassword,
-          'new_password': newPassword,
-        },
+        body: body,
       );
       client.close();
       final userMap = (res as Map)['user'] as Map;
@@ -264,14 +260,14 @@ class AuthNotifier extends Notifier<AuthState> {
         client.close();
       } catch (_) {}
     }
-    await _storage.delete(key: _tokenStorageKey);
+    await SessionTokenStore.delete();
     state = const AuthState(initialized: true, loading: false);
     await _fetchBootstrapStatus();
     state = state.copyWith(initialized: true);
   }
 
   void handleUnauthorized() {
-    _storage.delete(key: _tokenStorageKey);
+    SessionTokenStore.delete();
     state = AuthState(
       initialized: true,
       loading: false,

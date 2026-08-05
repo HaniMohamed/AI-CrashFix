@@ -148,6 +148,28 @@ def test_login_and_protected_route(auth_client: TestClient):
     assert repos.status_code == 200
 
 
+def test_change_password_without_current_when_must_change(auth_client: TestClient):
+    boot = auth_client.post(
+        "/api/auth/bootstrap-admin",
+        json={"username": "carol"},
+    ).json()
+    temp = boot["temp_password"]
+    login = auth_client.post(
+        "/api/auth/login",
+        json={"username": "carol", "password": temp},
+    )
+    token = login.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    changed = auth_client.post(
+        "/api/auth/change-password",
+        headers=headers,
+        json={"new_password": "carol-secure-pass-12"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["user"]["must_change_password"] is False
+
+
 def test_admin_create_user_reset_password(auth_client: TestClient):
     boot = auth_client.post(
         "/api/auth/bootstrap-admin",

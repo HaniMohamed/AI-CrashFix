@@ -8,6 +8,7 @@ import '../../app/theme/spacing.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../core/providers/health_provider.dart';
 import '../../shared/widgets/gradient_button.dart';
+import '../../shared/widgets/one_time_secret_card.dart';
 import 'auth_scaffold.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -190,14 +191,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               onSubmitted: (_) => _login(),
             ),
             if (_tempPassword != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'Temporary password (copy now — it will not be shown again):',
-                style: theme.bodySmall?.copyWith(color: palette.success),
-              ),
-              SelectableText(
-                _tempPassword!,
-                style: theme.titleMedium?.copyWith(color: palette.primary),
+              const SizedBox(height: AppSpacing.lg),
+              OneTimeSecretCard(
+                secret: _tempPassword!,
+                message:
+                    'Copy this password now — it will not be shown again. '
+                    'Sign in below (password is pre-filled), then set a permanent password.',
               ),
             ],
             if (auth.error != null) ...[

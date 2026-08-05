@@ -61,7 +61,7 @@ GOSI_BRAIN_AUTHORIZATION="Bearer <jwt>"
 AI_CRASH_FIX_USER_ID=<user>
 ```
 
-`AI_CRASH_FIX_USER_ID` is the single identity for Postgres scoping and GOSI Brain `custom_session.user_id` (case-insensitive in the store). When it is set, `GOSI_BRAIN_USER_ID` is ignored. If omitted, the app falls back to `GOSI_BRAIN_USER_ID`.
+`AI_CRASH_FIX_USER_ID` scopes Postgres / app-store rows (case-insensitive). `GOSI_BRAIN_USER_ID` is only for GOSI Brain `custom_session.user_id` — set both when launching from CodeFaster (they may be the same value, but they are not interchangeable).
 
 Set `REPO_DATA_READONLY` in app settings (via `scripts/set_repo_data_readonly.py` or SQL) to make repos, settings, secrets, and index metadata view-only in the Manage repos dialog.
 

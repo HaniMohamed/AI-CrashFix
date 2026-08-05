@@ -196,7 +196,10 @@ class _AppShellState extends ConsumerState<AppShell> {
       );
     }
 
-    if (health?.gosiBrainLaunchBlocked == true) {
+    if (health?.gosiBrainLaunchBlocked == true &&
+        setupAsync.valueOrNull?.setupComplete == true) {
+      // After setup is complete, an expired host JWT still hard-blocks.
+      // During first-run, skip so the setup wizard can choose an LLM.
       final gosi = health!.gosiBrainLaunch;
       return shellWithTopbar(
         absorbSidebar: false,

@@ -37,8 +37,10 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       );
       return;
     }
+    final auth = ref.read(authProvider);
+    final mustChange = auth.user?.mustChangePassword == true;
     final ok = await ref.read(authProvider.notifier).changePassword(
-          currentPassword: _currentCtrl.text,
+          currentPassword: mustChange ? null : _currentCtrl.text,
           newPassword: _newCtrl.text,
         );
     if (!ok || !mounted) return;
@@ -64,29 +66,34 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       });
     }
 
+    final forcedChange = auth.user!.mustChangePassword;
+
     return AuthScaffold(
       title: 'Set a new password',
-      subtitle:
-          'Your account uses a temporary password. Choose a strong password '
-          '(at least 12 characters) before continuing.',
+      subtitle: forcedChange
+          ? 'You signed in with a temporary password. Choose a strong new password '
+              '(at least 12 characters) — you do not need to enter the temporary one again.'
+          : 'Enter your current password and choose a new one.',
       form: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _currentCtrl,
-            obscureText: _obscureCurrent,
-            decoration: InputDecoration(
-              labelText: 'Current / temporary password',
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureCurrent ? Icons.visibility : Icons.visibility_off,
+          if (!forcedChange) ...[
+            TextField(
+              controller: _currentCtrl,
+              obscureText: _obscureCurrent,
+              decoration: InputDecoration(
+                labelText: 'Current password',
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureCurrent ? Icons.visibility : Icons.visibility_off,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscureCurrent = !_obscureCurrent),
                 ),
-                onPressed: () =>
-                    setState(() => _obscureCurrent = !_obscureCurrent),
               ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.md),
+            const SizedBox(height: AppSpacing.md),
+          ],
           TextField(
             controller: _newCtrl,
             obscureText: _obscureNew,

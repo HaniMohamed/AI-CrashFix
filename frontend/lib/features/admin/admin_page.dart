@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -11,6 +10,7 @@ import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
 import '../../shared/widgets/soft_panel.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/one_time_secret_card.dart';
 
 class AdminPage extends ConsumerStatefulWidget {
   const AdminPage({super.key});
@@ -95,27 +95,23 @@ class _AdminPageState extends ConsumerState<AdminPage> {
   }
 
   Future<void> _showTempPasswordDialog(String username, String temp) async {
-    final palette = context.palette;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: palette.panel,
+        backgroundColor: context.palette.panel,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: palette.border),
+          side: BorderSide(color: context.palette.border),
         ),
         title: Text('Temporary password for $username'),
-        content: SelectableText(temp),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: temp));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Copied')),
-              );
-            },
-            child: const Text('Copy'),
+        content: SingleChildScrollView(
+          child: OneTimeSecretCard(
+            secret: temp,
+            message:
+                'Share this password securely. The user must sign in and set a new password.',
           ),
+        ),
+        actions: [
           FilledButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Done'),

@@ -1169,9 +1169,9 @@ class _MachineUserCard extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Scopes repos/settings on the shared Postgres store and is sent as '
-                  'GOSI Brain custom_session.user_id. Matching is case-insensitive. '
-                  'When AI_CRASH_FIX_USER_ID is set, GOSI_BRAIN_USER_ID is ignored. '
+                  'Scopes repos/settings on the shared Postgres store. Matching is '
+                  'case-insensitive. Independent of GOSI Brain '
+                  'custom_session.user_id (set that under LLM → GOSI Brain). '
                   'Set via AI_CRASH_FIX_USER_ID in the env file'
                   '${state.userIdEditable ? ' or local Settings when using SQLite' : ''}.',
                   style: theme.bodySmall?.copyWith(color: palette.textSecondary),

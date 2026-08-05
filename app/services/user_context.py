@@ -15,8 +15,8 @@ def ai_crash_fix_user_id_raw() -> str | None:
     """
     Explicit ``AI_CRASH_FIX_USER_ID`` if set (process env or config).
 
-    When this is present it is the single identity for the app store and for
-    GOSI Brain ``custom_session.user_id`` — ``GOSI_BRAIN_USER_ID`` is ignored.
+    Used for app-store / Postgres row scoping. Independent of
+    ``GOSI_BRAIN_USER_ID`` (LLM ``custom_session.user_id``).
     """
     from app import config as cfg
 
@@ -28,7 +28,7 @@ def ai_crash_fix_user_id_raw() -> str | None:
 
 _POSTGRES_USER_ID_MSG = (
     "AI_CRASH_FIX_USER_ID is required when AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres. "
-    "Set it in .env or your launch env file (and GOSI_BRAIN_USER_ID if you rely on that fallback)."
+    "Set it in .env, the database setup step, or your launch env file."
 )
 
 
@@ -39,19 +39,14 @@ def resolve_user_id(*, required: bool = False) -> str | None:
     Priority:
     1) Authenticated session ``tenant_user_id`` (login account)
     2) ``AI_CRASH_FIX_USER_ID`` (env / config)
-    3) ``GOSI_BRAIN_USER_ID`` from config (legacy fallback only)
     """
-    from app import config as cfg
     from app.services.auth_context import get_current_session
 
     session = get_current_session()
     if session is not None:
         return session.user.tenant_user_id
 
-    raw = ai_crash_fix_user_id_raw()
-    if not raw:
-        raw = cfg.GOSI_BRAIN_USER_ID
-    user_id = normalize_user_id(raw)
+    user_id = normalize_user_id(ai_crash_fix_user_id_raw())
     if required and not user_id:
         raise ValueError(_POSTGRES_USER_ID_MSG)
     return user_id

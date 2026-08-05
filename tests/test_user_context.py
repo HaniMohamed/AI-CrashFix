@@ -29,12 +29,12 @@ def test_ai_crash_fix_user_id_ignores_gosi(monkeypatch):
     assert resolve_user_id() == "cr231120"
 
 
-def test_resolve_user_id_falls_back_to_gosi(monkeypatch):
+def test_resolve_user_id_does_not_fall_back_to_gosi(monkeypatch):
     monkeypatch.delenv("AI_CRASH_FIX_USER_ID", raising=False)
     monkeypatch.setattr("app.config.AI_CRASH_FIX_USER_ID", None)
     monkeypatch.setattr("app.config.GOSI_BRAIN_USER_ID", "AbC123")
     assert ai_crash_fix_user_id_raw() is None
-    assert resolve_user_id() == "abc123"
+    assert resolve_user_id() is None
 
 
 def test_resolve_user_id_required_raises(monkeypatch):
@@ -45,12 +45,12 @@ def test_resolve_user_id_required_raises(monkeypatch):
         resolve_user_id(required=True)
 
 
-def test_effective_gosi_brain_uses_ai_crash_fix_user_id(monkeypatch, tmp_path):
+def test_effective_gosi_brain_uses_gosi_brain_user_id_only(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_CRASH_FIX_CRASH_STORE_BACKEND", "sqlite")
     monkeypatch.setattr("app.config.AI_CRASH_FIX_CRASH_STORE_BACKEND", "sqlite")
     monkeypatch.setenv("AI_CRASH_FIX_USER_ID", "CR231120")
     monkeypatch.setattr("app.config.AI_CRASH_FIX_USER_ID", "CR231120")
-    monkeypatch.setattr("app.config.GOSI_BRAIN_USER_ID", "ignored")
+    monkeypatch.setattr("app.config.GOSI_BRAIN_USER_ID", "from_env")
     db = tmp_path / "repo_registry.db"
     monkeypatch.setenv("AI_CRASH_FIX_REPO_REGISTRY_DB", str(db))
 
@@ -66,4 +66,4 @@ def test_effective_gosi_brain_uses_ai_crash_fix_user_id(monkeypatch, tmp_path):
     store = AppSettingsStore()
     store.set(k="GOSI_BRAIN_USER_ID", v="from_settings")
     gb = SettingsResolver().effective_gosi_brain()
-    assert gb.get("user_id") == "CR231120"
+    assert gb.get("user_id") == "from_settings"

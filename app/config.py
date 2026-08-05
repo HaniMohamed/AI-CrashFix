@@ -190,6 +190,6 @@ AI_CRASH_FIX_CRASH_STORE_BACKEND = (
     (os.getenv("AI_CRASH_FIX_CRASH_STORE_BACKEND") or "sqlite").strip().lower()
 )
 AI_CRASH_FIX_CRASH_DB_URL = (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip() or None
-# Preferred user id for per-user Postgres rows AND GOSI Brain custom_session.
-# When set, GOSI_BRAIN_USER_ID is ignored for identity.
+# Preferred user id for per-user Postgres / app-store rows (case-insensitive).
+# Independent of GOSI_BRAIN_USER_ID (LLM custom_session only).
 AI_CRASH_FIX_USER_ID = (os.getenv("AI_CRASH_FIX_USER_ID") or "").strip() or None

@@ -132,7 +132,7 @@ Host Postgres with Docker Compose under [`infra/postgres/`](../infra/postgres/RE
 When `AI_CRASH_FIX_CRASH_STORE_BACKEND=postgres`, **crashes, repos, settings,
 app_state, and repo_indexes** all live in the shared Postgres database
 (`AI_CRASH_FIX_CRASH_DB_URL`). Repos/settings are scoped by
-`AI_CRASH_FIX_USER_ID` (case-insensitive; when set, `GOSI_BRAIN_USER_ID` is ignored).
+`AI_CRASH_FIX_USER_ID` (case-insensitive; scopes app-store rows). `GOSI_BRAIN_USER_ID` is only for GOSI Brain `custom_session.user_id`.
 Crash inventory stays shared by Firebase project; rows record
 `created_by_user_id` for audit.
 

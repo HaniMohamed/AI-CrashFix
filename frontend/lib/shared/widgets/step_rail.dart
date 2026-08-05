@@ -27,7 +27,7 @@ class StepRail extends StatelessWidget {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
 
-    Widget buildStep(int i) {
+    Widget buildMarker(int i) {
       final done = i < currentIndex;
       final active = i == currentIndex;
       final color = done || active ? palette.primary : palette.textMuted;
@@ -49,7 +49,9 @@ class StepRail extends StatelessWidget {
               color: bg,
               shape: BoxShape.circle,
               border: Border.all(
-                color: active ? palette.primary : palette.border,
+                color: active
+                    ? palette.primary
+                    : (done ? palette.primary : palette.border),
                 width: active ? 1.5 : 1,
               ),
               boxShadow: active
@@ -62,7 +64,11 @@ class StepRail extends StatelessWidget {
                   : null,
             ),
             child: done
-                ? Icon(Icons.check, size: 14, color: Theme.of(context).colorScheme.onPrimary)
+                ? Icon(
+                    Icons.check,
+                    size: 14,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  )
                 : Text(
                     '${i + 1}',
                     style: theme.labelSmall?.copyWith(
@@ -72,18 +78,35 @@ class StepRail extends StatelessWidget {
                   ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          Flexible(
-            child: Text(
-              steps[i].shortLabel ?? steps[i].label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.labelMedium?.copyWith(
-                color: color,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              ),
+          Text(
+            steps[i].shortLabel ?? steps[i].label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
         ],
+      );
+    }
+
+    Widget buildConnector(int afterIndex) {
+      final filled = afterIndex < currentIndex;
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            height: 2,
+            decoration: BoxDecoration(
+              color: filled
+                  ? palette.primary.withValues(alpha: 0.55)
+                  : palette.border,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        ),
       );
     }
 
@@ -92,16 +115,20 @@ class StepRail extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var i = 0; i < steps.length; i++) ...[
-            buildStep(i),
+            buildMarker(i),
             if (i < steps.length - 1)
               Padding(
                 padding: const EdgeInsets.only(left: 13, top: 4, bottom: 4),
-                child: Container(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
                   width: 2,
                   height: 18,
-                  color: i < currentIndex
-                      ? palette.primary.withValues(alpha: 0.5)
-                      : palette.border,
+                  decoration: BoxDecoration(
+                    color: i < currentIndex
+                        ? palette.primary.withValues(alpha: 0.5)
+                        : palette.border,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
                 ),
               ),
           ],
@@ -109,28 +136,14 @@ class StepRail extends StatelessWidget {
       );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 560;
-        return Row(
-          children: [
-            for (var i = 0; i < steps.length; i++) ...[
-              Expanded(child: buildStep(i)),
-              if (i < steps.length - 1)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Container(
-                    height: 2,
-                    width: compact ? 12 : 28,
-                    color: i < currentIndex
-                        ? palette.primary.withValues(alpha: 0.55)
-                        : palette.border,
-                  ),
-                ),
-            ],
-          ],
-        );
-      },
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        for (var i = 0; i < steps.length; i++) ...[
+          buildMarker(i),
+          if (i < steps.length - 1) buildConnector(i),
+        ],
+      ],
     );
   }
 }

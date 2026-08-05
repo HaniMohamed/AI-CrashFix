@@ -279,16 +279,24 @@ class AuthService:
         self,
         user: AuthUserRecord,
         *,
-        current_password: str,
+        current_password: str | None,
         new_password: str,
     ) -> AuthUserRecord:
-        if not verify_password(user.password_hash, current_password):
-            raise ValueError("Current password is incorrect")
+        if user.must_change_password:
+            # Session proves the user already authenticated (e.g. with a temp password).
+            reject_temp: str | None = None
+        else:
+            current = (current_password or "").strip()
+            if not current:
+                raise ValueError("Current password is required")
+            if not verify_password(user.password_hash, current):
+                raise ValueError("Current password is incorrect")
+            reject_temp = current
         min_len = self._min_password_length()
         new_pwd = validate_new_password(
             new_password,
             min_length=min_len,
-            reject=current_password if user.must_change_password else None,
+            reject=reject_temp,
         )
         updated = self._store.update_user_password(
             user.id,

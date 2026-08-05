@@ -206,20 +206,15 @@ def _persist_launch_env_overrides_to_store() -> list[str]:
         import logging
 
         logging.getLogger(__name__).warning(
-            "Skipping launch env persist: postgres backend requires AI_CRASH_FIX_USER_ID "
-            "(or GOSI_BRAIN_USER_ID as fallback)"
+            "Skipping launch env persist: postgres backend requires AI_CRASH_FIX_USER_ID"
         )
         return []
 
     store = AppSettingsStore()
     persisted: list[str] = []
-    crash_fix_uid = (os.environ.get("AI_CRASH_FIX_USER_ID") or "").strip()
     for key in marker.split(","):
         k = key.strip()
         if not k or k not in _APP_SETTINGS_ENV_KEYS:
-            continue
-        # AI_CRASH_FIX_USER_ID owns identity; do not mirror GOSI_BRAIN_USER_ID into settings.
-        if k == "GOSI_BRAIN_USER_ID" and crash_fix_uid:
             continue
         raw = os.environ.get(k)
         if raw is None:

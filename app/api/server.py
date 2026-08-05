@@ -1175,11 +1175,7 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
     set_if_present(req.llm, "gosi_brain_temperature", "GOSI_BRAIN_TEMPERATURE")
     set_if_present(req.llm, "gosi_brain_api_key", "GOSI_BRAIN_API_KEY")
     set_if_present(req.llm, "gosi_brain_authorization", "GOSI_BRAIN_AUTHORIZATION")
-    # When AI_CRASH_FIX_USER_ID is set it owns identity; do not persist GOSI_BRAIN_USER_ID.
-    from app.services.user_context import ai_crash_fix_user_id_raw
-
-    if not ai_crash_fix_user_id_raw():
-        set_if_present(req.llm, "gosi_brain_user_id", "GOSI_BRAIN_USER_ID")
+    set_if_present(req.llm, "gosi_brain_user_id", "GOSI_BRAIN_USER_ID")
     set_if_present(req.llm, "gosi_brain_streaming", "GOSI_BRAIN_STREAMING")
     set_if_present(req.llm, "gosi_brain_idle_timeout", "GOSI_BRAIN_IDLE_TIMEOUT")
     set_if_present(req.llm, "gosi_brain_waf_content_shield", "GOSI_BRAIN_WAF_CONTENT_SHIELD")

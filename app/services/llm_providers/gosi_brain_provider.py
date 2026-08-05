@@ -401,8 +401,8 @@ class GosiBrainProvider(LLMProvider):
             )
         if not self._user_id:
             raise RuntimeError(
-                "Missing user id for GOSI Brain custom_session. "
-                "Set AI_CRASH_FIX_USER_ID (preferred) or GOSI_BRAIN_USER_ID."
+                "Missing GOSI_BRAIN_USER_ID for custom_session.user_id. "
+                "Set it in Settings (LLM → GOSI Brain) or environment."
             )
 
     def _resolve_want_stream(self, model: str) -> bool:
