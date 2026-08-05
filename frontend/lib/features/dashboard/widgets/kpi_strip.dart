@@ -115,6 +115,7 @@ class _Kpi extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     final palette = context.palette;
     return GlassCard(
+      glow: true,
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

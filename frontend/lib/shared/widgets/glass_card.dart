@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../app/theme/motion.dart';
 import '../../app/theme/spacing.dart';
 
-/// Standard surface for cards. Subtle gradient + 1px gradient-style border.
+/// Standard surface for interactive / data clusters.
+/// Optional [glow] adds a subtle aurora-edge highlight.
 class GlassCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   final double radius;
   final bool gradient;
+  final bool glow;
   final VoidCallback? onTap;
 
   const GlassCard({
@@ -17,6 +20,7 @@ class GlassCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(AppSpacing.xl),
     this.radius = AppRadii.lg,
     this.gradient = true,
+    this.glow = false,
     this.onTap,
   });
 
@@ -24,19 +28,28 @@ class GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final card = AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
+      duration: AppMotion.normal,
+      curve: AppMotion.easeOut,
       decoration: BoxDecoration(
         gradient: gradient ? palette.cardGradient : null,
         color: gradient ? null : palette.surface2,
         borderRadius: AppRadii.all(radius),
-        border: Border.all(color: palette.border, width: 1),
+        border: Border.all(
+          color: glow ? palette.primary.withValues(alpha: 0.35) : palette.border.withValues(alpha: 0.9),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
+          if (glow)
+            BoxShadow(
+              color: palette.primary.withValues(alpha: 0.12),
+              blurRadius: 24,
+              spreadRadius: -2,
+            ),
         ],
       ),
       padding: padding,

@@ -26,7 +26,12 @@ class _AuthGateState extends ConsumerState<AuthGate> {
 
     if (!auth.isAuthenticated) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go('/login');
+        if (!mounted) return;
+        if (auth.needsStoreSetup) {
+          context.go('/setup/database');
+        } else {
+          context.go('/login');
+        }
       });
       return const Scaffold(body: SizedBox.shrink());
     }

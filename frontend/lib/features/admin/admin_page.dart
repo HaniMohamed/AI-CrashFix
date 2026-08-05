@@ -9,6 +9,8 @@ import '../../core/providers/api_provider.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
+import '../../shared/widgets/soft_panel.dart';
+import '../../shared/widgets/empty_state.dart';
 
 class AdminPage extends ConsumerStatefulWidget {
   const AdminPage({super.key});
@@ -93,9 +95,15 @@ class _AdminPageState extends ConsumerState<AdminPage> {
   }
 
   Future<void> _showTempPasswordDialog(String username, String temp) async {
+    final palette = context.palette;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: palette.panel,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: palette.border),
+        ),
         title: Text('Temporary password for $username'),
         content: SelectableText(temp),
         actions: [
@@ -192,8 +200,10 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     final me = ref.watch(authProvider).user;
 
     if (me == null || !me.isAdmin) {
-      return Center(
-        child: Text('Admin only', style: theme.titleLarge),
+      return const EmptyState(
+        icon: Icons.lock_outline,
+        title: 'Admin only',
+        subtitle: 'Sign in with an administrator account to manage users and security.',
       );
     }
 
@@ -219,6 +229,16 @@ class _AdminPageState extends ConsumerState<AdminPage> {
               Text(
                 'Manage users, security policy, and read-only mode.',
                 style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              SoftPanel(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Text(
+                  _repoReadonly
+                      ? 'Repo data is currently read-only on this machine.'
+                      : 'Changes here apply immediately to authentication and security policy.',
+                  style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: AppSpacing.md),

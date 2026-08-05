@@ -24,6 +24,7 @@ class StatusDonut extends StatelessWidget {
     ];
 
     return GlassCard(
+      glow: true,
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

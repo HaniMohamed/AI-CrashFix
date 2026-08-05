@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_gate.dart';
 import '../features/auth/change_password_page.dart';
+import '../features/auth/database_setup_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/admin/admin_page.dart';
 import '../features/crashes/crash_detail_page.dart';
@@ -14,7 +15,10 @@ import '../features/runs/run_live_page.dart';
 import '../features/logs/logs_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/help/help_page.dart';
+import '../features/setup/onboarding_page.dart';
 import '../features/shell/app_shell.dart';
+import '../features/shell/repos_page.dart';
+import 'theme/motion.dart';
 
 String _initialLocationFromUrl() {
   if (kIsWeb) {
@@ -47,14 +51,29 @@ GoRouter createAppRouter() => GoRouter(
       })(),
       routes: [
         GoRoute(
+          path: '/setup/database',
+          pageBuilder: (_, _) =>
+              AuroraPage(child: DatabaseSetupPage()),
+        ),
+        GoRoute(
           path: '/login',
           pageBuilder: (_, _) =>
-              const NoTransitionPage(child: LoginPage()),
+              AuroraPage(child: LoginPage()),
         ),
         GoRoute(
           path: '/change-password',
           pageBuilder: (_, _) =>
-              const NoTransitionPage(child: ChangePasswordPage()),
+              AuroraPage(child: ChangePasswordPage()),
+        ),
+        GoRoute(
+          path: '/onboarding',
+          pageBuilder: (ctx, state) => AuroraPage(
+            child: AuthGate(
+              child: OnboardingPage(
+                revisiting: state.uri.queryParameters['revisiting'] == '1',
+              ),
+            ),
+          ),
         ),
         ShellRoute(
           builder: (context, state, child) => AuthGate(
@@ -64,22 +83,22 @@ GoRouter createAppRouter() => GoRouter(
             GoRoute(
               path: '/',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: DashboardPage()),
+                  AuroraPage(child: DashboardPage()),
             ),
             GoRoute(
               path: '/crashes',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: CrashesListPage()),
+                  AuroraPage(child: CrashesListPage()),
             ),
             GoRoute(
               path: '/crashes/:id',
-              pageBuilder: (ctx, state) => NoTransitionPage(
+              pageBuilder: (ctx, state) => AuroraPage(
                 child: CrashDetailPage(crashId: state.pathParameters['id']!),
               ),
             ),
             GoRoute(
               path: '/runs/new',
-              pageBuilder: (ctx, state) => NoTransitionPage(
+              pageBuilder: (ctx, state) => AuroraPage(
                 child: NewRunPage(
                     prefillCrashId: state.uri.queryParameters['prefill']),
               ),
@@ -87,32 +106,40 @@ GoRouter createAppRouter() => GoRouter(
             GoRoute(
               path: '/runs/live',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: RunLivePage()),
+                  AuroraPage(child: RunLivePage()),
             ),
             GoRoute(
               path: '/mrs',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: GeneratedMrsPage()),
+                  AuroraPage(child: GeneratedMrsPage()),
             ),
             GoRoute(
               path: '/logs',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: LogsPage()),
+                  AuroraPage(child: LogsPage()),
             ),
             GoRoute(
               path: '/settings',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: SettingsPage()),
+                  AuroraPage(child: SettingsPage()),
+            ),
+            GoRoute(
+              path: '/repos',
+              pageBuilder: (ctx, state) => AuroraPage(
+                child: ReposPage(
+                  returnTo: state.uri.queryParameters['returnTo'],
+                ),
+              ),
             ),
             GoRoute(
               path: '/help',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: HelpPage()),
+                  AuroraPage(child: HelpPage()),
             ),
             GoRoute(
               path: '/admin',
               pageBuilder: (_, _) =>
-                  const NoTransitionPage(child: AdminPage()),
+                  AuroraPage(child: AdminPage()),
             ),
           ],
         ),

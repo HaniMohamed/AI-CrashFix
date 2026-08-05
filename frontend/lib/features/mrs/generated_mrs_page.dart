@@ -253,12 +253,12 @@ class _MrCardState extends State<_MrCard> {
     final whenExact = Fmt.readableDateTime(whenIso);
 
     return Material(
-      color: palette.surface2,
+      color: palette.panel.withValues(alpha: 0.72),
       elevation: 0,
       shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.all(AppRadii.xl),
-        side: BorderSide(color: palette.border.withValues(alpha: 0.55)),
+        side: BorderSide(color: palette.border.withValues(alpha: 0.85)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -285,10 +285,14 @@ class _MrCardState extends State<_MrCard> {
                           ),
                         ],
                       ),
-                      child: const SizedBox(
+                      child: SizedBox(
                         width: 44,
                         height: 44,
-                        child: Icon(Icons.merge_type_rounded, color: Colors.white, size: 22),
+                        child: Icon(
+                          Icons.merge_type_rounded,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          size: 22,
+                        ),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.lg),

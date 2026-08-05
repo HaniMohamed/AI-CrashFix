@@ -56,6 +56,7 @@ class _LiveSummaryStripState extends State<LiveSummaryStrip> {
     ];
 
     return GlassCard(
+      glow: s.status == RunStatus.running || s.status == RunStatus.starting,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

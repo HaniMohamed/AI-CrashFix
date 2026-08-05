@@ -15,6 +15,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
   final Color textMuted;
   final Color primary;
   final Color secondary;
+  final Color glow;
+  final Color panel;
   final Color success;
   final Color warning;
   final Color danger;
@@ -31,6 +33,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
     required this.textMuted,
     required this.primary,
     required this.secondary,
+    required this.glow,
+    required this.panel,
     required this.success,
     required this.warning,
     required this.danger,
@@ -49,6 +53,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
     Color? textMuted,
     Color? primary,
     Color? secondary,
+    Color? glow,
+    Color? panel,
     Color? success,
     Color? warning,
     Color? danger,
@@ -65,6 +71,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
       textMuted: textMuted ?? this.textMuted,
       primary: primary ?? this.primary,
       secondary: secondary ?? this.secondary,
+      glow: glow ?? this.glow,
+      panel: panel ?? this.panel,
       success: success ?? this.success,
       warning: warning ?? this.warning,
       danger: danger ?? this.danger,
@@ -86,6 +94,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
       textMuted: Color.lerp(textMuted, other.textMuted, t)!,
       primary: Color.lerp(primary, other.primary, t)!,
       secondary: Color.lerp(secondary, other.secondary, t)!,
+      glow: Color.lerp(glow, other.glow, t)!,
+      panel: Color.lerp(panel, other.panel, t)!,
       success: Color.lerp(success, other.success, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
@@ -111,9 +121,11 @@ class AppTheme {
       text: AppColors.darkText,
       textSecondary: AppColors.darkTextSecondary,
       textMuted: AppColors.darkTextMuted,
-      primary: AppColors.indigo,
-      secondary: AppColors.cyan,
-      success: AppColors.teal,
+      primary: AppColors.teal,
+      secondary: AppColors.lime,
+      glow: AppColors.glow,
+      panel: AppColors.darkPanel,
+      success: AppColors.success,
       warning: AppColors.amber,
       danger: AppColors.rose,
       brandGradient: AppColors.brandGradient,
@@ -121,12 +133,12 @@ class AppTheme {
     );
 
     final colorScheme = ColorScheme.dark(
-      primary: AppColors.indigo,
-      secondary: AppColors.cyan,
+      primary: AppColors.teal,
+      secondary: AppColors.lime,
       surface: palette.surface1,
       error: AppColors.rose,
-      onPrimary: Colors.white,
-      onSecondary: Colors.white,
+      onPrimary: const Color(0xFF042F2E),
+      onSecondary: const Color(0xFF1A2E05),
       onSurface: palette.text,
       onError: Colors.white,
     );
@@ -143,26 +155,28 @@ class AppTheme {
       text: AppColors.lightText,
       textSecondary: AppColors.lightTextSecondary,
       textMuted: AppColors.lightTextMuted,
-      primary: AppColors.indigo,
-      secondary: AppColors.cyan,
-      success: AppColors.teal,
+      primary: AppColors.teal,
+      secondary: AppColors.lime,
+      glow: AppColors.glow,
+      panel: AppColors.lightPanel,
+      success: AppColors.success,
       warning: AppColors.amber,
       danger: AppColors.rose,
       brandGradient: AppColors.brandGradient,
       cardGradient: const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFFFFFFFF), Color(0xFFF1F5F9)],
+        colors: [Color(0xFFFFFFFF), Color(0xFFF0F4F8)],
       ),
     );
 
     final colorScheme = ColorScheme.light(
-      primary: AppColors.indigo,
-      secondary: AppColors.cyan,
+      primary: AppColors.teal,
+      secondary: AppColors.lime,
       surface: palette.surface1,
       error: AppColors.rose,
       onPrimary: Colors.white,
-      onSecondary: Colors.white,
+      onSecondary: const Color(0xFF1A2E05),
       onSurface: palette.text,
       onError: Colors.white,
     );
@@ -179,6 +193,7 @@ class AppTheme {
       text: palette.text,
       textSecondary: palette.textSecondary,
     );
+    final onPrimary = colorScheme.onPrimary;
 
     return ThemeData(
       useMaterial3: true,
@@ -209,7 +224,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: AppRadii.all(AppRadii.md)),
           textStyle: textTheme.labelLarge,
           backgroundColor: palette.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: onPrimary,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -274,6 +289,11 @@ class AppTheme {
         color: palette.primary,
         linearTrackColor: palette.border,
         circularTrackColor: palette.border,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: palette.surface1,
+        indicatorColor: palette.primary.withValues(alpha: 0.18),
+        labelTextStyle: WidgetStatePropertyAll(textTheme.labelSmall),
       ),
     );
   }

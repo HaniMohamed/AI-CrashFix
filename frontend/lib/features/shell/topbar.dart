@@ -8,8 +8,7 @@ import '../../app/theme/spacing.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
-import 'repo_delete_dialog.dart';
-import 'repo_manage_dialog.dart';
+import '../../shared/widgets/gradient_button.dart';
 
 class AppTopbar extends ConsumerWidget {
   final VoidCallback onToggleSidebar;
@@ -20,12 +19,13 @@ class AppTopbar extends ConsumerWidget {
     final palette = context.palette;
     final settings = ref.watch(appSettingsProvider).requireValue;
     final reposAsync = ref.watch(repoRegistryProvider);
+    final wide = MediaQuery.sizeOf(context).width >= 1100;
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       decoration: BoxDecoration(
-        color: palette.bg,
-        border: Border(bottom: BorderSide(color: palette.border)),
+        color: palette.bg.withValues(alpha: 0.72),
+        border: Border(bottom: BorderSide(color: palette.border.withValues(alpha: 0.85))),
       ),
       child: Row(
         children: [
@@ -35,18 +35,15 @@ class AppTopbar extends ConsumerWidget {
             tooltip: 'Toggle sidebar',
           ),
           const SizedBox(width: AppSpacing.sm),
-          _SearchOrTitle(),
+          const Flexible(child: _SearchOrTitle()),
           const Spacer(),
           _RepoPicker(async: reposAsync),
-          const SizedBox(width: AppSpacing.md),
-          const _UserIdChip(),
+          if (wide) ...[
+            const SizedBox(width: AppSpacing.md),
+            const _HealthPill(),
+          ],
           const SizedBox(width: AppSpacing.sm),
-          const _HealthPill(),
-          const SizedBox(width: AppSpacing.md),
-          _BaseUrlPopover(currentUrl: settings.apiBaseUrl),
-          const SizedBox(width: AppSpacing.md),
           const _ThemeToggle(),
-          const SizedBox(width: AppSpacing.md),
           IconButton(
             onPressed: () => ref.read(authProvider.notifier).logout().then((_) {
               if (context.mounted) context.go('/login');
@@ -55,11 +52,17 @@ class AppTopbar extends ConsumerWidget {
             icon: Icon(Icons.logout, color: palette.textSecondary),
           ),
           const SizedBox(width: AppSpacing.sm),
-          IconButton(
+          GradientButton(
+            dense: true,
+            label: 'New run',
+            icon: Icons.play_arrow_rounded,
             onPressed: () => context.go('/runs/new'),
-            tooltip: 'Start a new run',
-            icon: Icon(Icons.play_arrow_rounded, color: palette.primary),
           ),
+          // Keep settings URL accessible but quieter.
+          if (wide) ...[
+            const SizedBox(width: AppSpacing.sm),
+            _BaseUrlPopover(currentUrl: settings.apiBaseUrl),
+          ],
         ],
       ),
     );
@@ -75,26 +78,8 @@ class _RepoPicker extends ConsumerStatefulWidget {
 }
 
 class _RepoPickerState extends ConsumerState<_RepoPicker> {
-  Future<void> _confirmDeleteRepo({
-    required String repoKey,
-    required String repoName,
-  }) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => DeleteRepoDialog(repoKey: repoKey, repoName: repoName),
-    );
-  }
-
-  Future<void> _openManageDialog({bool allowClose = true}) async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: allowClose,
-      builder: (ctx) => ManageReposDialog(
-        onDelete: (repoKey, repoName) =>
-            _confirmDeleteRepo(repoKey: repoKey, repoName: repoName),
-        allowClose: allowClose,
-      ),
-    );
+  void _openManagePage() {
+    context.go('/repos');
   }
 
   @override
@@ -118,7 +103,7 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
       error: (_, _) => OutlinedButton.icon(
         icon: const Icon(Icons.source_outlined, size: 16),
         label: const Text('Repo'),
-        onPressed: _openManageDialog,
+        onPressed: _openManagePage,
       ),
       data: (data) {
         // NOTE: First-run onboarding is enforced globally by `AppShell` (non-dismissible),
@@ -137,7 +122,7 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
           ),
           onSelected: (v) async {
             if (v == '__manage__') {
-              await _openManageDialog();
+              _openManagePage();
               return;
             }
             await ref.read(repoRegistryProvider.notifier).selectRepo(v);
@@ -239,10 +224,11 @@ class _RepoPickerState extends ConsumerState<_RepoPicker> {
 }
 
 class _SearchOrTitle extends StatelessWidget {
+  const _SearchOrTitle();
+
   @override
   Widget build(BuildContext context) {
     final route = GoRouterState.of(context);
-    final palette = context.palette;
     final theme = Theme.of(context).textTheme;
     final loc = route.uri.path;
     final title = switch (loc) {
@@ -253,53 +239,16 @@ class _SearchOrTitle extends StatelessWidget {
       '/runs/live' => 'Live run',
       '/mrs' => 'Generated MRs',
       '/logs' => 'Logs',
+      '/repos' => 'Repositories',
       '/settings' => 'Settings',
+      '/help' => 'Help',
+      '/admin' => 'Administration',
       _ => '',
     };
-    return Row(
-      children: [
-        Text(title, style: theme.headlineSmall),
-        const SizedBox(width: AppSpacing.md),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: palette.surface2,
-            borderRadius: AppRadii.all(AppRadii.pill),
-            border: Border.all(color: palette.border),
-          ),
-          child: Text(
-            loc,
-            style: theme.labelSmall?.copyWith(color: palette.textMuted),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _UserIdChip extends ConsumerWidget {
-  const _UserIdChip();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final palette = context.palette;
-    final theme = Theme.of(context).textTheme;
-    final userId = ref.watch(healthProvider).valueOrNull?.userId;
-    if (userId == null || userId.isEmpty) return const SizedBox.shrink();
-    return Tooltip(
-      message: 'Machine user ID (shared DB scope)\n$userId',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: palette.surface2,
-          border: Border.all(color: palette.border),
-          borderRadius: AppRadii.all(AppRadii.pill),
-        ),
-        child: Text(
-          'you · $userId',
-          style: theme.labelMedium?.copyWith(color: palette.textSecondary),
-        ),
-      ),
+    return Text(
+      title,
+      overflow: TextOverflow.ellipsis,
+      style: theme.headlineSmall,
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../app/theme/motion.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../shared/widgets/app_version_label.dart';
@@ -59,6 +60,12 @@ const sidebarItems = <SidebarItem>[
     path: '/logs',
   ),
   SidebarItem(
+    label: 'Repositories',
+    icon: Icons.source_outlined,
+    activeIcon: Icons.source,
+    path: '/repos',
+  ),
+  SidebarItem(
     label: 'Settings',
     icon: Icons.tune_outlined,
     activeIcon: Icons.tune,
@@ -69,6 +76,28 @@ const sidebarItems = <SidebarItem>[
     icon: Icons.help_outline,
     activeIcon: Icons.help,
     path: '/help',
+  ),
+];
+
+/// Primary destinations for the mobile bottom bar.
+const mobilePrimaryItems = <SidebarItem>[
+  SidebarItem(
+    label: 'Home',
+    icon: Icons.dashboard_outlined,
+    activeIcon: Icons.dashboard_rounded,
+    path: '/',
+  ),
+  SidebarItem(
+    label: 'Crashes',
+    icon: Icons.bug_report_outlined,
+    activeIcon: Icons.bug_report,
+    path: '/crashes',
+  ),
+  SidebarItem(
+    label: 'Runs',
+    icon: Icons.bolt_outlined,
+    activeIcon: Icons.bolt,
+    path: '/runs/live',
   ),
 ];
 
@@ -84,6 +113,49 @@ List<SidebarItem> sidebarItemsForUser({required bool isAdmin}) {
   return [...sidebarItems, adminSidebarItem];
 }
 
+List<SidebarItem> moreItemsForUser({required bool isAdmin}) {
+  final more = <SidebarItem>[
+    const SidebarItem(
+      label: 'Generated MRs',
+      icon: Icons.merge_outlined,
+      activeIcon: Icons.merge,
+      path: '/mrs',
+    ),
+    const SidebarItem(
+      label: 'New Run',
+      icon: Icons.play_circle_outline,
+      activeIcon: Icons.play_circle,
+      path: '/runs/new',
+    ),
+    const SidebarItem(
+      label: 'Repositories',
+      icon: Icons.source_outlined,
+      activeIcon: Icons.source,
+      path: '/repos',
+    ),
+    const SidebarItem(
+      label: 'Logs',
+      icon: Icons.article_outlined,
+      activeIcon: Icons.article,
+      path: '/logs',
+    ),
+    const SidebarItem(
+      label: 'Settings',
+      icon: Icons.tune_outlined,
+      activeIcon: Icons.tune,
+      path: '/settings',
+    ),
+    const SidebarItem(
+      label: 'Help',
+      icon: Icons.help_outline,
+      activeIcon: Icons.help,
+      path: '/help',
+    ),
+  ];
+  if (isAdmin) more.add(adminSidebarItem);
+  return more;
+}
+
 class AppSidebar extends ConsumerWidget {
   final String currentPath;
   final bool collapsed;
@@ -96,65 +168,59 @@ class AppSidebar extends ConsumerWidget {
     final palette = context.palette;
     final width = collapsed ? 76.0 : 232.0;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOut,
+      duration: AppMotion.normal,
+      curve: AppMotion.easeOut,
       width: width,
       decoration: BoxDecoration(
-        color: palette.surface1,
-        border: Border(right: BorderSide(color: palette.border)),
+        color: palette.surface1.withValues(alpha: 0.92),
+        border: Border(right: BorderSide(color: palette.border.withValues(alpha: 0.85))),
       ),
       child: Column(
         children: [
           const SizedBox(height: AppSpacing.xl),
           _Brand(collapsed: collapsed),
           const SizedBox(height: AppSpacing.xl),
-          ...items.map((it) => _SidebarTile(
-                item: it,
-                collapsed: collapsed,
-                active: _isActive(it.path),
-                onTap: () => context.go(it.path),
-              )),
-          const Spacer(),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                for (final it in items)
+                  _SidebarTile(
+                    item: it,
+                    collapsed: collapsed,
+                    active: _isActive(it.path),
+                    onTap: () => context.go(it.path),
+                  ),
+              ],
+            ),
+          ),
           if (!collapsed)
             Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  gradient: palette.brandGradient,
-                  borderRadius: AppRadii.all(AppRadii.md),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const FixoraMark(size: 18, radius: 5, elevated: false),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Fixora',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white),
-                        ),
-                      ],
-                    ),                    const SizedBox(height: 4),
-                    Text(
-                      'Crashes \u2192 fix \u2192 PR\non autopilot.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.85),
-                          ),
-                    ),
-                  ],
-                ),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.sm,
+                AppSpacing.lg,
+                AppSpacing.md,
               ),
-            ),
-          if (!collapsed)
-            const Padding(
-              padding: EdgeInsets.only(
-                left: AppSpacing.lg,
-                right: AppSpacing.lg,
-                bottom: AppSpacing.md,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const FixoraMark(size: 18, radius: 5, elevated: false),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Fixora',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: palette.textSecondary,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const AppVersionLabel(),
+                ],
               ),
-              child: AppVersionLabel(),
             ),
         ],
       ),
@@ -196,7 +262,7 @@ class _Brand extends StatelessWidget {
                 Text(
                   'console',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: palette.textSecondary,
+                        color: palette.textMuted,
                         letterSpacing: 1.2,
                       ),
                 ),
@@ -208,6 +274,7 @@ class _Brand extends StatelessWidget {
     );
   }
 }
+
 class _SidebarTile extends StatelessWidget {
   final SidebarItem item;
   final bool active;
@@ -225,8 +292,7 @@ class _SidebarTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
-    final color = active ? palette.text : palette.textSecondary;
-    final bg = active ? palette.primary.withValues(alpha: 0.12) : Colors.transparent;
+    final color = active ? palette.primary : palette.textSecondary;
     final iconData = active ? (item.activeIcon ?? item.icon) : item.icon;
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -238,38 +304,49 @@ class _SidebarTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: AppRadii.all(AppRadii.md),
-          child: Container(
+          child: AnimatedContainer(
+            duration: AppMotion.fast,
+            curve: AppMotion.easeOut,
             padding: EdgeInsets.symmetric(
               horizontal: collapsed ? 10 : AppSpacing.md,
-              vertical: 10,
+              vertical: 11,
             ),
             decoration: BoxDecoration(
-              color: bg,
+              color: active ? palette.primary.withValues(alpha: 0.10) : Colors.transparent,
               borderRadius: AppRadii.all(AppRadii.md),
-              border: Border.all(
-                color: active ? palette.primary.withValues(alpha: 0.35) : Colors.transparent,
-              ),
             ),
             child: Row(
               children: [
+                if (active && !collapsed)
+                  Container(
+                    width: 3,
+                    height: 18,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: palette.primary,
+                      borderRadius: AppRadii.all(2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: palette.primary.withValues(alpha: 0.45),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                  )
+                else if (!collapsed)
+                  const SizedBox(width: 13),
                 Icon(iconData, size: 18, color: color),
                 if (!collapsed) ...[
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
                       item.label,
-                      style: theme.labelLarge?.copyWith(color: color),
-                    ),
-                  ),
-                  if (active)
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: palette.primary,
-                        shape: BoxShape.circle,
+                      style: theme.labelLarge?.copyWith(
+                        color: active ? palette.text : palette.textSecondary,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                       ),
                     ),
+                  ),
                 ],
               ],
             ),

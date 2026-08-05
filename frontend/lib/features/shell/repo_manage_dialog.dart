@@ -40,13 +40,27 @@ String? deriveGitlabProjectPathFromRepoUrl(String raw) {
   return path;
 }
 
+class ManageReposPresentation {
+  static const dialog = 'dialog';
+  static const page = 'page';
+  static const embedded = 'embedded';
+}
+
+/// Repo create/edit UI. Use [presentation] to render as dialog, full page, or
+/// inline panel (e.g. onboarding).
 class ManageReposDialog extends ConsumerStatefulWidget {
   final Future<void> Function(String repoKey, String repoName) onDelete;
   final bool allowClose;
+  /// One of [ManageReposPresentation] values.
+  final String presentation;
+  final VoidCallback? onSaved;
+
   const ManageReposDialog({
     super.key,
     required this.onDelete,
     this.allowClose = true,
+    this.presentation = ManageReposPresentation.dialog,
+    this.onSaved,
   });
 
   @override
@@ -1361,8 +1375,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       );
     }
 
-    return AlertDialog(
-      backgroundColor: palette.surface2,
+    final dialogChild = AlertDialog(
+      backgroundColor: palette.panel,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: palette.border.withValues(alpha: 0.85)),
+      ),
       title: Text('Manage repositories', style: theme.titleLarge),
       content: SizedBox(
         width: isNarrow ? 720 : 1040,
@@ -1428,7 +1446,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
         ),
       ),
       actions: [
-        if (widget.allowClose)
+        if (widget.allowClose &&
+            widget.presentation == ManageReposPresentation.dialog)
           TextButton(
             onPressed: _saving ? null : () => Navigator.of(context).pop(),
             child: const Text('Close'),
@@ -1506,7 +1525,11 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                     if (!mounted) return;
                     await ref.read(configProvider.notifier).refresh();
                     if (!mounted) return;
-                    nav.pop();
+                    setState(() => _saving = false);
+                    widget.onSaved?.call();
+                    if (widget.presentation == ManageReposPresentation.dialog) {
+                      nav.pop();
+                    }
                   } catch (e) {
                     if (!mounted) return;
                     setState(() {
@@ -1530,6 +1553,33 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                 const SizedBox(width: 10),
               ],
               Text(_saving ? 'Cloning…' : 'Save'),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (widget.presentation == ManageReposPresentation.dialog) {
+      return dialogChild;
+    }
+
+    // Page / embedded: reuse dialog content + actions without modal chrome.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.presentation == ManageReposPresentation.page)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('Manage repositories', style: theme.headlineMedium),
+          ),
+        Expanded(child: dialogChild.content!),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OverflowBar(
+            spacing: 8,
+            children: [
+              ...?dialogChild.actions,
             ],
           ),
         ),
@@ -1617,7 +1667,7 @@ class _ManageSectionCard extends StatelessWidget {
                   offset: const Offset(0, 8),
                 ),
                 BoxShadow(
-                  color: AppColors.cyan.withValues(alpha: 0.08),
+                  color: AppColors.glow.withValues(alpha: 0.08),
                   blurRadius: 28,
                   offset: const Offset(0, 2),
                 ),
@@ -1638,7 +1688,7 @@ class _ManageSectionCard extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [AppColors.indigo, AppColors.cyan],
+                    colors: [AppColors.teal, AppColors.lime],
                   ),
                 ),
               ),
@@ -1671,8 +1721,8 @@ class _ManageSectionCard extends StatelessWidget {
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                     colors: [
-                                      AppColors.indigo,
-                                      AppColors.cyan,
+                                      AppColors.teal,
+                                      AppColors.lime,
                                     ],
                                   )
                                 : null,
@@ -1753,7 +1803,7 @@ class _ManageSectionCard extends StatelessWidget {
                           gradient: LinearGradient(
                             colors: [
                               accent.withValues(alpha: 0.45),
-                              AppColors.cyan.withValues(alpha: 0.15),
+                              AppColors.glow.withValues(alpha: 0.15),
                               Colors.transparent,
                             ],
                           ),

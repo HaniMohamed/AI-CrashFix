@@ -68,7 +68,7 @@ class _NewRunPageState extends ConsumerState<NewRunPage> {
               Text('Trigger a new run', style: theme.displaySmall),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Configure every flag the API accepts and stream live events on the next page.',
+                'Pick a mode, set your flags, then watch the pipeline live.',
                 style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
               ),
               const SizedBox(height: AppSpacing.lg),

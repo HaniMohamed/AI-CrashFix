@@ -14,6 +14,7 @@ import '../../core/models/run_request.dart';
 import '../../core/providers/run_session_provider.dart';
 import '../../core/utils/crashlytics_console_url.dart';
 import '../../core/utils/format.dart';
+import '../../shared/widgets/aurora_list_tile.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/glass_card.dart';
@@ -73,7 +74,7 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
               children: [
                 Text(
                   'Crash inventory',
-                  style: Theme.of(context).textTheme.headlineSmall,
+                  style: Theme.of(context).textTheme.displaySmall,
                 ),
                 const Spacer(),
                 IconButton(
@@ -120,7 +121,7 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
                         icon: Icons.bug_report_outlined,
                         title: 'No crashes yet',
                         subtitle:
-                            'Run a mock batch from New Run or Help → setup wizard, '
+                            'Run a mock batch from New Run or finish onboarding, '
                             'or fetch live Crashlytics once GCP tables are configured.',
                         action: TextButton.icon(
                           onPressed: () => context.go('/runs/new'),
@@ -131,41 +132,27 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
                     );
                   }
                   final filtered = _filterClient(page.items, _search.text);
-                  return Column(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: palette.surface1,
-                          border: Border(
-                            bottom: BorderSide(color: palette.border),
+                  return Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      children: [
+                        ...filtered.map(
+                          (c) => Padding(
+                            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                            child: _buildRow(
+                              c,
+                              crashlyticsCfg: crashlyticsCfg,
+                              configLoading: configLoading,
+                              currentUserId: currentUserId,
+                            ),
                           ),
                         ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.lg,
-                          vertical: AppSpacing.md,
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.md),
+                          child: _Pager(query: query, ref: ref, count: page.count),
                         ),
-                        child: Row(
-                          children: [
-                            _HeaderCell(label: 'Crash ID', flex: 4),
-                            _HeaderCell(label: 'Status', flex: 2),
-                            _HeaderCell(label: 'Pipeline', flex: 3),
-                            _HeaderCell(label: 'Platform', flex: 2),
-                            _HeaderCell(label: 'Updated', flex: 2),
-                            _HeaderCell(label: '', flex: 1),
-                          ],
-                        ),
-                      ),
-                      ...filtered.map((c) => _buildRow(
-                            c,
-                            crashlyticsCfg: crashlyticsCfg,
-                            configLoading: configLoading,
-                            currentUserId: currentUserId,
-                          )),
-                      Padding(
-                        padding: const EdgeInsets.all(AppSpacing.lg),
-                        child: _Pager(query: query, ref: ref, count: page.count),
-                      ),
-                    ],
+                      ],
+                    ),
                   );
                 },
               ),
@@ -193,138 +180,106 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
     final byLabel = by == null || by.isEmpty
         ? null
         : (isYou ? 'by you' : 'by $by');
-    return InkWell(
+    final meta = [
+      if ((c.platform ?? '').isNotEmpty) c.platform!,
+      Fmt.relative(c.updatedAt),
+      if (byLabel != null) byLabel,
+    ].join(' · ');
+
+    return AuroraListTile(
       onTap: () => context.go('/crashes/${c.crashId}'),
-      child: Container(
+      leading: Container(
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: palette.border)),
+          color: palette.primary.withValues(alpha: 0.12),
+          borderRadius: AppRadii.all(AppRadii.md),
         ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    c.crashId,
-                    style: AppTypography.mono(color: palette.text, size: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (byLabel != null)
-                    Text(
-                      byLabel,
-                      style: theme.bodySmall?.copyWith(
-                        color: isYou ? palette.primary : palette.textMuted,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
+        child: Icon(Icons.bug_report_outlined, color: palette.primary, size: 20),
+      ),
+      title: Text(
+        c.crashId,
+        style: AppTypography.mono(color: palette.text, size: 12),
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (meta.isNotEmpty)
+            Text(
+              meta,
+              style: theme.bodySmall?.copyWith(
+                color: isYou == true ? palette.primary : palette.textSecondary,
               ),
             ),
-            Expanded(
-              flex: 2,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    StatusPill(status: c.status, dense: true),
-                    if (c.status.toLowerCase() == 'failed' &&
-                        (c.graphError?.isNotEmpty ?? false)) ...[
-                      const SizedBox(width: 6),
-                      Tooltip(
-                        message: c.graphError!,
-                        child: Icon(Icons.error_outline, size: 16, color: palette.danger),
-                      ),
-                    ],
-                  ],
-                ),
+          const SizedBox(height: 6),
+          PipelineStrip(crash: c),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StatusPill(status: c.status, dense: true),
+          if (c.status.toLowerCase() == 'failed' &&
+              (c.graphError?.isNotEmpty ?? false))
+            Tooltip(
+              message: c.graphError!,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Icon(Icons.error_outline, size: 16, color: palette.danger),
               ),
             ),
-            Expanded(flex: 3, child: PipelineStrip(crash: c)),
-            Expanded(
-              flex: 2,
-              child: Text(
-                c.platform ?? '-',
-                style: theme.bodyMedium?.copyWith(color: palette.text),
-              ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Text(
-                Fmt.relative(c.updatedAt),
-                style: theme.bodySmall?.copyWith(color: palette.textSecondary),
-              ),
-            ),
-            Expanded(
-              flex: 1,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Tooltip(
-                      message: crashlyticsUri != null
-                          ? 'Open issue in Firebase Crashlytics'
-                          : configLoading
-                              ? 'Loading configuration…'
-                              : 'Cannot build link: set Firebase project id and Android package / iOS bundle '
-                                  '(from Crashlytics export or CRASHLYTICS_ANDROID_PACKAGE / CRASHLYTICS_IOS_BUNDLE_ID in .env).',
-                      child: IconButton(
-                        iconSize: 18,
-                        visualDensity: VisualDensity.compact,
-                        onPressed: crashlyticsUri == null
-                            ? null
-                            : () async {
-                                final messenger = ScaffoldMessenger.of(context);
-                                final ok = await launchUrl(
-                                  crashlyticsUri,
-                                  mode: LaunchMode.externalApplication,
-                                );
-                                if (!context.mounted || ok) return;
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Could not open Crashlytics link'),
-                                  ),
-                                );
-                              },
-                        icon: Icon(
-                          Icons.open_in_new,
-                          color: crashlyticsUri != null ? palette.primary : palette.textMuted,
+          Tooltip(
+            message: crashlyticsUri != null
+                ? 'Open issue in Firebase Crashlytics'
+                : configLoading
+                    ? 'Loading configuration…'
+                    : 'Cannot build Crashlytics link yet',
+            child: IconButton(
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: crashlyticsUri == null
+                  ? null
+                  : () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final ok = await launchUrl(
+                        crashlyticsUri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                      if (!context.mounted || ok) return;
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not open Crashlytics link'),
                         ),
-                      ),
-                    ),
-                    if (c.status.toLowerCase() == 'failed')
-                      Tooltip(
-                        message: 'Re-run pipeline for this crash',
-                        child: IconButton(
-                          iconSize: 18,
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () {
-                            final req = RunRequest(
-                              mode: RunMode.single,
-                              crashId: c.crashId,
-                              mock: false,
-                              skipJiraCreation: c.skipJiraCreation,
-                            );
-                            ref.read(runSessionProvider.notifier).start(req);
-                            context.go('/runs/live');
-                          },
-                          icon: Icon(Icons.refresh, color: palette.primary),
-                        ),
-                      ),
-                    Icon(Icons.chevron_right, color: palette.textMuted),
-                  ],
-                ),
+                      );
+                    },
+              icon: Icon(
+                Icons.open_in_new,
+                color: crashlyticsUri != null ? palette.primary : palette.textMuted,
               ),
             ),
-          ],
-        ),
+          ),
+          if (c.status.toLowerCase() == 'failed')
+            Tooltip(
+              message: 'Re-run pipeline for this crash',
+              child: IconButton(
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  final req = RunRequest(
+                    mode: RunMode.single,
+                    crashId: c.crashId,
+                    mock: false,
+                    skipJiraCreation: c.skipJiraCreation,
+                  );
+                  ref.read(runSessionProvider.notifier).start(req);
+                  context.go('/runs/live');
+                },
+                icon: Icon(Icons.refresh, color: palette.primary),
+              ),
+            ),
+          Icon(Icons.chevron_right, color: palette.textMuted),
+        ],
       ),
     );
   }
@@ -339,26 +294,6 @@ class _CrashesListPageState extends ConsumerState<CrashesListPage> {
               (c.graphError?.toLowerCase().contains(q) ?? false),
         )
         .toList();
-  }
-}
-
-class _HeaderCell extends StatelessWidget {
-  final String label;
-  final int flex;
-  const _HeaderCell({required this.label, required this.flex});
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    return Expanded(
-      flex: flex,
-      child: Text(
-        label.toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: palette.textMuted,
-              letterSpacing: 1.0,
-            ),
-      ),
-    );
   }
 }
 

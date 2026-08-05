@@ -54,6 +54,7 @@ class HelpPage extends ConsumerWidget {
                   ),
                 ),
                 data: (s) => GlassCard(
+                  glow: true,
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     child: Column(

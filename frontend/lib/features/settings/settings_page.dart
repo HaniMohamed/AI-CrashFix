@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/app_settings.dart';
 import '../../app/theme/app_theme.dart';
@@ -12,58 +13,247 @@ import '../../core/providers/repo_registry_provider.dart';
 import '../../core/providers/setup_status_provider.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/fixora_mark.dart';
+import '../../shared/widgets/soft_panel.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
 import '../../shared/widgets/loading_shimmer.dart';
 import '../setup/setup_wizard_dialog.dart';
 
-class SettingsPage extends ConsumerWidget {
+class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends ConsumerState<SettingsPage> {
+  final _scroll = ScrollController();
+  final _connectionKey = GlobalKey();
+  final _onboardingKey = GlobalKey();
+  final _machineKey = GlobalKey();
+  final _llmKey = GlobalKey();
+  final _integrationsKey = GlobalKey();
+  final _repoKey = GlobalKey();
+  final _aboutKey = GlobalKey();
+  String _active = 'connection';
+
+  Future<void> _jumpTo(GlobalKey key, String id) async {
+    setState(() => _active = id);
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    await Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
     final backendSettings = ref.watch(backendSettingsProvider);
     final settings = ref.watch(appSettingsProvider).requireValue;
+    final wide = MediaQuery.sizeOf(context).width >= 1040;
 
-    return SingleChildScrollView(
+    final sections = <Widget>[
+      Text('Settings', style: theme.displaySmall),
+      const SizedBox(height: AppSpacing.sm),
+      Text(
+        'Configure Fixora here. Values are saved in the app settings store and '
+        'override bootstrap .env on the next request. Theme and reduce-motion are local to this device.',
+        style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
+      ),
+      const SizedBox(height: AppSpacing.xl),
+      KeyedSubtree(key: _connectionKey, child: _ConnectionCard(settings: settings)),
+      const SizedBox(height: AppSpacing.lg),
+      KeyedSubtree(key: _onboardingKey, child: const _SetupWizardCard()),
+      const SizedBox(height: AppSpacing.lg),
+      SoftPanel(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Text(
+          'Tip: LLM and integration forms below match onboarding. Prefer Edit setup for a guided flow.',
+          style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+        ),
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      KeyedSubtree(key: _machineKey, child: _MachineUserCard(async: backendSettings)),
+      const SizedBox(height: AppSpacing.lg),
+      KeyedSubtree(key: _llmKey, child: _LlmSection(async: backendSettings)),
+      const SizedBox(height: AppSpacing.lg),
+      KeyedSubtree(
+        key: _integrationsKey,
+        child: _GlobalIntegrationsSection(async: backendSettings),
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      KeyedSubtree(key: _repoKey, child: const _RepoIntegrationPanel()),
+      const SizedBox(height: AppSpacing.lg),
+      KeyedSubtree(key: _aboutKey, child: const _AboutCard()),
+    ];
+
+    final nav = SoftPanel(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md, horizontal: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: Text('On this page', style: theme.labelLarge),
+          ),
+          _SettingsNavItem(
+            label: 'Connection',
+            active: _active == 'connection',
+            onTap: () => _jumpTo(_connectionKey, 'connection'),
+          ),
+          _SettingsNavItem(
+            label: 'Onboarding',
+            active: _active == 'onboarding',
+            onTap: () => _jumpTo(_onboardingKey, 'onboarding'),
+          ),
+          _SettingsNavItem(
+            label: 'Machine user',
+            active: _active == 'machine',
+            onTap: () => _jumpTo(_machineKey, 'machine'),
+          ),
+          _SettingsNavItem(
+            label: 'LLM',
+            active: _active == 'llm',
+            onTap: () => _jumpTo(_llmKey, 'llm'),
+          ),
+          _SettingsNavItem(
+            label: 'Integrations',
+            active: _active == 'integrations',
+            onTap: () => _jumpTo(_integrationsKey, 'integrations'),
+          ),
+          _SettingsNavItem(
+            label: 'Active repo',
+            active: _active == 'repo',
+            onTap: () => _jumpTo(_repoKey, 'repo'),
+          ),
+          _SettingsNavItem(
+            label: 'About',
+            active: _active == 'about',
+            onTap: () => _jumpTo(_aboutKey, 'about'),
+          ),
+        ],
+      ),
+    );
+
+    return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.xxl,
         AppSpacing.xl,
         AppSpacing.xxl,
         AppSpacing.xxxl,
       ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 880),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Settings', style: theme.displaySmall),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Configure Fixora here. Values are saved in the app settings store (SQLite or Postgres) and '
-                'override bootstrap .env on the next request — no restart needed for most keys. '
-                'Per-repo Crashlytics / Jira / GitLab fields in Manage repos override these globals. '
-                'Theme is stored locally on this device.',
-                style: theme.bodyLarge?.copyWith(color: palette.textSecondary),
+      child: wide
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 200,
+                  child: StickyHeader(child: nav),
+                ),
+                const SizedBox(width: AppSpacing.xl),
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scroll,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 880),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: sections,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : SingleChildScrollView(
+              controller: _scroll,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 880),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: sections,
+                  ),
+                ),
               ),
-              const SizedBox(height: AppSpacing.xl),
-              _ConnectionCard(settings: settings),
-              const SizedBox(height: AppSpacing.lg),
-              const _SetupWizardCard(),
-              const SizedBox(height: AppSpacing.lg),
-              _MachineUserCard(async: backendSettings),
-              const SizedBox(height: AppSpacing.lg),
-              _LlmSection(async: backendSettings),
-              const SizedBox(height: AppSpacing.lg),
-              _GlobalIntegrationsSection(async: backendSettings),
-              const SizedBox(height: AppSpacing.lg),
-              const _RepoIntegrationPanel(),
-              const SizedBox(height: AppSpacing.lg),
-              const _AboutCard(),
-            ],
+            ),
+    );
+  }
+}
+
+class StickyHeader extends StatelessWidget {
+  final Widget child;
+  const StickyHeader({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return child;
+  }
+}
+
+class _SettingsNavItem extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _SettingsNavItem({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: AppRadii.all(AppRadii.md),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: active ? palette.primary.withValues(alpha: 0.12) : Colors.transparent,
+              borderRadius: AppRadii.all(AppRadii.md),
+            ),
+            child: Row(
+              children: [
+                if (active)
+                  Container(
+                    width: 3,
+                    height: 14,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: palette.primary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 13),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: active ? palette.text : palette.textSecondary,
+                          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -86,25 +276,31 @@ class _SetupWizardCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Setup wizard', style: theme.headlineSmall),
+            Text('Onboarding', style: theme.headlineSmall),
             const SizedBox(height: AppSpacing.sm),
             Text(
               setup.valueOrNull?.setupComplete == true
-                  ? 'Re-open the guided setup to change LLM, Crashlytics, Jira/GitLab, or repos.'
-                  : 'Finish onboarding, or jump into the wizard to edit any step.',
+                  ? 'Re-open guided setup to change LLM, Crashlytics, Jira/GitLab, or repos.'
+                  : 'Finish onboarding, or jump in to edit any step.',
               style: theme.bodySmall?.copyWith(color: palette.textSecondary),
             ),
             const SizedBox(height: AppSpacing.md),
             GradientButton(
               label: setup.valueOrNull?.setupComplete == true
                   ? 'Edit setup'
-                  : 'Open setup wizard',
+                  : 'Continue onboarding',
               icon: Icons.rocket_launch_outlined,
               onPressed: () => openSetupWizard(
                 context,
                 ref,
                 revisiting: setup.valueOrNull?.setupComplete == true,
               ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextButton.icon(
+              onPressed: () => context.go('/repos'),
+              icon: const Icon(Icons.source_outlined, size: 18),
+              label: const Text('Manage repositories'),
             ),
           ],
         ),
@@ -1073,6 +1269,19 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                 },
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Reduce motion', style: theme.titleMedium),
+            subtitle: Text(
+              'Pause aurora backgrounds and entrance animations.',
+              style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+            ),
+            value: widget.settings.reduceMotion,
+            onChanged: (v) {
+              ref.read(appSettingsProvider.notifier).setReduceMotion(v);
+            },
           ),
         ],
       ),

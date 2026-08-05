@@ -6,13 +6,13 @@ import '../../app/theme/spacing.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/providers/analytics_provider.dart';
 import '../../core/providers/api_provider.dart';
+import '../../core/providers/auth_provider.dart';
 import '../../core/providers/backend_process_provider.dart';
 import '../../core/providers/crashes_provider.dart';
 import '../../core/providers/health_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import '../../core/providers/setup_status_provider.dart';
-import '../dashboard/widgets/hero_header.dart';
-import '../setup/setup_wizard_dialog.dart';
+import '../../shared/widgets/aurora_background.dart';
 import 'sidebar.dart';
 import 'topbar.dart';
 
@@ -32,7 +32,6 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _userCollapsed = false;
-  bool _forcedDialogOpen = false;
 
   @override
   void initState() {
@@ -320,60 +319,28 @@ class _AppShellState extends ConsumerState<AppShell> {
       );
     }
 
-    // Hard gate: incomplete Fixora setup (wizard) blocks navigation.
+    // Hard gate: incomplete Fixora setup redirects to full-screen onboarding.
+    // Allow /repos during setup so onboarding can open the dedicated repos page.
     if (repoAsync.hasValue && setupAsync.hasValue && setupIncomplete) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (widget.currentPath != '/') {
-          context.go('/');
-        }
-        if (_forcedDialogOpen) return;
-        _forcedDialogOpen = true;
-        final repoDataReadonly =
-            ref.read(healthProvider).valueOrNull?.repoDataReadonly == true;
-        try {
-          await showDialog<void>(
-            context: context,
-            barrierDismissible: repoDataReadonly,
-            builder: (ctx) => SetupWizardDialog(allowClose: repoDataReadonly),
-          );
-          if (mounted) {
-            ref.invalidate(setupStatusProvider);
-            ref.invalidate(repoRegistryProvider);
-          }
-        } finally {
-          if (mounted) _forcedDialogOpen = false;
-        }
+        final path = GoRouterState.of(context).uri.path;
+        if (path == '/onboarding' || path == '/repos') return;
+        context.go('/onboarding');
       });
 
-      return shellWithTopbar(
-        absorbSidebar: true,
-        body: AbsorbPointer(
-          absorbing: true,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.xxl,
-              AppSpacing.xl,
-              AppSpacing.xxl,
-              AppSpacing.xxxl,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const HeroHeader(),
-                const SizedBox(height: AppSpacing.xl),
-                Text(
-                  'Complete the Fixora setup wizard to continue. '
-                  'You can re-open Help anytime after setup for tips and checklists.',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-              ],
-            ),
+      final path = widget.currentPath;
+      if (path == '/repos') {
+        // Fall through to normal shell so ReposPage can render.
+      } else {
+        return shellWithTopbar(
+          absorbSidebar: true,
+          body: const AbsorbPointer(
+            absorbing: true,
+            child: Center(child: CircularProgressIndicator()),
           ),
-        ),
-      );
+        );
+      }
     }
 
     final width = MediaQuery.sizeOf(context).width;
@@ -382,66 +349,69 @@ class _AppShellState extends ConsumerState<AppShell> {
     final collapsed = _userCollapsed || autoCollapse;
 
     return Scaffold(
-      body: Row(
-        children: [
-          if (!hideSidebar)
-            AppSidebar(currentPath: widget.currentPath, collapsed: collapsed),
-          Expanded(
-            child: Column(
-              children: [
-                AppTopbar(
-                  onToggleSidebar: () {
-                    setState(() => _userCollapsed = !_userCollapsed);
-                  },
-                ),
-                if (health?.crashStoreUnhealthy == true ||
-                    health?.usingLocalStoreFallback == true)
-                  Material(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.lg,
-                        vertical: AppSpacing.sm,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              health?.crashStoreUnhealthy == true
-                                  ? 'Team Postgres is unreachable. Switch to local SQLite to continue.'
-                                  : 'Using local SQLite because team Postgres is offline.',
-                              style: Theme.of(context).textTheme.bodySmall,
+      body: AuroraBackground(
+        intensity: AuroraIntensity.ambient,
+        child: Row(
+          children: [
+            if (!hideSidebar)
+              AppSidebar(currentPath: widget.currentPath, collapsed: collapsed),
+            Expanded(
+              child: Column(
+                children: [
+                  AppTopbar(
+                    onToggleSidebar: () {
+                      setState(() => _userCollapsed = !_userCollapsed);
+                    },
+                  ),
+                  if (health?.crashStoreUnhealthy == true ||
+                      health?.usingLocalStoreFallback == true)
+                    Material(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                          vertical: AppSpacing.sm,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
-                          ),
-                          if (health?.crashStoreUnhealthy == true)
-                            TextButton(
-                              onPressed: () async {
-                                try {
-                                  final api = ref.read(apiClientProvider);
-                                  await api.postJson(
-                                    Endpoints.setupUseLocalStore,
-                                  );
-                                } catch (_) {}
-                                ref.invalidate(healthProvider);
-                                ref.invalidate(repoRegistryProvider);
-                              },
-                              child: const Text('Use local SQLite'),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                health?.crashStoreUnhealthy == true
+                                    ? 'Team Postgres is unreachable. Switch to local SQLite to continue.'
+                                    : 'Using local SQLite because team Postgres is offline.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ),
-                        ],
+                            if (health?.crashStoreUnhealthy == true)
+                              TextButton(
+                                onPressed: () async {
+                                  try {
+                                    final api = ref.read(apiClientProvider);
+                                    await api.postJson(
+                                      Endpoints.setupUseLocalStore,
+                                    );
+                                  } catch (_) {}
+                                  ref.invalidate(healthProvider);
+                                  ref.invalidate(repoRegistryProvider);
+                                },
+                                child: const Text('Use local SQLite'),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                Expanded(child: widget.child),
-              ],
+                  Expanded(child: widget.child),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: hideSidebar
           ? _BottomNav(currentPath: widget.currentPath)
@@ -450,34 +420,72 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-class _BottomNav extends StatelessWidget {
+class _BottomNav extends ConsumerWidget {
   final String currentPath;
   const _BottomNav({required this.currentPath});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final isAdmin = ref.watch(authProvider).user?.isAdmin == true;
+    final more = moreItemsForUser(isAdmin: isAdmin);
+
     int idx = 0;
-    for (var i = 0; i < sidebarItems.length; i++) {
-      final p = sidebarItems[i].path;
-      if (p == '/' && currentPath == '/') idx = i;
-      if (p != '/' && currentPath.startsWith(p)) idx = i;
+    final onMore = more.any((it) {
+      if (it.path == '/') return currentPath == '/';
+      return currentPath.startsWith(it.path);
+    });
+    if (currentPath == '/' || currentPath.startsWith('/crashes')) {
+      idx = currentPath == '/' ? 0 : 1;
+    } else if (currentPath.startsWith('/runs')) {
+      idx = 2;
+    } else if (onMore) {
+      idx = 3;
     }
+
     return NavigationBar(
       selectedIndex: idx,
-      onDestinationSelected: (i) {
-        // Use GoRouter navigation (Navigator.pushReplacementNamed doesn't apply
-        // when using MaterialApp.router).
-        context.go(sidebarItems[i].path);
+      onDestinationSelected: (i) async {
+        if (i < 3) {
+          context.go(mobilePrimaryItems[i].path);
+          return;
+        }
+        final chosen = await showModalBottomSheet<String>(
+          context: context,
+          showDragHandle: true,
+          builder: (ctx) {
+            return SafeArea(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final it in more)
+                    ListTile(
+                      leading: Icon(it.icon),
+                      title: Text(it.label),
+                      selected: currentPath.startsWith(it.path) ||
+                          (it.path == '/' && currentPath == '/'),
+                      onTap: () => Navigator.pop(ctx, it.path),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+        if (chosen != null && context.mounted) context.go(chosen);
       },
       backgroundColor: theme.scaffoldBackgroundColor,
       destinations: [
-        for (final it in sidebarItems)
+        for (final it in mobilePrimaryItems)
           NavigationDestination(
             icon: Icon(it.icon),
             selectedIcon: Icon(it.activeIcon ?? it.icon),
             label: it.label,
           ),
+        const NavigationDestination(
+          icon: Icon(Icons.more_horiz),
+          selectedIcon: Icon(Icons.more_horiz),
+          label: 'More',
+        ),
       ],
     );
   }

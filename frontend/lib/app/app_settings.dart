@@ -7,13 +7,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppSettings {
   final String apiBaseUrl;
   final ThemeMode themeMode;
+  final bool reduceMotion;
 
-  const AppSettings({required this.apiBaseUrl, required this.themeMode});
+  const AppSettings({
+    required this.apiBaseUrl,
+    required this.themeMode,
+    this.reduceMotion = false,
+  });
 
-  AppSettings copyWith({String? apiBaseUrl, ThemeMode? themeMode}) =>
+  AppSettings copyWith({
+    String? apiBaseUrl,
+    ThemeMode? themeMode,
+    bool? reduceMotion,
+  }) =>
       AppSettings(
         apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
         themeMode: themeMode ?? this.themeMode,
+        reduceMotion: reduceMotion ?? this.reduceMotion,
       );
 
   @override
@@ -21,10 +31,11 @@ class AppSettings {
       identical(this, other) ||
       other is AppSettings &&
           apiBaseUrl == other.apiBaseUrl &&
-          themeMode == other.themeMode;
+          themeMode == other.themeMode &&
+          reduceMotion == other.reduceMotion;
 
   @override
-  int get hashCode => Object.hash(apiBaseUrl, themeMode);
+  int get hashCode => Object.hash(apiBaseUrl, themeMode, reduceMotion);
 }
 
 /// Loads persisted settings **before** emitting [AsyncData], so dependents
@@ -33,6 +44,7 @@ class AppSettings {
 class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
   static const _kBaseUrl = 'app.api_base_url';
   static const _kThemeMode = 'app.theme_mode';
+  static const _kReduceMotion = 'app.reduce_motion';
 
   static String defaultBaseUrl() {
     const fromDefine = String.fromEnvironment('API_BASE_URL', defaultValue: '');
@@ -75,7 +87,12 @@ class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
           ? defaultBaseUrl()
           : raw.trim();
       final mode = _parseMode(p.getString(_kThemeMode));
-      return AppSettings(apiBaseUrl: url, themeMode: mode);
+      final reduce = p.getBool(_kReduceMotion) ?? false;
+      return AppSettings(
+        apiBaseUrl: url,
+        themeMode: mode,
+        reduceMotion: reduce,
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('AppSettings load error: $e');
       return AppSettings(
@@ -109,6 +126,16 @@ class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
     state = AsyncData(next);
     final p = await SharedPreferences.getInstance();
     await p.setString(_kThemeMode, mode.name);
+  }
+
+  Future<void> setReduceMotion(bool value) async {
+    final prev = state.valueOrNull;
+    if (prev == null) return;
+    final next = prev.copyWith(reduceMotion: value);
+    if (next == prev) return;
+    state = AsyncData(next);
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_kReduceMotion, value);
   }
 }
 
