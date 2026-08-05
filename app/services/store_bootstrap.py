@@ -202,14 +202,51 @@ def apply_store_bootstrap_to_environ() -> dict[str, Any] | None:
     return data
 
 
+def is_store_setup_complete() -> bool:
+    """True when a store backend choice has been committed for this machine.
+
+    Fresh installs default to SQLite in process env but are *not* complete until
+    the buyer confirms via first-run / wizard (``store_bootstrap.json``), unless
+    they already have auth users (upgrade) or launch env pins remote Postgres.
+    """
+    if load_store_bootstrap() is not None:
+        return True
+    try:
+        from app.services.auth_store import AuthStore
+
+        if AuthStore().count_users() > 0:
+            return True
+    except Exception:
+        pass
+    backend = (os.getenv("AI_CRASH_FIX_CRASH_STORE_BACKEND") or "").strip().lower()
+    url = (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip()
+    if backend == "postgres" and url:
+        return True
+    return False
+
+
+def can_configure_store_without_auth() -> bool:
+    """Allow unauthenticated store setup during first-run (before any admin exists)."""
+    if not is_store_setup_complete():
+        return True
+    try:
+        from app.services.auth_store import AuthStore
+
+        return AuthStore().count_users() == 0
+    except Exception:
+        return True
+
+
 def reset_store_singletons() -> None:
     """Drop cached store facades after a backend switch."""
     from app.services.app_settings_store import AppSettingsStore
     from app.services import crash_store as cs
     from app.services.repo_registry_store import RepoRegistryStore
+    from app.services.auth_store import AuthStore
 
     AppSettingsStore.clear_shared_for_tests()
     RepoRegistryStore.clear_shared_for_tests()
+    AuthStore.clear_shared_for_tests()
     cs._CRASH_STORE_HEALTH_CACHE = None
     cs._CRASH_STORE_HEALTH_CACHED_AT = 0.0
     cs._CRASH_STORE_FALLBACK = None
@@ -326,8 +363,13 @@ def configure_store(
     if backend_norm == "postgres" and ensure.get("ok") is not True:
         raise ValueError(str(ensure.get("error") or "Postgres store is not available"))
 
+    from app.services.auth_store import AuthStore
+
+    AuthStore()
+
     return {
         "ok": True,
         "config": current_store_config_public(),
         "ensure": ensure,
+        "store_setup_complete": is_store_setup_complete(),
     }

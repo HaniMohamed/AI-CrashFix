@@ -139,11 +139,28 @@ class AuthService:
             return DEFAULT_MIN_PASSWORD_LENGTH
 
     def bootstrap_status(self) -> dict[str, Any]:
-        count = self._store.count_users()
+        from app.services.store_bootstrap import (
+            can_configure_store_without_auth,
+            current_store_config_public,
+            is_store_setup_complete,
+        )
+
+        store_complete = is_store_setup_complete()
+        count = 0
+        if store_complete:
+            try:
+                count = self._store.count_users()
+            except Exception:
+                count = 0
+        needs_admin = store_complete and count == 0
         return {
-            "needs_admin": count == 0,
+            "needs_store_setup": not store_complete,
+            "needs_admin": needs_admin,
             "has_users": count > 0,
             "user_count": count,
+            "store_setup_complete": store_complete,
+            "can_configure_store_without_auth": can_configure_store_without_auth(),
+            "store": current_store_config_public(),
         }
 
     def bootstrap_admin(
@@ -153,6 +170,12 @@ class AuthService:
         tenant_user_id: str | None = None,
         temp_password: str | None = None,
     ) -> dict[str, Any]:
+        from app.services.store_bootstrap import is_store_setup_complete
+
+        if not is_store_setup_complete():
+            raise ValueError(
+                "Configure the database before creating an administrator"
+            )
         if self._store.count_users() > 0:
             raise ValueError("Administrator already exists")
         uname = validate_username(username)

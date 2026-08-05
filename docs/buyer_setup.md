@@ -24,9 +24,13 @@ Fixora requires sign-in for all installs (local SQLite and shared Postgres). The
 ### First launch
 
 1. Launch Fixora when no users exist.
-2. On the **Sign in** screen, choose **Create administrator**.
-3. Enter a username (and optional machine user ID to match existing repo data).
-4. Copy the **one-time temporary password**, sign in, then set a permanent password (minimum 12 characters).
+2. On the **Database** screen, choose **Local SQLite** or **Remote Postgres** and save (Postgres is tested before persisting).
+3. On the **Sign in** screen, choose **Create administrator**.
+4. Enter a username (and optional machine user ID to match existing repo data).
+5. Copy the **one-time temporary password**, sign in, then set a permanent password (minimum 12 characters).
+6. Complete the **Setup Wizard** (LLM, repo, optional integrations).
+
+Store configuration is written to `store_bootstrap.json` under the data directory. Administrator accounts are created on that same store — configure the database before creating the first admin.
 
 Passwords are stored with Argon2id hashing. Session tokens are stored server-side (SHA-256 of the bearer token); the raw token is kept only in the macOS Keychain via the app.
 

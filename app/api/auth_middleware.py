@@ -24,6 +24,13 @@ _PUBLIC_EXACT: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+_SETUP_STORE_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", "/api/setup/store"),
+        ("POST", "/api/setup/store"),
+    }
+)
+
 # Allowed while must_change_password is true (besides public routes).
 _PASSWORD_CHANGE_ALLOWED: frozenset[tuple[str, str]] = frozenset(
     {
@@ -42,7 +49,14 @@ def _extract_bearer(request: Request) -> str | None:
 
 
 def is_public_route(method: str, path: str) -> bool:
-    return (method.upper(), path) in _PUBLIC_EXACT
+    pair = (method.upper(), path)
+    if pair in _PUBLIC_EXACT:
+        return True
+    if pair in _SETUP_STORE_ROUTES:
+        from app.services.store_bootstrap import can_configure_store_without_auth
+
+        return can_configure_store_without_auth()
+    return False
 
 
 def allows_password_change_pending(method: str, path: str) -> bool:

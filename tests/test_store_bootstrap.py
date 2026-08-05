@@ -55,12 +55,15 @@ def test_save_and_apply_sqlite_bootstrap(data_dir, monkeypatch):
     from app.services.store_bootstrap import (
         apply_store_bootstrap_to_environ,
         configure_store,
+        is_store_setup_complete,
         load_store_bootstrap,
         store_bootstrap_path,
     )
 
+    assert is_store_setup_complete() is False
     result = configure_store(backend="sqlite", user_id="alice", test_connection=False)
     assert result["ok"] is True
+    assert is_store_setup_complete() is True
     path = store_bootstrap_path()
     assert path is not None and path.is_file()
     raw = json.loads(path.read_text(encoding="utf-8"))

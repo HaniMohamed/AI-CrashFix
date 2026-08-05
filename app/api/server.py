@@ -444,9 +444,10 @@ async def get_setup_store() -> Dict[str, Any]:
 async def post_setup_store(req: SetupStoreRequest) -> Dict[str, Any]:
     """Persist SQLite vs Postgres choice for this machine (Setup Wizard / Settings)."""
     from app.services.repo_data_guard import ensure_repo_data_writable
-    from app.services.store_bootstrap import configure_store
+    from app.services.store_bootstrap import can_configure_store_without_auth, configure_store
 
-    ensure_repo_data_writable()
+    if not can_configure_store_without_auth():
+        ensure_repo_data_writable()
 
     def _run() -> Dict[str, Any]:
         try:

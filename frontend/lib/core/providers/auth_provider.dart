@@ -46,6 +46,7 @@ class AuthState {
   final String? token;
   final AuthUser? user;
   final bool needsAdmin;
+  final bool needsStoreSetup;
   final String? error;
 
   const AuthState({
@@ -54,6 +55,7 @@ class AuthState {
     this.token,
     this.user,
     this.needsAdmin = false,
+    this.needsStoreSetup = false,
     this.error,
   });
 
@@ -65,6 +67,7 @@ class AuthState {
     String? token,
     AuthUser? user,
     bool? needsAdmin,
+    bool? needsStoreSetup,
     String? error,
     bool clearToken = false,
     bool clearUser = false,
@@ -76,6 +79,7 @@ class AuthState {
       token: clearToken ? null : (token ?? this.token),
       user: clearUser ? null : (user ?? this.user),
       needsAdmin: needsAdmin ?? this.needsAdmin,
+      needsStoreSetup: needsStoreSetup ?? this.needsStoreSetup,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -122,7 +126,15 @@ class AuthNotifier extends Notifier<AuthState> {
     final api = ref.read(baseApiClientProvider);
     final res = await api.getJson(Endpoints.authBootstrapStatus);
     final map = (res as Map).cast<String, dynamic>();
-    state = state.copyWith(needsAdmin: map['needs_admin'] == true);
+    state = state.copyWith(
+      needsAdmin: map['needs_admin'] == true,
+      needsStoreSetup: map['needs_store_setup'] == true,
+    );
+  }
+
+  Future<void> refreshBootstrapStatus() async {
+    await _fetchBootstrapStatus();
+    state = state.copyWith(initialized: true);
   }
 
   Future<void> _refreshMe(String token) async {
@@ -164,6 +176,7 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(
         loading: false,
         needsAdmin: false,
+        needsStoreSetup: false,
         initialized: true,
       );
       return map['temp_password']?.toString();

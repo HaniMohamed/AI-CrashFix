@@ -6,8 +6,38 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def auth_client(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_CRASH_FIX_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AI_CRASH_FIX_CRASH_STORE_BACKEND", "sqlite")
     monkeypatch.setenv("AI_CRASH_FIX_REPO_REGISTRY_DB", str(tmp_path / "registry.db"))
+    monkeypatch.delenv("AI_CRASH_FIX_CRASH_DB_URL", raising=False)
+    import app.config as cfg
+
+    monkeypatch.setattr(cfg, "AI_CRASH_FIX_CRASH_STORE_BACKEND", "sqlite")
+    monkeypatch.setattr(cfg, "AI_CRASH_FIX_CRASH_DB_URL", None)
+
+    from app.services.auth_store import AuthStore
+    from app.services.app_settings_store import AppSettingsStore
+    from app.services.repo_registry_store import RepoRegistryStore
+    from app.services.store_bootstrap import configure_store
+
+    AuthStore.clear_shared_for_tests()
+    AppSettingsStore.clear_shared_for_tests()
+    RepoRegistryStore.clear_shared_for_tests()
+
+    configure_store(backend="sqlite", test_connection=False)
+
+    from app.api.server import app
+
+    client = TestClient(app)
+    yield client
+    AuthStore.clear_shared_for_tests()
+    AppSettingsStore.clear_shared_for_tests()
+    RepoRegistryStore.clear_shared_for_tests()
+
+
+def test_bootstrap_status_needs_store_setup_before_configure(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_CRASH_FIX_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AI_CRASH_FIX_CRASH_STORE_BACKEND", "sqlite")
     monkeypatch.delenv("AI_CRASH_FIX_CRASH_DB_URL", raising=False)
     import app.config as cfg
 
@@ -25,15 +55,27 @@ def auth_client(monkeypatch, tmp_path):
     from app.api.server import app
 
     client = TestClient(app)
-    yield client
-    AuthStore.clear_shared_for_tests()
-    AppSettingsStore.clear_shared_for_tests()
-    RepoRegistryStore.clear_shared_for_tests()
+    r = client.get("/api/auth/bootstrap-status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["needs_store_setup"] is True
+    assert body["needs_admin"] is False
+
+    denied = client.post("/api/auth/bootstrap-admin", json={"username": "admin"})
+    assert denied.status_code == 400
+
+    store = client.post("/api/setup/store", json={"backend": "sqlite"})
+    assert store.status_code == 200
+
+    r2 = client.get("/api/auth/bootstrap-status")
+    assert r2.json()["needs_store_setup"] is False
+    assert r2.json()["needs_admin"] is True
 
 
 def test_bootstrap_admin_when_empty(auth_client: TestClient):
     r = auth_client.get("/api/auth/bootstrap-status")
     assert r.status_code == 200
+    assert r.json()["needs_store_setup"] is False
     assert r.json()["needs_admin"] is True
 
     r2 = auth_client.post(
@@ -48,6 +90,15 @@ def test_bootstrap_admin_when_empty(auth_client: TestClient):
 
     r3 = auth_client.get("/api/auth/bootstrap-status")
     assert r3.json()["needs_admin"] is False
+
+
+def test_setup_store_requires_auth_after_admin(auth_client: TestClient):
+    auth_client.post(
+        "/api/auth/bootstrap-admin",
+        json={"username": "admin"},
+    )
+    denied = auth_client.post("/api/setup/store", json={"backend": "sqlite"})
+    assert denied.status_code == 401
 
 
 def test_bootstrap_admin_rejected_when_users_exist(auth_client: TestClient):
