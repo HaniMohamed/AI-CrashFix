@@ -50,9 +50,21 @@ from app.services.repo_registry_store import RepoRegistryStore
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    # Load team/buyer launch env first, then fall back to SQLite if Postgres is
-    # down, then persist settings into whichever store is active.
+    # Load team/buyer launch env first, then wizard/Settings store bootstrap
+    # (local file that can override backend/url/user id), then fall back to
+    # SQLite if Postgres is down, then persist settings into the active store.
     apply_launch_env_file()
+    try:
+        from app.services.store_bootstrap import apply_store_bootstrap_to_environ
+
+        apply_store_bootstrap_to_environ()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Skipping store bootstrap apply",
+            exc_info=True,
+        )
     ensure_crash_store_available()
     persist_launch_env_overrides()
     try:
@@ -368,6 +380,58 @@ async def setup_use_local_store() -> Dict[str, Any]:
         }
     health = await asyncio.to_thread(lambda: crash_store_health(force=True))
     return {"ok": True, "crash_store": health, "ensure": result}
+
+
+class SetupStoreRequest(BaseModel):
+    backend: str = Field(..., description="'sqlite' or 'postgres'")
+    db_url: Optional[str] = Field(
+        None,
+        description="Postgres URL (postgresql://…). May omit user/password when username/password are set.",
+    )
+    username: Optional[str] = Field(None, description="Optional DB username merged into db_url")
+    password: Optional[str] = Field(None, description="Optional DB password merged into db_url")
+    user_id: Optional[str] = Field(
+        None,
+        description="Machine user id (required for postgres; scopes shared store rows)",
+    )
+    test_connection: bool = Field(
+        True,
+        description="When backend=postgres, verify connectivity before persisting",
+    )
+
+
+@app.get("/api/setup/store")
+async def get_setup_store() -> Dict[str, Any]:
+    """Current crash-store / app-store backend configuration (secrets masked)."""
+    from app.services.store_bootstrap import current_store_config_public
+
+    return await asyncio.to_thread(current_store_config_public)
+
+
+@app.post("/api/setup/store")
+async def post_setup_store(req: SetupStoreRequest) -> Dict[str, Any]:
+    """Persist SQLite vs Postgres choice for this machine (Setup Wizard / Settings)."""
+    from app.services.repo_data_guard import ensure_repo_data_writable
+    from app.services.store_bootstrap import configure_store
+
+    ensure_repo_data_writable()
+
+    def _run() -> Dict[str, Any]:
+        try:
+            return configure_store(
+                backend=req.backend,
+                db_url=req.db_url,
+                username=req.username,
+                password=req.password,
+                user_id=req.user_id,
+                test_connection=bool(req.test_connection),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return await asyncio.to_thread(_run)
 
 
 @app.get("/api/logs/meta")

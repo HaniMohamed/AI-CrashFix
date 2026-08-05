@@ -78,8 +78,18 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
   final _gitlabUrlCtrl = TextEditingController();
   final _gitlabTokenCtrl = TextEditingController();
 
+  // App store / database
+  String _storeBackend = 'sqlite';
+  final _dbUrlCtrl = TextEditingController();
+  final _dbUserCtrl = TextEditingController();
+  final _dbPasswordCtrl = TextEditingController();
+  final _machineUserIdCtrl = TextEditingController();
+  bool _showDbPassword = false;
+  String? _dbUrlMasked;
+
   static const _titles = [
     'Welcome',
+    'Database',
     'LLM provider',
     'Jira & GitLab',
     'Flutter repository',
@@ -102,6 +112,10 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     _jiraTokenCtrl.dispose();
     _gitlabUrlCtrl.dispose();
     _gitlabTokenCtrl.dispose();
+    _dbUrlCtrl.dispose();
+    _dbUserCtrl.dispose();
+    _dbPasswordCtrl.dispose();
+    _machineUserIdCtrl.dispose();
     super.dispose();
   }
 
@@ -117,6 +131,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     try {
       await ref.read(backendSettingsProvider.notifier).refresh();
       await _syncFromSettings();
+      await _syncStoreConfig();
       if (mounted) setState(() {});
     } catch (_) {}
   }
@@ -129,12 +144,31 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     try {
       await ref.read(backendSettingsProvider.notifier).refresh();
       await _syncFromSettings();
+      await _syncStoreConfig();
       setState(() => _step = 1);
     } catch (e) {
       setState(() => _error = '$e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _syncStoreConfig() async {
+    try {
+      final cfg =
+          await ref.read(setupStatusProvider.notifier).fetchStoreConfig();
+      final backend = (cfg['backend'] ?? 'sqlite').toString().toLowerCase();
+      _storeBackend = backend == 'postgres' ? 'postgres' : 'sqlite';
+      _dbUrlMasked = cfg['db_url_masked']?.toString();
+      final uid = cfg['user_id']?.toString() ?? '';
+      if (uid.isNotEmpty) _machineUserIdCtrl.text = uid;
+      // Never put masked secrets back into the editable URL field.
+      if (_dbUrlCtrl.text.trim().isEmpty &&
+          _dbUrlMasked != null &&
+          !_dbUrlMasked!.contains('***')) {
+        _dbUrlCtrl.text = _dbUrlMasked!;
+      }
+    } catch (_) {}
   }
 
   Future<void> _syncFromSettings() async {
@@ -186,7 +220,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
       }
       await ref.read(backendSettingsProvider.notifier).save({'llm': llm});
       await ref.read(setupStatusProvider.notifier).refresh();
-      setState(() => _step = 2);
+      setState(() => _step = 3);
     } catch (e) {
       setState(() => _error = '$e');
     } finally {
@@ -217,7 +251,58 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
         await ref.read(backendSettingsProvider.notifier).save(payload);
       }
       await ref.read(setupStatusProvider.notifier).refresh();
-      setState(() => _step = 3);
+      setState(() => _step = 4);
+    } catch (e) {
+      setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _saveStore() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _info = null;
+    });
+    try {
+      if (_storeBackend == 'postgres') {
+        final url = _dbUrlCtrl.text.trim();
+        if (url.isEmpty && (_dbUrlMasked == null || _dbUrlMasked!.isEmpty)) {
+          throw Exception('Postgres URL is required');
+        }
+        if (_machineUserIdCtrl.text.trim().isEmpty) {
+          throw Exception('Machine user ID is required for remote Postgres');
+        }
+      }
+      await ref.read(setupStatusProvider.notifier).saveStoreConfig(
+            backend: _storeBackend,
+            dbUrl: _dbUrlCtrl.text.trim().isEmpty
+                ? null
+                : _dbUrlCtrl.text.trim(),
+            username: _dbUserCtrl.text.trim().isEmpty
+                ? null
+                : _dbUserCtrl.text.trim(),
+            password: _dbPasswordCtrl.text.isEmpty
+                ? null
+                : _dbPasswordCtrl.text,
+            userId: _machineUserIdCtrl.text.trim().isEmpty
+                ? null
+                : _machineUserIdCtrl.text.trim(),
+            testConnection: _storeBackend == 'postgres',
+          );
+      await _syncStoreConfig();
+      await ref.read(setupStatusProvider.notifier).refresh();
+      await ref.read(backendSettingsProvider.notifier).refresh();
+      _dbPasswordCtrl.clear();
+      if (mounted) {
+        setState(() {
+          _info = _storeBackend == 'sqlite'
+              ? 'Local SQLite store selected.'
+              : 'Remote Postgres store connected and saved.';
+          _step = 2;
+        });
+      }
     } catch (e) {
       setState(() => _error = '$e');
     } finally {
@@ -233,6 +318,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     try {
       await ref.read(backendSettingsProvider.notifier).refresh();
       await _syncFromSettings();
+      await _syncStoreConfig();
       await ref
           .read(setupStatusProvider.notifier)
           .saveProgress(setupPath: path, clearComplete: true);
@@ -257,7 +343,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
     await ref.read(setupStatusProvider.notifier).refresh();
     final status = ref.read(setupStatusProvider).valueOrNull;
     if (status != null && status.repoCount > 0 && mounted) {
-      setState(() => _step = 4);
+      setState(() => _step = 5);
     }
   }
 
@@ -288,11 +374,27 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
   }
 
   Future<void> _finishWithoutRun() async {
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
-      await ref
+      final status = await ref
           .read(setupStatusProvider.notifier)
           .saveProgress(markComplete: true);
+      if (!status.setupComplete) {
+        final missing = status.missing.isEmpty
+            ? 'LLM provider and at least one repository'
+            : status.missing.join(', ');
+        if (mounted) {
+          setState(() {
+            _error =
+                'Setup is still incomplete ($missing). Finish the earlier steps, then try again.';
+          });
+        }
+        return;
+      }
+      await ref.read(repoRegistryProvider.notifier).refresh();
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       setState(() => _error = '$e');
@@ -444,7 +546,132 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             ),
           ],
         );
+
       case 1:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Choose where Fixora stores crashes, repos, and settings on this machine.',
+              style: theme.bodyLarge,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Local SQLite is best for a single workstation. Remote Postgres is for shared team data.',
+              style: theme.bodySmall?.copyWith(color: palette.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'sqlite',
+                  label: Text('Local SQLite'),
+                  icon: Icon(Icons.storage_outlined),
+                ),
+                ButtonSegment(
+                  value: 'postgres',
+                  label: Text('Remote Postgres'),
+                  icon: Icon(Icons.cloud_outlined),
+                ),
+              ],
+              selected: {_storeBackend},
+              onSelectionChanged: _busy
+                  ? null
+                  : (s) => setState(() => _storeBackend = s.first),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            if (_storeBackend == 'sqlite') ...[
+              GlassCard(
+                child: ListTile(
+                  leading: Icon(Icons.check_circle_outline, color: palette.success),
+                  title: const Text('Local file database'),
+                  subtitle: const Text(
+                    'Data stays on this Mac under Application Support / AI_CRASH_FIX_DATA_DIR. '
+                    'No remote URL required.',
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _machineUserIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Machine user ID (optional)',
+                  hintText: 'e.g. jane.doe',
+                  helperText: 'Useful if you later switch to shared Postgres.',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                ),
+              ),
+            ] else ...[
+              TextField(
+                controller: _dbUrlCtrl,
+                keyboardType: TextInputType.url,
+                decoration: InputDecoration(
+                  labelText: 'Postgres URL',
+                  hintText: 'postgresql://host:5432/fixora',
+                  helperText: _dbUrlMasked == null || _dbUrlMasked!.isEmpty
+                      ? 'Include host and database. Username/password can go here or below.'
+                      : 'Saved: $_dbUrlMasked — enter a new URL to replace.',
+                  prefixIcon: const Icon(Icons.link),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _dbUserCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'DB username (optional)',
+                  hintText: 'Merged into the URL when set',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _dbPasswordCtrl,
+                obscureText: !_showDbPassword,
+                decoration: InputDecoration(
+                  labelText: 'DB password (optional)',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    tooltip: _showDbPassword ? 'Hide' : 'Show',
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() => _showDbPassword = !_showDbPassword),
+                    icon: Icon(
+                      _showDbPassword ? Icons.visibility_off : Icons.visibility,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _machineUserIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Machine user ID',
+                  hintText: 'e.g. jane.doe',
+                  helperText: 'Required — scopes your rows in the shared database.',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                ),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.xl),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: _busy ? null : () => setState(() => _step = 0),
+                  child: const Text('Back'),
+                ),
+                const Spacer(),
+                GradientButton(
+                  label: _busy
+                      ? 'Saving…'
+                      : (_storeBackend == 'postgres' ? 'Test & continue' : 'Continue'),
+                  onPressed: _busy ? null : _saveStore,
+                ),
+              ],
+            ),
+          ],
+        );
+
+      case 2:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -541,7 +768,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             Row(
               children: [
                 TextButton(
-                  onPressed: _busy ? null : () => setState(() => _step = 0),
+                  onPressed: _busy ? null : () => setState(() => _step = 1),
                   child: const Text('Back'),
                 ),
                 const Spacer(),
@@ -553,7 +780,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             ),
           ],
         );
-      case 2:
+      case 3:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -607,7 +834,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             Row(
               children: [
                 TextButton(
-                  onPressed: _busy ? null : () => setState(() => _step = 1),
+                  onPressed: _busy ? null : () => setState(() => _step = 2),
                   child: const Text('Back'),
                 ),
                 TextButton(
@@ -625,7 +852,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             ),
           ],
         );
-      case 3:
+      case 4:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -668,21 +895,21 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             Row(
               children: [
                 TextButton(
-                  onPressed: _busy ? null : () => setState(() => _step = 2),
+                  onPressed: _busy ? null : () => setState(() => _step = 3),
                   child: const Text('Back'),
                 ),
                 const Spacer(),
                 GradientButton(
                   label: 'Continue',
                   onPressed: (setup != null && setup.repoCount > 0 && !_busy)
-                      ? () => setState(() => _step = 4)
+                      ? () => setState(() => _step = 5)
                       : null,
                 ),
               ],
             ),
           ],
         );
-      case 4:
+      case 5:
       default:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -705,7 +932,7 @@ class _SetupWizardDialogState extends ConsumerState<SetupWizardDialog> {
             ),
             const SizedBox(height: AppSpacing.lg),
             TextButton(
-              onPressed: _busy ? null : () => setState(() => _step = 3),
+              onPressed: _busy ? null : () => setState(() => _step = 4),
               child: const Text('Back'),
             ),
           ],

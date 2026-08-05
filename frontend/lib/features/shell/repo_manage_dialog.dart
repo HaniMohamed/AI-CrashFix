@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../app/theme/colors.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/config_provider.dart';
@@ -432,6 +433,11 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
             ],
           ),
           const SizedBox(height: 8),
+          Text(
+            'Select a repository to edit, or create a new one.',
+            style: theme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+          const SizedBox(height: 8),
           if (!async.isLoading && repos.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -675,7 +681,7 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Details',
+            'Repository configuration',
             style: theme.labelLarge?.copyWith(color: palette.textSecondary),
           ),
           const SizedBox(height: 8),
@@ -685,52 +691,41 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                 : 'Editing: $selectedKey',
             style: theme.bodySmall?.copyWith(color: palette.textMuted),
           ),
-          const SizedBox(height: 12),
-          Theme(
-            data: Theme.of(context).copyWith(
-              dividerColor: Colors.transparent,
-              splashColor: Colors.transparent,
-              highlightColor: Colors.transparent,
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: palette.surface1,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: palette.border.withValues(alpha: 0.35)),
             ),
-            child: ExpansionPanelList(
-              elevation: 0,
-              expandedHeaderPadding: EdgeInsets.zero,
-              expansionCallback: (int index, bool isExpanded) {
-                setState(() {
-                  if (isExpanded) {
-                    _expandedPanelIndex = index;
-                  } else if (_expandedPanelIndex == index) {
-                    _expandedPanelIndex = null;
-                  }
-                });
-              },
+            child: Text(
+              'Required for save: display name, repo URL, Firebase/GCP project ID, and Crashlytics backend.\n'
+              'Jira/GitLab base credentials are managed in global Settings.',
+              style: theme.bodySmall?.copyWith(color: palette.textSecondary, height: 1.35),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _ManageSectionCard(
+            palette: palette,
+            theme: theme,
+            expanded: _expandedPanelIndex == 0,
+            icon: Icons.folder_outlined,
+            title: 'Repository',
+            subtitle: 'Identity and source control',
+            onToggle: () => setState(() {
+              _expandedPanelIndex =
+                  _expandedPanelIndex == 0 ? null : 0;
+            }),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ExpansionPanel(
-                  canTapOnHeader: true,
-                  backgroundColor: palette.surface2,
-                  isExpanded: _expandedPanelIndex == 0,
-                  headerBuilder: (context, expanded) {
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Repository',
-                        style: theme.labelLarge?.copyWith(
-                          color: palette.textSecondary,
+                        Text(
+                          'Basic repository details',
+                          style: theme.labelMedium?.copyWith(color: palette.textSecondary),
                         ),
-                      ),
-                      subtitle: Text(
-                        'Display name, remote URL, Git, packages',
-                        style: theme.bodySmall?.copyWith(
-                          color: palette.textMuted,
-                        ),
-                      ),
-                    );
-                  },
-                  body: Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+                        const SizedBox(height: 10),
                         TextField(
                           controller: _nameCtrl,
                           enabled: fieldsEnabled,
@@ -851,36 +846,32 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                                   ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                ExpansionPanel(
-                  canTapOnHeader: true,
-                  backgroundColor: palette.surface2,
-                  isExpanded: _expandedPanelIndex == 1,
-                  headerBuilder: (context, expanded) {
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Crashlytics resources',
-                        style: theme.labelLarge?.copyWith(
-                          color: palette.textSecondary,
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _ManageSectionCard(
+            palette: palette,
+            theme: theme,
+            expanded: _expandedPanelIndex == 1,
+            icon: Icons.bug_report_outlined,
+            title: 'Crashlytics resources',
+            subtitle: 'Project ID, credentials, and data source',
+            onToggle: () => setState(() {
+              _expandedPanelIndex =
+                  _expandedPanelIndex == 1 ? null : 1;
+            }),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                        Text(
+                          'Live Crashlytics requires project ID + service account JSON.',
+                          style: theme.bodySmall?.copyWith(
+                            color: palette.textMuted,
+                            height: 1.35,
+                          ),
                         ),
-                      ),
-                      subtitle: Text(
-                        'Required for fetching Crashlytics',
-                        style: theme.bodySmall?.copyWith(
-                          color: palette.textMuted,
-                        ),
-                      ),
-                    );
-                  },
-                  body: Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+                        const SizedBox(height: 10),
                         TextField(
                           controller: _firebaseProjectIdCtrl,
                           enabled: fieldsEnabled,
@@ -1081,36 +1072,24 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                  ),
-                ),
-                ExpansionPanel(
-                  canTapOnHeader: true,
-                  backgroundColor: palette.surface2,
-                  isExpanded: _expandedPanelIndex == 2,
-                  headerBuilder: (context, expanded) {
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Jira integration',
-                        style: theme.labelLarge?.copyWith(
-                          color: palette.textSecondary,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'Per-repo Jira issue defaults and repo index status',
-                        style: theme.bodySmall?.copyWith(
-                          color: palette.textMuted,
-                        ),
-                      ),
-                    );
-                  },
-                  body: Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _ManageSectionCard(
+            palette: palette,
+            theme: theme,
+            expanded: _expandedPanelIndex == 2,
+            icon: Icons.confirmation_number_outlined,
+            title: 'Jira integration',
+            subtitle: 'Per-repo Jira issue behavior',
+            onToggle: () => setState(() {
+              _expandedPanelIndex =
+                  _expandedPanelIndex == 2 ? null : 2;
+            }),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                         Text(
                           'Jira base URL, email, and token come from global Settings.',
                           style: theme.bodySmall?.copyWith(
@@ -1319,10 +1298,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               ],
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1585,6 +1560,213 @@ class _Chip extends StatelessWidget {
       child: Text(
         label,
         style: theme.labelSmall?.copyWith(color: palette.textSecondary),
+      ),
+    );
+  }
+}
+
+class _ManageSectionCard extends StatelessWidget {
+  final AppPalette palette;
+  final TextTheme theme;
+  final bool expanded;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  const _ManageSectionCard({
+    required this.palette,
+    required this.theme,
+    required this.expanded,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onToggle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = palette.primary;
+    final bg = expanded
+        ? Color.alphaBlend(
+            accent.withValues(alpha: 0.16),
+            palette.surface2,
+          )
+        : palette.surface1;
+    final borderColor = expanded
+        ? accent.withValues(alpha: 0.65)
+        : palette.border.withValues(alpha: 0.5);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: borderColor,
+          width: expanded ? 1.5 : 1,
+        ),
+        boxShadow: expanded
+            ? [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.22),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: AppColors.cyan.withValues(alpha: 0.08),
+                  blurRadius: 28,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          if (expanded)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 4,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [AppColors.indigo, AppColors.cyan],
+                  ),
+                ),
+              ),
+            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onToggle,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      expanded ? 18 : 14,
+                      14,
+                      12,
+                      14,
+                    ),
+                    child: Row(
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(11),
+                            gradient: expanded
+                                ? const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      AppColors.indigo,
+                                      AppColors.cyan,
+                                    ],
+                                  )
+                                : null,
+                            color: expanded ? null : palette.surface2,
+                            border: expanded
+                                ? null
+                                : Border.all(
+                                    color: palette.border.withValues(
+                                      alpha: 0.55,
+                                    ),
+                                  ),
+                          ),
+                          child: Icon(
+                            icon,
+                            size: 18,
+                            color: expanded
+                                ? Colors.white
+                                : palette.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: theme.labelLarge?.copyWith(
+                                  color: expanded
+                                      ? accent
+                                      : palette.text,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: expanded ? 0.2 : 0,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                style: theme.bodySmall?.copyWith(
+                                  color: palette.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        AnimatedRotation(
+                          turns: expanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          child: Icon(
+                            Icons.expand_more_rounded,
+                            color: expanded
+                                ? accent
+                                : palette.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 240),
+                sizeCurve: Curves.easeOutCubic,
+                crossFadeState: expanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                firstChild: const SizedBox(width: double.infinity),
+                secondChild: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 14, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        height: 1,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              accent.withValues(alpha: 0.45),
+                              AppColors.cyan.withValues(alpha: 0.15),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                      child,
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -131,6 +131,35 @@ class SetupStatusNotifier extends AsyncNotifier<SetupStatus> {
     state = AsyncData(status);
     return status;
   }
+
+  Future<Map<String, dynamic>> fetchStoreConfig() async {
+    final api = ref.read(apiClientProvider);
+    final res = await api.getJson(Endpoints.setupStore);
+    return (res as Map).cast<String, dynamic>();
+  }
+
+  Future<Map<String, dynamic>> saveStoreConfig({
+    required String backend,
+    String? dbUrl,
+    String? username,
+    String? password,
+    String? userId,
+    bool testConnection = true,
+  }) async {
+    final api = ref.read(apiClientProvider);
+    final body = <String, dynamic>{
+      'backend': backend,
+      'test_connection': testConnection,
+      if (dbUrl != null) 'db_url': dbUrl,
+      if (username != null) 'username': username,
+      if (password != null) 'password': password,
+      if (userId != null) 'user_id': userId,
+    };
+    final res = await api.postJson(Endpoints.setupStore, body: body);
+    // Store switch can change health / readiness.
+    ref.invalidateSelf();
+    return (res as Map).cast<String, dynamic>();
+  }
 }
 
 final setupStatusProvider =

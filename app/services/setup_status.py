@@ -21,7 +21,7 @@ def compute_setup_status() -> dict[str, Any]:
     """
     Structured readiness used by the Setup Wizard and Help UI.
 
-    ``next_step`` codes: welcome | llm | crashlytics | integrations | repo | first_run | done
+    ``next_step`` codes: welcome | store | llm | crashlytics | integrations | repo | first_run | done
     """
     try:
         return _compute_setup_status_inner()
@@ -202,7 +202,9 @@ def _compute_setup_status_inner() -> dict[str, Any]:
         {
             "id": "index",
             "label": "Symbol index",
-            "required": has_repo,
+            # Advisory only: indexing often finishes after clone / Refresh.
+            # Never block the forced Setup Wizard on this check.
+            "required": False,
             "ok": (not has_repo) or index_ok,
             "detail": index_detail if has_repo and not index_ok else None,
         },
@@ -218,8 +220,6 @@ def _compute_setup_status_inner() -> dict[str, Any]:
         next_step = "crashlytics"
     elif not has_repo:
         next_step = "repo"
-    elif has_repo and not index_ok:
-        next_step = "repo"
     elif not completed_at:
         next_step = "first_run"
     else:
@@ -229,17 +229,26 @@ def _compute_setup_status_inner() -> dict[str, Any]:
     if not llm_ok and setup_path is None and not has_repo and not completed_at:
         next_step = "welcome"
 
-    setup_complete = bool(completed_at) and not missing
-    # Allow mock path to complete without crashlytics
-    if setup_path == "mock" and llm_ok and has_repo and completed_at:
-        setup_complete = True
-        missing = [m for m in missing if m != "crashlytics"]
+    # Hard gate for the forced wizard: LLM + at least one repo.
+    # Crashlytics / symbol index remain checklist items, but must not trap
+    # users after they press Finish — otherwise the dialog re-opens forever.
+    core_ready = bool(llm_ok and has_repo)
 
-    # Legacy installs (pre-wizard): already have LLM + repo → treat as onboarded.
-    if not completed_at and llm_ok and has_repo:
+    if completed_at and core_ready:
+        # Explicit Finish without running (or after mock run).
         setup_complete = True
         next_step = "done"
-        missing = [m for m in missing if m not in ("repo", "index", "crashlytics")]
+    elif not completed_at and core_ready:
+        # Legacy installs (pre-wizard) and users who configured via Settings.
+        setup_complete = True
+        next_step = "done"
+        missing = [m for m in missing if m not in ("repo", "crashlytics")]
+    else:
+        setup_complete = bool(completed_at) and not missing
+        if setup_path == "mock" and core_ready and completed_at:
+            setup_complete = True
+            next_step = "done"
+            missing = [m for m in missing if m != "crashlytics"]
 
     return {
         "product": "Fixora",

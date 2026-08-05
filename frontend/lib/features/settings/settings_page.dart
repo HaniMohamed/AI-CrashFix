@@ -706,8 +706,12 @@ class _RepoIntegrationPanel extends ConsumerWidget {
           data: (payload) {
             final repoMap = _asStringKeyMap(payload['repo']);
             final crashMap = _asStringKeyMap(payload['crashlytics']);
-            final jiraMap = _asStringKeyMap(payload['jira']);
-            final gitlabMap = _asStringKeyMap(payload['gitlab']);
+            final jiraMap = _filterRepoScopedJiraRows(
+              _asStringKeyMap(payload['jira']),
+            );
+            final gitlabMap = _filterRepoScopedGitlabRows(
+              _asStringKeyMap(payload['gitlab']),
+            );
 
             return GlassCard(
               child: Padding(
@@ -739,8 +743,8 @@ class _RepoIntegrationPanel extends ConsumerWidget {
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Text(
-                      'Effective values for “${active.name}”. Tokens are never shown—only whether they are set. '
-                      'Change Crashlytics/GCP, Jira, and GitLab overrides in Manage repos.',
+                      'Effective repo-scoped values for “${active.name}”. '
+                      'Global Jira/GitLab base URL and tokens are configured in Global integrations.',
                       style: theme.bodySmall?.copyWith(
                         color: palette.textSecondary,
                       ),
@@ -783,6 +787,41 @@ class _RepoIntegrationPanel extends ConsumerWidget {
 Map<String, dynamic> _asStringKeyMap(Object? raw) {
   if (raw is! Map) return {};
   return raw.map((k, v) => MapEntry(k.toString(), v));
+}
+
+Map<String, dynamic> _filterRepoScopedJiraRows(Map<String, dynamic> rows) {
+  const hiddenGlobalKeys = {
+    'server_url',
+    'email',
+    'auth',
+    'verify_ssl',
+    'token',
+    'has_token',
+  };
+  final out = <String, dynamic>{};
+  for (final e in rows.entries) {
+    if (!hiddenGlobalKeys.contains(e.key)) {
+      out[e.key] = e.value;
+    }
+  }
+  return out;
+}
+
+Map<String, dynamic> _filterRepoScopedGitlabRows(Map<String, dynamic> rows) {
+  const hiddenGlobalKeys = {
+    'server_url',
+    'verify_ssl',
+    'token',
+    'has_token',
+    'ca_bundle',
+  };
+  final out = <String, dynamic>{};
+  for (final e in rows.entries) {
+    if (!hiddenGlobalKeys.contains(e.key)) {
+      out[e.key] = e.value;
+    }
+  }
+  return out;
 }
 
 class _ReadonlyKvGroup extends StatelessWidget {

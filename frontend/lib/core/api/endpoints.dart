@@ -5,6 +5,7 @@ class Endpoints {
   static const String setupStatus = '/api/setup/status';
   static const String setupProgress = '/api/setup/progress';
   static const String setupUseLocalStore = '/api/setup/use-local-store';
+  static const String setupStore = '/api/setup/store';
   static const String settings = '/api/settings';
   static const String runs = '/api/runs';
   static const String crashes = '/api/crashes';
