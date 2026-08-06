@@ -131,7 +131,7 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     return (res as Map).cast<String, dynamic>();
   }
 
-  Future<void> upsertRepo({
+  Future<String?> upsertRepo({
     required String name,
     required String repoUrl,
     String? repoRef,
@@ -192,6 +192,7 @@ class RepoRegistryNotifier extends AsyncNotifier<RepoRegistryState> {
     if (repoKey != null && repoKey.isNotEmpty) {
       await selectRepo(repoKey);
     }
+    return (repoKey != null && repoKey.isNotEmpty) ? repoKey : null;
   }
 
   Future<void> selectRepo(String repoKey) async {

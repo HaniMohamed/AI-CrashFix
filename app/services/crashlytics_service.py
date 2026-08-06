@@ -81,7 +81,12 @@ class CrashlyticsService:
                     "firebase_project_id is required when CRASHLYTICS_FETCH_BACKEND=bigquery "
                     "(or set .env BQ_PROJECT_ID as a fallback)."
                 )
-            # If credentials is None, BigQuery will use Application Default Credentials.
+            if credentials is None and not self._mock:
+                raise RuntimeError(
+                    "No GCP service account JSON is configured for this repository. "
+                    "Open Manage repositories → Crashlytics resources and upload a "
+                    "service account key for Firebase/BigQuery access."
+                )
             self.client = bigquery.Client(project=self.project_id, credentials=credentials)
             return
 
@@ -93,6 +98,12 @@ class CrashlyticsService:
             raise RuntimeError(
                 "firebase_project_id (GCP project id) is required when CRASHLYTICS_FETCH_BACKEND=cloud_logging "
                 "(or set .env BQ_PROJECT_ID as a fallback)."
+            )
+        if credentials is None and not self._mock:
+            raise RuntimeError(
+                "No GCP service account JSON is configured for this repository. "
+                "Open Manage repositories → Crashlytics resources and upload a "
+                "service account key for Firebase/BigQuery access."
             )
         self._logging_client = cloud_logging.Client(project=self.project_id, credentials=credentials)
 
@@ -110,11 +121,21 @@ class CrashlyticsService:
             )
         except Exception:
             creds = GOOGLE_APPLICATION_CREDENTIALS
-        if creds and service_account is not None:
-            return service_account.Credentials.from_service_account_file(
-                creds
+        path = (creds or "").strip() or None
+        if not path:
+            return None
+        from pathlib import Path
+
+        if not Path(path).is_file():
+            raise RuntimeError(
+                f"GCP service account JSON path is set but the file is missing: {path}. "
+                "Re-upload it under Manage repositories → Crashlytics resources."
             )
-        return None
+        if service_account is None:
+            raise RuntimeError(
+                "Missing dependency for GCP auth. Install google-auth to use a service account JSON."
+            )
+        return service_account.Credentials.from_service_account_file(path)
 
     def _require_bq_tables(self) -> tuple[str, str, str]:
         """Return (dataset, android_table, ios_table) or raise a clear config error."""

@@ -103,9 +103,11 @@ def compose_db_url(
 
 def load_store_bootstrap() -> dict[str, Any] | None:
     path = store_bootstrap_path()
-    if path is None or not path.is_file():
+    if path is None:
         return None
     try:
+        if not path.is_file():
+            return None
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         _log.warning("Ignoring invalid store bootstrap at %s: %s", path, exc)
@@ -114,6 +116,7 @@ def load_store_bootstrap() -> dict[str, Any] | None:
         return None
     backend = str(raw.get("backend") or "").strip().lower()
     if backend not in {"sqlite", "postgres"}:
+        _log.warning("Ignoring store bootstrap with invalid backend=%r at %s", backend, path)
         return None
     return {
         "backend": backend,
@@ -190,7 +193,9 @@ def apply_store_bootstrap_to_environ() -> dict[str, Any] | None:
         # unless they later force local via use-local-store.
     else:
         os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = "sqlite"
-        # Leave CRASH_DB_URL in env if IT set it, but backend=sqlite wins.
+        # Drop remote URL so later launch-env persist / health checks cannot
+        # keep probing unreachable Postgres after a local SQLite commit.
+        os.environ.pop("AI_CRASH_FIX_CRASH_DB_URL", None)
         uid = data.get("user_id")
         if uid:
             os.environ["AI_CRASH_FIX_USER_ID"] = str(uid)
@@ -207,7 +212,7 @@ def is_store_setup_complete() -> bool:
 
     Fresh installs default to SQLite in process env but are *not* complete until
     the buyer confirms via first-run / wizard (``store_bootstrap.json``), unless
-    they already have auth users (upgrade) or launch env pins remote Postgres.
+    they already have auth users (upgrade) or a *reachable* launch-env Postgres.
     """
     if load_store_bootstrap() is not None:
         return True
@@ -221,7 +226,14 @@ def is_store_setup_complete() -> bool:
     backend = (os.getenv("AI_CRASH_FIX_CRASH_STORE_BACKEND") or "").strip().lower()
     url = (os.getenv("AI_CRASH_FIX_CRASH_DB_URL") or "").strip()
     if backend == "postgres" and url:
-        return True
+        try:
+            from app.services.crash_store_postgres import check_postgres_crash_store
+
+            ok, _ = check_postgres_crash_store()
+            if ok:
+                return True
+        except Exception:
+            pass
     return False
 
 

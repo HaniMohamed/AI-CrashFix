@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -71,10 +72,13 @@ def test_save_and_apply_sqlite_bootstrap(data_dir, monkeypatch):
     assert raw["user_id"] == "alice"
 
     monkeypatch.setenv("AI_CRASH_FIX_CRASH_STORE_BACKEND", "postgres")
+    monkeypatch.setenv("AI_CRASH_FIX_CRASH_DB_URL", "postgresql://x@localhost/db")
     applied = apply_store_bootstrap_to_environ()
     assert applied is not None
     assert applied["backend"] == "sqlite"
     assert load_store_bootstrap()["backend"] == "sqlite"
+    assert os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] == "sqlite"
+    assert "AI_CRASH_FIX_CRASH_DB_URL" not in os.environ
 
 
 def test_configure_postgres_requires_url_and_user(data_dir):

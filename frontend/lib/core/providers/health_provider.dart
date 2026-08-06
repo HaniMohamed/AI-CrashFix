@@ -55,16 +55,13 @@ class GosiBrainLaunchState {
 
   String get userFacingDetail {
     if (!blocked) return '';
-    final path = envFilePath ?? '~/crash_fix_gosi_brain_conf.env';
     return switch (reason) {
-      'env_file_missing' =>
-        'Expected a non-empty configuration file at $path.',
       'authorization_missing' =>
-        'GOSI_BRAIN_AUTHORIZATION is missing from $path.',
+        'Add GOSI_BRAIN_AUTHORIZATION in Settings, or choose another LLM provider.',
       'authorization_expired' =>
-        'GOSI_BRAIN_AUTHORIZATION in $path has expired.',
+        'Update GOSI Brain authorization in Settings, or choose another LLM provider.',
       _ =>
-        'GOSI Brain is configured but launch credentials are not ready.',
+        'Configure GOSI Brain in Settings, or choose another LLM provider.',
     };
   }
 }
@@ -145,9 +142,11 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
   Future<HealthState> _check() async {
     final api = ref.read(apiClientProvider);
     try {
+      // Keep this short, but not so short that a busy clone/index blip
+      // (or a momentarily saturated thread) looks like a dead backend.
       final res = await api
           .getJson(Endpoints.health)
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 8));
       if (res is! Map) {
         return _failure(
           HealthState(
@@ -220,11 +219,11 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
     }
   }
 
-  /// Ignore a single transient failure; keep last good state so the UI does
-  /// not flash full-screen offline on a blip.
+  /// Ignore a few transient failures; keep last good state so the UI does
+  /// not flash full-screen offline during long git clone / index work.
   HealthState _failure(HealthState failed) {
     _consecutiveFailures += 1;
-    if (_consecutiveFailures < 2 && _lastGood != null) {
+    if (_consecutiveFailures < 4 && _lastGood != null) {
       return HealthState(
         ok: _lastGood!.ok,
         crashStoreBackend: _lastGood!.crashStoreBackend,
@@ -237,7 +236,18 @@ class HealthNotifier extends AsyncNotifier<HealthState> {
         checkedAt: DateTime.now(),
       );
     }
-    return failed;
+    return HealthState(
+      ok: false,
+      error: failed.error ?? 'The API is unavailable.',
+      crashStoreBackend: failed.crashStoreBackend,
+      crashStoreOk: failed.crashStoreOk,
+      crashStoreError: failed.crashStoreError,
+      crashStoreFallbackFrom: failed.crashStoreFallbackFrom,
+      userId: failed.userId,
+      repoDataReadonly: failed.repoDataReadonly,
+      gosiBrainLaunch: failed.gosiBrainLaunch,
+      checkedAt: failed.checkedAt,
+    );
   }
 
   Future<void> refresh() async {

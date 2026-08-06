@@ -147,11 +147,14 @@ class AuthService:
 
         store_complete = is_store_setup_complete()
         count = 0
-        if store_complete:
-            try:
-                count = self._store.count_users()
-            except Exception:
-                count = 0
+        try:
+            count = self._store.count_users()
+        except Exception:
+            count = 0
+        # Auth users imply the store is in use even if bootstrap file is missing
+        # (e.g. launch-env Postgres fell back to SQLite mid-session).
+        if count > 0:
+            store_complete = True
         needs_admin = store_complete and count == 0
         return {
             "needs_store_setup": not store_complete,

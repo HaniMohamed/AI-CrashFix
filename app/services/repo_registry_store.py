@@ -23,6 +23,16 @@ def resolve_repo_registry_db_path(db_path: str | None = None) -> str:
     path = (db_path or os.environ.get("AI_CRASH_FIX_REPO_REGISTRY_DB") or "").strip()
     if not path:
         base = _data_dir()
+        if base is None:
+            try:
+                import sys
+
+                if sys.platform == "darwin":
+                    from app.brand import resolve_macos_application_support
+
+                    base = resolve_macos_application_support()
+            except Exception:
+                base = None
         if base is not None:
             path = os.fspath((base / "db" / "repo_registry.db").resolve())
         else:
@@ -239,16 +249,45 @@ class RepoRegistryStore:
             return
         from app.services.crash_store import uses_postgres_crash_store
 
-        if uses_postgres_crash_store():
-            from app.services.repo_registry_postgres import PostgresRepoRegistryStore
+        try:
+            if uses_postgres_crash_store():
+                try:
+                    from app.services.repo_registry_postgres import PostgresRepoRegistryStore
 
-            self._impl = PostgresRepoRegistryStore()
-        else:
-            from app.services.repo_registry_sqlite import SqliteRepoRegistryStore
+                    self._impl = PostgresRepoRegistryStore()
+                except Exception as exc:
+                    import logging
 
-            self._impl = SqliteRepoRegistryStore(db_path=db_path)
-        self.db_path = self._impl.db_path
-        self._singleton_ready = True
+                    from app.services.crash_store import _sync_crash_store_config_from_environ
+
+                    logging.getLogger(__name__).warning(
+                        "Postgres repo registry unavailable (%s); using local SQLite",
+                        exc,
+                    )
+                    os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = "sqlite"
+                    _sync_crash_store_config_from_environ()
+                    with type(self)._shared_lock:
+                        old = getattr(self, "_singleton_key", None)
+                        if old and type(self)._shared.get(old) is self:
+                            del type(self)._shared[old]
+                        new_key = _singleton_key(db_path)
+                        type(self)._shared[new_key] = self
+                        self._singleton_key = new_key  # type: ignore[attr-defined]
+                    from app.services.repo_registry_sqlite import SqliteRepoRegistryStore
+
+                    self._impl = SqliteRepoRegistryStore(db_path=db_path)
+            else:
+                from app.services.repo_registry_sqlite import SqliteRepoRegistryStore
+
+                self._impl = SqliteRepoRegistryStore(db_path=db_path)
+            self.db_path = self._impl.db_path
+            self._singleton_ready = True
+        except Exception:
+            with type(self)._shared_lock:
+                key = getattr(self, "_singleton_key", None)
+                if key and type(self)._shared.get(key) is self:
+                    del type(self)._shared[key]
+            raise
 
     @classmethod
     def clear_shared_for_tests(cls) -> None:

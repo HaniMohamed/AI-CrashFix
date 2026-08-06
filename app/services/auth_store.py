@@ -78,18 +78,63 @@ class AuthStore:
     def __init__(self) -> None:
         if getattr(self, "_singleton_ready", False):
             return
+        try:
+            self._impl = self._open_backend()
+            self.backend = self._impl.backend
+            self._singleton_ready = True
+        except Exception:
+            # Never leave a half-initialized singleton — next call must retry cleanly.
+            with self._shared_lock:
+                if type(self)._shared is self:
+                    type(self)._shared = None
+            raise
+
+    @staticmethod
+    def _open_backend() -> AuthStoreBackend:
         from app.services.crash_store import uses_postgres_crash_store
 
         if uses_postgres_crash_store():
-            from app.services.auth_store_postgres import PostgresAuthStore
+            try:
+                from app.services.auth_store_postgres import PostgresAuthStore
 
-            self._impl: AuthStoreBackend = PostgresAuthStore()
-        else:
-            from app.services.auth_store_sqlite import SqliteAuthStore
+                return PostgresAuthStore()
+            except Exception as exc:
+                import logging
+                import os
 
-            self._impl = SqliteAuthStore()
-        self.backend = self._impl.backend
-        self._singleton_ready = True
+                from app.services.crash_store import _sync_crash_store_config_from_environ
+
+                logging.getLogger(__name__).warning(
+                    "Postgres auth store unavailable (%s); using local SQLite",
+                    exc,
+                )
+                os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = "sqlite"
+                _sync_crash_store_config_from_environ()
+                try:
+                    from app.services.store_bootstrap import reset_store_singletons
+
+                    # Clear sibling facades that may still point at Postgres.
+                    # AuthStore itself is mid-init; clear_shared is deferred to caller
+                    # via failed-ready path — only clear others here.
+                    from app.services.app_settings_store import AppSettingsStore
+                    from app.services.repo_registry_store import RepoRegistryStore
+                    from app.services import crash_store as cs
+
+                    AppSettingsStore.clear_shared_for_tests()
+                    RepoRegistryStore.clear_shared_for_tests()
+                    cs._CRASH_STORE_HEALTH_CACHE = None
+                    cs._CRASH_STORE_HEALTH_CACHED_AT = 0.0
+                    cs._CRASH_STORE_FALLBACK = {
+                        "from": "postgres",
+                        "to": "sqlite",
+                        "error": str(exc),
+                    }
+                except Exception:
+                    pass
+
+        from app.services.auth_store_sqlite import SqliteAuthStore
+
+        return SqliteAuthStore()
 
     @classmethod
     def clear_shared_for_tests(cls) -> None:

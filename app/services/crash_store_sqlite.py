@@ -86,7 +86,7 @@ class SqliteCrashStore:
         self.store_key = self.db_path
         self._ensure_schema()
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self):
         return connect_sqlite(self.db_path)
 
     def _ensure_schema(self) -> None:

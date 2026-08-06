@@ -217,8 +217,8 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
       env['AI_CRASH_FIX_DB_PATH'] = dbPath;
     }
 
-    env['AI_CRASH_FIX_AUTO_LAUNCH_ENV'] = '1';
-    _applyDefaultLaunchEnvFile(env);
+    // Standalone product: do not auto-load CodeFaster / legacy home env files.
+    // Explicit AI_CRASH_FIX_ENV_FILE from the parent environment is still honored.
 
     _proc = await Process.start(
       backendPath,
@@ -349,44 +349,6 @@ class BackendProcessNotifier extends AsyncNotifier<BackendBoot?> {
       return home.substring(0, idx);
     }
     return home;
-  }
-
-  static const _legacyLaunchEnvFileName = 'crash_fix_gosi_brain_conf.env';
-
-  /// Auto-load a Fixora or legacy launch env file when present (macOS standalone).
-  void _applyDefaultLaunchEnvFile(Map<String, String> env) {
-    if ((env['AI_CRASH_FIX_ENV_FILE'] ?? '').trim().isNotEmpty) return;
-    final home = _realUserHome();
-    if (home.isEmpty) return;
-    final candidates = <String>[
-      '$home/Library/Application Support/Fixora/launch.env',
-      '$home/fixora.env',
-      '$home/$_legacyLaunchEnvFileName',
-    ];
-    for (final candidate in candidates) {
-      final file = File(candidate);
-      if (!file.existsSync() || !_envFileNonempty(file)) continue;
-      env['AI_CRASH_FIX_ENV_FILE'] = candidate;
-      return;
-    }
-  }
-
-  bool _envFileNonempty(File file) {
-    try {
-      for (final rawLine in file.readAsLinesSync()) {
-        var line = rawLine.trim();
-        if (line.isEmpty || line.startsWith('#')) continue;
-        if (line.startsWith('export ')) {
-          line = line.substring(7).trim();
-        }
-        final eq = line.indexOf('=');
-        if (eq <= 0) continue;
-        final key = line.substring(0, eq).trim();
-        final val = line.substring(eq + 1).trim();
-        if (key.isNotEmpty && val.isNotEmpty) return true;
-      }
-    } catch (_) {}
-    return false;
   }
 
   String? _resolveRgPath() {

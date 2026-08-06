@@ -128,6 +128,13 @@ def ensure_crash_store_available() -> dict[str, object]:
         "to": "sqlite",
         "error": error,
     }
+    # Drop facades that may already be bound to Postgres (auth/settings/repos).
+    try:
+        from app.services.store_bootstrap import reset_store_singletons
+
+        reset_store_singletons()
+    except Exception:
+        _log.warning("Failed to reset store singletons after Postgres fallback", exc_info=True)
     # Force next health() call to re-read backend=sqlite.
     _CRASH_STORE_HEALTH_CACHE = None
     _CRASH_STORE_HEALTH_CACHED_AT = 0.0

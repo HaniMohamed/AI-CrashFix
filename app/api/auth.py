@@ -61,7 +61,16 @@ def _svc() -> AuthService:
 
 @router.get("/bootstrap-status")
 async def bootstrap_status() -> Dict[str, Any]:
-    return await asyncio.to_thread(_svc().bootstrap_status)
+    def _run() -> Dict[str, Any]:
+        try:
+            return _svc().bootstrap_status()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Auth store unavailable: {exc}",
+            ) from exc
+
+    return await asyncio.to_thread(_run)
 
 
 @router.post("/bootstrap-admin")
@@ -78,6 +87,11 @@ async def bootstrap_admin(req: BootstrapAdminRequest) -> Dict[str, Any]:
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Auth store unavailable: {exc}",
+            ) from exc
 
     return await asyncio.to_thread(_run)
 
@@ -95,6 +109,11 @@ async def login(req: LoginRequest, request: Request) -> Dict[str, Any]:
             )
         except ValueError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Auth store unavailable: {exc}",
+            ) from exc
 
     return await asyncio.to_thread(_run)
 

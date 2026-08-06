@@ -6,7 +6,7 @@ from pathlib import Path
 from app.services.app_settings_store import AppSettingsStore
 
 DEFAULT_LAUNCH_ENV_FILENAME = "crash_fix_gosi_brain_conf.env"
-# Prefer Fixora-branded paths before the legacy GOSI/CodeFaster filename.
+# Prefer Fixora-branded paths before the legacy GOSI launch filename.
 FIXORA_LAUNCH_ENV_FILENAMES: tuple[str, ...] = (
     "Library/Application Support/Fixora/launch.env",
     "fixora.env",
@@ -133,12 +133,32 @@ def _resolve_launch_env_file_path() -> Path | None:
     return None
 
 
+# Buyer store choice lives in store_bootstrap.json; launch-env Postgres must not
+# override a committed local SQLite install.
+_STORE_BACKEND_ENV_KEYS: frozenset[str] = frozenset(
+    {
+        "AI_CRASH_FIX_CRASH_STORE_BACKEND",
+        "AI_CRASH_FIX_CRASH_DB_URL",
+    }
+)
+
+
+def _buyer_chose_sqlite_store() -> bool:
+    try:
+        from app.services.store_bootstrap import load_store_bootstrap
+
+        data = load_store_bootstrap()
+    except Exception:
+        return False
+    return bool(data) and str(data.get("backend") or "").strip().lower() == "sqlite"
+
+
 def apply_launch_env_file() -> list[str]:
     """
     Load ``AI_CRASH_FIX_ENV_FILE`` into ``os.environ``.
 
-    When ``AI_CRASH_FIX_ENV_FILE`` is unset, auto-detect a non-empty Fixora or
-    legacy launch env file (macOS standalone / CodeFaster host).
+    When ``AI_CRASH_FIX_ENV_FILE`` is unset, auto-detect only if
+    ``AI_CRASH_FIX_AUTO_LAUNCH_ENV=1`` (opt-in; standalone builds leave this off).
 
     Avoids macOS ``ARG_MAX`` / "command too long" when JWTs and keys are too large
     for ``open --args`` / ``open --env``. Only the short file path needs to be on
@@ -146,6 +166,10 @@ def apply_launch_env_file() -> list[str]:
 
     Keys loaded from the file are merged into ``AI_CRASH_FIX_LAUNCH_ENV_KEYS`` so
     ``persist_launch_env_overrides`` writes them into Settings.
+
+    If the buyer already committed SQLite via ``store_bootstrap.json``, crash-store
+    backend/URL keys from the launch file are skipped so a dead remote Postgres
+    cannot override local auth.
     """
     path = _resolve_launch_env_file_path()
     if path is None:
@@ -153,8 +177,11 @@ def apply_launch_env_file() -> list[str]:
 
     os.environ["AI_CRASH_FIX_ENV_FILE"] = str(path.resolve())
     loaded = parse_env_file(path)
+    skip_store = _buyer_chose_sqlite_store()
     applied: list[str] = []
     for key, value in loaded.items():
+        if skip_store and key in _STORE_BACKEND_ENV_KEYS:
+            continue
         os.environ[key] = value
         applied.append(key)
 
@@ -164,6 +191,8 @@ def apply_launch_env_file() -> list[str]:
             for k in (os.environ.get("AI_CRASH_FIX_LAUNCH_ENV_KEYS") or "").split(",")
             if k.strip()
         }
+        # Never mark skipped store keys as launch overrides to persist/re-apply.
+        existing -= _STORE_BACKEND_ENV_KEYS if skip_store else set()
         merged = sorted(existing | set(applied))
         os.environ["AI_CRASH_FIX_LAUNCH_ENV_KEYS"] = ",".join(merged)
     return applied
@@ -174,8 +203,11 @@ def persist_launch_env_overrides() -> list[str]:
     When the macOS launcher starts the backend with ``open --args``, or when
     ``AI_CRASH_FIX_ENV_FILE`` was applied, ``AI_CRASH_FIX_LAUNCH_ENV_KEYS`` lists
     env keys to persist into SQLite so Settings reflects the launch configuration.
+
+    Does not re-load the launch env file: lifespan already applied it before
+    ``store_bootstrap.json``. Re-applying would stomp a buyer SQLite choice with
+    launch-file Postgres and break login.
     """
-    apply_launch_env_file()
     try:
         return _persist_launch_env_overrides_to_store()
     except Exception:

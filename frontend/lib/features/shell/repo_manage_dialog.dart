@@ -98,6 +98,9 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
   String? _gcpCredsLastMessage;
   bool _gcpCredsLastError = false;
   bool _hasGcpCreds = false;
+  /// Selected while adding a new repo (before first save). Uploaded after upsert.
+  Uint8List? _pendingGcpBytes;
+  String? _pendingGcpFilename;
 
   static const _crashBackendOptions = <String>['cloud_logging', 'bigquery'];
   static const bool _debug = kDebugMode;
@@ -200,6 +203,12 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
         return 'Parent issue key should look like PROJ-123.';
       }
     }
+    final hasGcp =
+        _hasGcpCreds || (_pendingGcpBytes != null && _pendingGcpBytes!.isNotEmpty);
+    if (!hasGcp) {
+      return 'Upload a GCP service account JSON under Crashlytics resources '
+          '(required for live Crashlytics).';
+    }
     return null;
   }
 
@@ -236,8 +245,14 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       }
       _jiraParentIssueKeyCtrl.text = (r.jiraParentIssueKey ?? '').toString();
       _hasGcpCreds = r.hasGoogleApplicationCredentials;
-      _gcpCredsLastMessage = null;
-      _gcpCredsLastError = false;
+      // Keep an in-flight pending pick if Save is still running (provider refresh
+      // must not wipe bytes before upload).
+      if (!_saving) {
+        _gcpCredsLastMessage = null;
+        _gcpCredsLastError = false;
+        _pendingGcpBytes = null;
+        _pendingGcpFilename = null;
+      }
       _expandedPanelIndex = 0;
     });
     _loadRepoStatus();
@@ -265,14 +280,6 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
 
   Future<void> _pickAndUploadGcpCredentials() async {
     final key = (_editingRepoKey ?? '').trim();
-    if (key.isEmpty) {
-      setState(() {
-        _gcpCredsLastMessage =
-            'Save the repository first, then upload the service account JSON.';
-        _gcpCredsLastError = true;
-      });
-      return;
-    }
     final picked = await pickServiceAccountJsonFile();
     if (!mounted) return;
     if (picked == null) return;
@@ -287,23 +294,34 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       });
       return;
     }
+
+    // New repo: keep JSON in memory until Save creates the repo key.
+    if (key.isEmpty) {
+      setState(() {
+        _pendingGcpBytes = Uint8List.fromList(bytes);
+        _pendingGcpFilename = name;
+        _hasGcpCreds = true;
+        _gcpCredsLastError = false;
+        _gcpCredsLastMessage =
+            'Selected $name — it will be uploaded when you save this repository.';
+      });
+      return;
+    }
+
     setState(() {
       _gcpCredsLastMessage = null;
       _gcpCredsLastError = false;
       _gcpCredsUploading = true;
     });
     try {
-      final api = ref.read(apiClientProvider);
-      await api.postMultipartFile(
-        Endpoints.repoGoogleCredentials(key),
-        bytes: bytes,
-        filename: name,
-      );
+      await _uploadGcpCredentials(repoKey: key, bytes: bytes, filename: name);
       if (!mounted) return;
       setState(() {
         _gcpCredsUploading = false;
         _gcpCredsLastError = false;
         _hasGcpCreds = true;
+        _pendingGcpBytes = null;
+        _pendingGcpFilename = null;
         _gcpCredsLastMessage =
             'Saved for this repository. Crashlytics uses this key for BigQuery '
             'or Cloud Logging (depending on the backend you chose).';
@@ -318,6 +336,19 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
         _gcpCredsLastMessage = e.toString();
       });
     }
+  }
+
+  Future<void> _uploadGcpCredentials({
+    required String repoKey,
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final api = ref.read(apiClientProvider);
+    await api.postMultipartFile(
+      Endpoints.repoGoogleCredentials(repoKey),
+      bytes: bytes,
+      filename: filename,
+    );
   }
 
   Future<void> _refreshRepo() async {
@@ -350,6 +381,8 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
       _hasGcpCreds = false;
       _gcpCredsLastMessage = null;
       _gcpCredsLastError = false;
+      _pendingGcpBytes = null;
+      _pendingGcpFilename = null;
     });
     _nameCtrl.clear();
     _urlCtrl.clear();
@@ -927,19 +960,23 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                             label: Text(
                               _gcpCredsUploading
                                   ? 'Uploading credentials…'
-                                  : _hasGcpCreds
-                                      ? 'Replace GCP service account JSON'
-                                      : 'Upload GCP service account JSON',
+                                  : _pendingGcpBytes != null
+                                      ? 'Change pending service account JSON'
+                                      : _hasGcpCreds
+                                          ? 'Replace GCP service account JSON'
+                                          : 'Upload GCP service account JSON',
                             ),
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          _hasGcpCreds
-                              ? 'Service account configured for this repository.'
-                              : 'Not configured — required for live Crashlytics on this repo.',
+                          _pendingGcpBytes != null
+                              ? 'Ready to upload ${_pendingGcpFilename ?? 'credentials'} on Save.'
+                              : _hasGcpCreds
+                                  ? 'Service account configured for this repository.'
+                                  : 'Not configured — required for live Crashlytics on this repo.',
                           style: theme.bodySmall?.copyWith(
-                            color: _hasGcpCreds
+                            color: (_pendingGcpBytes != null || _hasGcpCreds)
                                 ? palette.success
                                 : palette.textMuted,
                           ),
@@ -1458,12 +1495,17 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                 ? null
                 : () async {
                   final nav = Navigator.of(context);
+                  // Snapshot before upsert — refresh/select must not clear pending.
+                  final pendingBytes = _pendingGcpBytes == null
+                      ? null
+                      : Uint8List.fromList(_pendingGcpBytes!);
+                  final pendingName = _pendingGcpFilename;
                   setState(() {
                     _saving = true;
                     _error = null;
                   });
                   try {
-                    await ref
+                    final repoKey = await ref
                         .read(repoRegistryProvider.notifier)
                         .upsertRepo(
                           name: _nameCtrl.text.trim(),
@@ -1523,9 +1565,57 @@ class _ManageReposDialogState extends ConsumerState<ManageReposDialog> {
                               ),
                         );
                     if (!mounted) return;
+
+                    var credsOk = true;
+                    if (repoKey != null &&
+                        pendingBytes != null &&
+                        pendingBytes.isNotEmpty) {
+                      try {
+                        await _uploadGcpCredentials(
+                          repoKey: repoKey,
+                          bytes: pendingBytes,
+                          filename: pendingName ?? 'gcp_credentials.json',
+                        );
+                        if (mounted) {
+                          setState(() {
+                            _editingRepoKey = repoKey;
+                            _pendingGcpBytes = null;
+                            _pendingGcpFilename = null;
+                            _hasGcpCreds = true;
+                            _gcpCredsLastError = false;
+                            _gcpCredsLastMessage =
+                                'Service account JSON uploaded for this repository.';
+                          });
+                        }
+                      } catch (credErr) {
+                        credsOk = false;
+                        if (mounted) {
+                          setState(() {
+                            _editingRepoKey = repoKey;
+                            // Keep pending so Retry/Save can upload again.
+                            _pendingGcpBytes = pendingBytes;
+                            _pendingGcpFilename = pendingName;
+                            _gcpCredsLastError = true;
+                            _gcpCredsLastMessage =
+                                'Repo saved, but uploading the service account failed: $credErr';
+                            _error =
+                                'Repository was saved, but the GCP service account '
+                                'JSON was not uploaded. Fix the API connection and '
+                                'press Save again (or use Replace GCP service account JSON).';
+                          });
+                        }
+                      }
+                    } else if (repoKey != null) {
+                      setState(() => _editingRepoKey = repoKey);
+                    }
+
                     await ref.read(configProvider.notifier).refresh();
                     if (!mounted) return;
                     setState(() => _saving = false);
+                    if (!credsOk) {
+                      // Keep the dialog open so the failed upload is obvious.
+                      return;
+                    }
                     widget.onSaved?.call();
                     if (widget.presentation == ManageReposPresentation.dialog) {
                       nav.pop();

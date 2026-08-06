@@ -53,9 +53,12 @@ def is_public_route(method: str, path: str) -> bool:
     if pair in _PUBLIC_EXACT:
         return True
     if pair in _SETUP_STORE_ROUTES:
-        from app.services.store_bootstrap import can_configure_store_without_auth
+        try:
+            from app.services.store_bootstrap import can_configure_store_without_auth
 
-        return can_configure_store_without_auth()
+            return can_configure_store_without_auth()
+        except Exception:
+            return True
     return False
 
 
@@ -67,15 +70,25 @@ async def auth_middleware(request: Request, call_next: Callable) -> Response:
     method = request.method.upper()
     path = request.url.path
 
+    def _authenticate(token: str | None) -> AuthenticatedSession | None | str:
+        """Return session, None if invalid token, or ``'store_error'`` on store failure."""
+        if not token:
+            return None
+        try:
+            return AuthService().authenticate_token(token)
+        except Exception:
+            # Store outages must not look like "logged out" (401) — that kicks the UI
+            # back to the login screen in a loop.
+            return "store_error"
+
     if is_public_route(method, path):
         token = _extract_bearer(request)
-        if token:
-            session = AuthService().authenticate_token(token)
-            set_current_session(session)
-        else:
+        session = _authenticate(token)
+        set_current_session(session if not isinstance(session, str) else None)
+        try:
+            response = await call_next(request)
+        finally:
             set_current_session(None)
-        response = await call_next(request)
-        set_current_session(None)
         return response
 
     token = _extract_bearer(request)
@@ -85,8 +98,12 @@ async def auth_middleware(request: Request, call_next: Callable) -> Response:
             content={"detail": "Authentication required"},
         )
 
-    service = AuthService()
-    session = service.authenticate_token(token)
+    session = _authenticate(token)
+    if session == "store_error":
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Auth store temporarily unavailable"},
+        )
     if session is None:
         return JSONResponse(
             status_code=401,
@@ -96,13 +113,16 @@ async def auth_middleware(request: Request, call_next: Callable) -> Response:
     set_current_session(session)
 
     if session.user.must_change_password and not allows_password_change_pending(method, path):
+        set_current_session(None)
         return JSONResponse(
             status_code=403,
             content={"detail": "Password change required", "must_change_password": True},
         )
 
-    response = await call_next(request)
-    set_current_session(None)
+    try:
+        response = await call_next(request)
+    finally:
+        set_current_session(None)
     return response
 
 

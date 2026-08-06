@@ -50,7 +50,6 @@ fi
 
 # Short pointer only — backend loads the file (no JWT on argv).
 export AI_CRASH_FIX_ENV_FILE="$ENV_FILE"
-export AI_CRASH_FIX_AUTO_LAUNCH_ENV=1
 
 # Also export keys into this process so Flutter inherits them for the child.
 set -a

@@ -57,16 +57,68 @@ def test_apply_launch_env_file_prefers_fixora_env_over_legacy(
     assert os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] == "sqlite"
 
 
-def test_gosi_brain_launch_health_blocks_missing_env(monkeypatch, tmp_path: Path) -> None:
+def test_gosi_brain_launch_health_never_hard_blocks(monkeypatch, tmp_path: Path) -> None:
+    """Standalone product: missing/expired GOSI creds must not gate the UI."""
+    import app.config as cfg
     from app.services.app_settings_store import AppSettingsStore
     from app.services.gosi_brain_launch import gosi_brain_launch_health
 
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
     db = tmp_path / "repo_registry.db"
+    monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AI_CRASH_FIX_REPO_REGISTRY_DB", str(db))
+    monkeypatch.delenv("AI_CRASH_FIX_ENV_FILE", raising=False)
+    monkeypatch.delenv("GOSI_BRAIN_AUTHORIZATION", raising=False)
+    monkeypatch.setattr(cfg, "GOSI_BRAIN_AUTHORIZATION", None)
+    AppSettingsStore.clear_shared_for_tests()
     store = AppSettingsStore()
     store.set(k="LLM_PROVIDER", v="gosi-brain")
 
     health = gosi_brain_launch_health()
-    assert health["required"] is True
-    assert health["ok"] is False
-    assert health["reason"] == "env_file_missing"
+    assert health["required"] is False
+    assert health["ok"] is True
+    assert health["provider"] == "gosi-brain"
+    assert health["reason"] == "authorization_missing"
+
+
+def test_gosi_brain_launch_health_reports_settings_auth(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import base64
+    import json
+    import time
+
+    import app.config as cfg
+    from app.services.app_settings_store import AppSettingsStore
+    from app.services.gosi_brain_launch import gosi_brain_launch_health
+
+    def _jwt(exp: int) -> str:
+        header = base64.urlsafe_b64encode(b'{"alg":"none"}').decode().rstrip("=")
+        payload = (
+            base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode())
+            .decode()
+            .rstrip("=")
+        )
+        return f"{header}.{payload}.x"
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir(exist_ok=True)
+    monkeypatch.setenv("AI_CRASH_FIX_REPO_REGISTRY_DB", str(tmp_path / "registry.db"))
+    monkeypatch.delenv("AI_CRASH_FIX_ENV_FILE", raising=False)
+    monkeypatch.delenv("GOSI_BRAIN_AUTHORIZATION", raising=False)
+    monkeypatch.setattr(cfg, "GOSI_BRAIN_AUTHORIZATION", None)
+    AppSettingsStore.clear_shared_for_tests()
+
+    store = AppSettingsStore()
+    store.set(k="LLM_PROVIDER", v="gosi-brain")
+    store.set(
+        k="GOSI_BRAIN_AUTHORIZATION",
+        v=f"Bearer {_jwt(int(time.time()) + 3600)}",
+    )
+
+    health = gosi_brain_launch_health()
+    assert health["required"] is False
+    assert health["ok"] is True
+    assert health["authorization_present"] is True
+    assert health["authorization_expired"] is False

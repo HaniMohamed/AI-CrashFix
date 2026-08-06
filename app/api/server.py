@@ -621,11 +621,16 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
     from app.services.repo_data_guard import ensure_repo_data_writable
 
     ensure_repo_data_writable()
-    reg = RepoRegistryStore()
-    try:
-        # Validate by cloning/checking out before persisting in registry.
+
+    def _clone_and_save() -> Dict[str, Any]:
+        # Git clone + SQLite writes are blocking; keep them off the event loop so
+        # /api/health (and the Flutter "API offline" screen) stays responsive.
+        from datetime import datetime
+
+        from app.services.dart_symbol_index import build_symbol_index
         from app.services.project_service import ProjectService
 
+        reg = RepoRegistryStore()
         proj = ProjectService().prepare_repo(
             repo_url=req.repo_url,
             repo_ref=req.repo_ref,
@@ -651,13 +656,7 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
             crashlytics_android_package=req.crashlytics_android_package,
             crashlytics_ios_bundle_id=req.crashlytics_ios_bundle_id,
         )
-        # Build the symbol index on first add/update so stacktrace mapping is reliable
-        # without requiring a manual refresh.
         try:
-            from datetime import datetime
-
-            from app.services.dart_symbol_index import build_symbol_index
-
             head_sha = ProjectService.get_head_sha(proj.repo_root)
             if head_sha:
                 build_symbol_index(
@@ -680,14 +679,25 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
                 last_indexed_at=None,
                 last_error=str(e),
             )
-        # Create the per-repo crash DB immediately (schema included) so users see it
-        # right after adding the repo (not only after starting a run).
-        CrashStore(project_id=entry.firebase_project_id)
+        try:
+            CrashStore(project_id=entry.firebase_project_id)
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Crash store init after repo upsert failed for %s: %s",
+                entry.repo_key,
+                e,
+                exc_info=True,
+            )
+        return entry.__dict__
+
+    try:
+        return await asyncio.to_thread(_clone_and_save)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to clone repo: {e}") from e
-    return entry.__dict__
 
 
 @app.get("/api/repos/active")
@@ -887,8 +897,7 @@ async def refresh_repo(repo_key: str) -> Dict[str, Any]:
     if entry is None:
         raise HTTPException(status_code=404, detail=f"repo_key={key!r} not found")
 
-    # Fetch + checkout configured ref/main using existing behavior.
-    try:
+    def _fetch_head() -> tuple[Any, str | None]:
         from app.services.project_service import ProjectService
 
         proj = ProjectService().prepare_repo(
@@ -896,7 +905,10 @@ async def refresh_repo(repo_key: str) -> Dict[str, Any]:
             repo_ref=entry.repo_ref,
             access_token=(reg.get_access_token(key) or None),
         )
-        head_sha = ProjectService.get_head_sha(proj.repo_root)
+        return proj, ProjectService.get_head_sha(proj.repo_root)
+
+    try:
+        proj, head_sha = await asyncio.to_thread(_fetch_head)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to refresh repo: {e}") from e
 
@@ -908,12 +920,15 @@ async def refresh_repo(repo_key: str) -> Dict[str, Any]:
             from app.services.dart_symbol_index import build_symbol_index
             from datetime import datetime
 
-            build_symbol_index(
-                repo_root=proj.repo_root,
-                repo_key=key,
-                commit_sha=head_sha,
-                packages_dirs=list(entry.packages_dirs or []),
-            )
+            def _reindex() -> None:
+                build_symbol_index(
+                    repo_root=proj.repo_root,
+                    repo_key=key,
+                    commit_sha=head_sha,
+                    packages_dirs=list(entry.packages_dirs or []),
+                )
+
+            await asyncio.to_thread(_reindex)
             reg.upsert_index_status(
                 repo_key=key,
                 indexed_sha=head_sha,

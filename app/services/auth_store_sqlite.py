@@ -60,10 +60,8 @@ class SqliteAuthStore:
         self.db_path = resolve_app_settings_db_path(db_path)
         self._ensure_schema()
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = connect_sqlite(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _connect(self):
+        return connect_sqlite(self.db_path, row_factory=sqlite3.Row)
 
     def _ensure_schema(self) -> None:
         key = f"auth:{self.db_path}"
