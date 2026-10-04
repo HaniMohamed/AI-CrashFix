@@ -55,6 +55,11 @@ async def _lifespan(_app: FastAPI):
     # Load team/buyer launch env first, then wizard/Settings store bootstrap
     # (local file that can override backend/url/user id), then fall back to
     # SQLite if Postgres is down, then persist settings into the active store.
+    from app.services.backend_logging import ensure_backend_file_logging
+
+    ensure_backend_file_logging(
+        log_level=os.environ.get("AI_CRASH_FIX_LOG_LEVEL", "info"),
+    )
     apply_launch_env_file()
     try:
         from app.services.store_bootstrap import apply_store_bootstrap_to_environ
@@ -467,7 +472,34 @@ async def post_setup_store(req: SetupStoreRequest) -> Dict[str, Any]:
     return await asyncio.to_thread(_run)
 
 
-@app.get("/api/logs/meta")
+class SetupStoreTestRequest(BaseModel):
+    backend: str = Field(..., description="'sqlite' or 'postgres'")
+    db_url: Optional[str] = Field(None, description="Postgres URL")
+    username: Optional[str] = Field(None, description="Optional DB username merged into db_url")
+    password: Optional[str] = Field(None, description="Optional DB password merged into db_url")
+    user_id: Optional[str] = Field(None, description="Machine user id for postgres probe")
+
+
+@app.post("/api/setup/test/store")
+async def post_setup_test_store(req: SetupStoreTestRequest) -> Dict[str, Any]:
+    """Verify crash-store connectivity without persisting configuration."""
+    from app.services.connectivity_checks import check_store_connection
+
+    def _run() -> Dict[str, Any]:
+        try:
+            return check_store_connection(
+                backend=req.backend,
+                db_url=req.db_url,
+                username=req.username,
+                password=req.password,
+                user_id=req.user_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return await asyncio.to_thread(_run)
 async def get_logs_meta() -> Dict[str, Any]:
     """Paths and availability for launcher/backend log files on the server."""
     from app.services.log_files import read_log_chunk, resolve_data_dir, resolve_log_path
@@ -507,8 +539,8 @@ async def get_log_tail(
     """
     Read launcher or backend log text from the app data directory.
 
-    Log files are written by the macOS menu-bar launcher (``backend.log``,
-    ``launcher.log`` under ``AI_CRASH_FIX_DATA_DIR`` or Application Support).
+    Log files live under ``AI_CRASH_FIX_DATA_DIR`` (``backend.log`` is written by
+    the backend on startup; ``launcher.log`` when using the macOS menu-bar launcher).
     """
     from app.services.log_files import read_log_chunk
 
@@ -1218,6 +1250,109 @@ async def post_settings(req: SettingsUpdateRequest) -> Dict[str, Any]:
         store.set(k=SETTINGS_KEY_REPO_DATA_READONLY, v=bool(req.repo_data_readonly))
 
     return {"saved": True}
+
+
+class LlmTestRequest(BaseModel):
+    provider: Optional[str] = None
+    gemini_model: Optional[str] = None
+    google_api_key: Optional[str] = None
+    openai_url: Optional[str] = None
+    openai_model: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    gosi_brain_url: Optional[str] = None
+    gosi_brain_model: Optional[str] = None
+    gosi_brain_authorization: Optional[str] = None
+    gosi_brain_api_key: Optional[str] = None
+    gosi_brain_oauth_identity_domain_name: Optional[str] = None
+    gosi_brain_user_id: Optional[str] = None
+    gosi_brain_temperature: Optional[float] = None
+    gosi_brain_streaming: Optional[str] = None
+
+
+class JiraTestRequest(BaseModel):
+    server_url: Optional[str] = None
+    email: Optional[str] = None
+    token: Optional[str] = None
+    auth: Optional[str] = None
+    verify_ssl: Optional[str] = None
+
+
+class GitlabTestRequest(BaseModel):
+    server_url: Optional[str] = None
+    token: Optional[str] = None
+    verify_ssl: Optional[str] = None
+    ca_bundle: Optional[str] = None
+
+
+@app.post("/api/settings/test/llm")
+async def post_settings_test_llm(req: LlmTestRequest) -> Dict[str, Any]:
+    from app.services.connectivity_checks import check_llm_connection
+
+    def _run() -> Dict[str, Any]:
+        try:
+            return check_llm_connection(
+                provider=req.provider,
+                gemini_model=req.gemini_model,
+                google_api_key=req.google_api_key,
+                openai_url=req.openai_url,
+                openai_model=req.openai_model,
+                openai_api_key=req.openai_api_key,
+                gosi_brain_url=req.gosi_brain_url,
+                gosi_brain_model=req.gosi_brain_model,
+                gosi_brain_authorization=req.gosi_brain_authorization,
+                gosi_brain_api_key=req.gosi_brain_api_key,
+                gosi_brain_oauth_identity_domain_name=req.gosi_brain_oauth_identity_domain_name,
+                gosi_brain_user_id=req.gosi_brain_user_id,
+                gosi_brain_temperature=req.gosi_brain_temperature,
+                gosi_brain_streaming=req.gosi_brain_streaming,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return await asyncio.to_thread(_run)
+
+
+@app.post("/api/settings/test/jira")
+async def post_settings_test_jira(req: JiraTestRequest) -> Dict[str, Any]:
+    from app.services.connectivity_checks import check_jira_connection
+
+    def _run() -> Dict[str, Any]:
+        try:
+            return check_jira_connection(
+                server_url=req.server_url,
+                email=req.email,
+                token=req.token,
+                auth=req.auth,
+                verify_ssl=req.verify_ssl,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return await asyncio.to_thread(_run)
+
+
+@app.post("/api/settings/test/gitlab")
+async def post_settings_test_gitlab(req: GitlabTestRequest) -> Dict[str, Any]:
+    from app.services.connectivity_checks import check_gitlab_connection
+
+    def _run() -> Dict[str, Any]:
+        try:
+            return check_gitlab_connection(
+                server_url=req.server_url,
+                token=req.token,
+                verify_ssl=req.verify_ssl,
+                ca_bundle=req.ca_bundle,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return await asyncio.to_thread(_run)
 
 
 @app.post("/api/repos/{repo_key}/google_credentials")

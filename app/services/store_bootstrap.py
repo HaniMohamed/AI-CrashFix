@@ -290,6 +290,40 @@ def current_store_config_public() -> dict[str, Any]:
     }
 
 
+def test_postgres_store(*, db_url: str, user_id: str) -> tuple[bool, str | None]:
+    """Probe Postgres connectivity using temporary env overrides (no persistence)."""
+    prev_backend = os.environ.get("AI_CRASH_FIX_CRASH_STORE_BACKEND")
+    prev_url = os.environ.get("AI_CRASH_FIX_CRASH_DB_URL")
+    prev_uid = os.environ.get("AI_CRASH_FIX_USER_ID")
+    try:
+        os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = "postgres"
+        os.environ["AI_CRASH_FIX_CRASH_DB_URL"] = db_url
+        os.environ["AI_CRASH_FIX_USER_ID"] = user_id
+        from app.services.crash_store import _sync_crash_store_config_from_environ
+        from app.services.crash_store_postgres import check_postgres_crash_store
+
+        _sync_crash_store_config_from_environ()
+        _sync_user_id_config_from_environ()
+        return check_postgres_crash_store()
+    finally:
+        if prev_backend is None:
+            os.environ.pop("AI_CRASH_FIX_CRASH_STORE_BACKEND", None)
+        else:
+            os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = prev_backend
+        if prev_url is None:
+            os.environ.pop("AI_CRASH_FIX_CRASH_DB_URL", None)
+        else:
+            os.environ["AI_CRASH_FIX_CRASH_DB_URL"] = prev_url
+        if prev_uid is None:
+            os.environ.pop("AI_CRASH_FIX_USER_ID", None)
+        else:
+            os.environ["AI_CRASH_FIX_USER_ID"] = prev_uid
+        from app.services.crash_store import _sync_crash_store_config_from_environ
+
+        _sync_crash_store_config_from_environ()
+        _sync_user_id_config_from_environ()
+
+
 def configure_store(
     *,
     backend: str,
@@ -321,39 +355,9 @@ def configure_store(
             raise ValueError("user_id is required for postgres")
 
         if test_connection:
-            # Temporarily poke env for the probe without committing yet.
-            prev_backend = os.environ.get("AI_CRASH_FIX_CRASH_STORE_BACKEND")
-            prev_url = os.environ.get("AI_CRASH_FIX_CRASH_DB_URL")
-            prev_uid = os.environ.get("AI_CRASH_FIX_USER_ID")
-            try:
-                os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = "postgres"
-                os.environ["AI_CRASH_FIX_CRASH_DB_URL"] = composed_url
-                os.environ["AI_CRASH_FIX_USER_ID"] = uid
-                from app.services.crash_store import _sync_crash_store_config_from_environ
-                from app.services.crash_store_postgres import check_postgres_crash_store
-
-                _sync_crash_store_config_from_environ()
-                _sync_user_id_config_from_environ()
-                ok, error = check_postgres_crash_store()
-                if not ok:
-                    raise ValueError(error or "Postgres connection failed")
-            finally:
-                if prev_backend is None:
-                    os.environ.pop("AI_CRASH_FIX_CRASH_STORE_BACKEND", None)
-                else:
-                    os.environ["AI_CRASH_FIX_CRASH_STORE_BACKEND"] = prev_backend
-                if prev_url is None:
-                    os.environ.pop("AI_CRASH_FIX_CRASH_DB_URL", None)
-                else:
-                    os.environ["AI_CRASH_FIX_CRASH_DB_URL"] = prev_url
-                if prev_uid is None:
-                    os.environ.pop("AI_CRASH_FIX_USER_ID", None)
-                else:
-                    os.environ["AI_CRASH_FIX_USER_ID"] = prev_uid
-                from app.services.crash_store import _sync_crash_store_config_from_environ
-
-                _sync_crash_store_config_from_environ()
-                _sync_user_id_config_from_environ()
+            ok, error = test_postgres_store(db_url=composed_url, user_id=uid)
+            if not ok:
+                raise ValueError(error or "Postgres connection failed")
 
         save_store_bootstrap(backend="postgres", db_url=composed_url, user_id=uid)
     else:

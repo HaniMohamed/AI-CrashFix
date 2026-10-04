@@ -22,21 +22,12 @@ DMG_BASENAME = "Fixora"
 BACKEND_PROCESS_NAME = f"{PRODUCT_NAME} Backend"
 BACKEND_PROCESS_NAME_LEGACY = "ai_crash_fix_backend"
 MACOS_APP_SUPPORT_DIRNAME = PRODUCT_NAME
-MACOS_APP_SUPPORT_DIRNAME_LEGACY = PRODUCT_NAME_LEGACY
 
 
 def resolve_macos_application_support() -> Path:
-    """Prefer Fixora Application Support; fall back to legacy folder if present."""
+    """Writable Fixora Application Support directory (created on demand by callers)."""
     home = Path.home()
-    fixora = (home / "Library" / "Application Support" / MACOS_APP_SUPPORT_DIRNAME).resolve()
-    legacy = (
-        home / "Library" / "Application Support" / MACOS_APP_SUPPORT_DIRNAME_LEGACY
-    ).resolve()
-    if fixora.is_dir():
-        return fixora
-    if legacy.is_dir():
-        return legacy
-    return fixora
+    return (home / "Library" / "Application Support" / MACOS_APP_SUPPORT_DIRNAME).resolve()
 
 
 def default_data_dir_hint() -> str:

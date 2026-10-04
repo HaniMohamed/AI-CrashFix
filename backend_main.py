@@ -90,12 +90,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # Import late so PyInstaller collects only what it needs.
     import uvicorn  # noqa: WPS433
+    from app.services.backend_logging import uvicorn_log_config
+
+    log_config = uvicorn_log_config(str(args.log_level))
 
     uvicorn.run(
         "app.api.server:app",
         host=args.host,
         port=int(args.port),
         log_level=str(args.log_level),
+        log_config=log_config,
         reload=False,
         access_log=False,
     )

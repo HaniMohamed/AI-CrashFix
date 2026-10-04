@@ -8,9 +8,11 @@ import '../../app/theme/spacing.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/app_version_provider.dart';
 import '../../core/providers/backend_settings_provider.dart';
+import '../../core/api/connectivity_checks.dart';
 import '../../core/providers/repo_effective_config_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import '../../core/providers/setup_status_provider.dart';
+import '../../shared/widgets/connectivity_test_button.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/fixora_mark.dart';
 import '../../shared/widgets/soft_panel.dart';
@@ -370,36 +372,41 @@ class _LlmSectionState extends ConsumerState<_LlmSection> {
   }
 
 
+  Map<String, dynamic> _llmTestBody() {
+    final llm = <String, dynamic>{
+      'provider': _provider,
+      'gemini_model': _geminiModelCtrl.text.trim(),
+      'openai_url': _openaiUrlCtrl.text.trim(),
+      'openai_model': _openaiModelCtrl.text.trim(),
+      'gosi_brain_url': _gosiUrlCtrl.text.trim(),
+      'gosi_brain_model': _gosiModelCtrl.text.trim(),
+      'gosi_brain_oauth_identity_domain_name': _gosiOauthDomainCtrl.text.trim(),
+      'gosi_brain_user_id': _gosiUserIdCtrl.text.trim(),
+      'gosi_brain_temperature': _gosiTemperature,
+      'gosi_brain_streaming': _gosiStreaming,
+    };
+    if (_googleKeyCtrl.text.trim().isNotEmpty) {
+      llm['google_api_key'] = _googleKeyCtrl.text.trim();
+    }
+    if (_openaiKeyCtrl.text.trim().isNotEmpty) {
+      llm['openai_api_key'] = _openaiKeyCtrl.text.trim();
+    }
+    if (_gosiApiKeyCtrl.text.trim().isNotEmpty) {
+      llm['gosi_brain_api_key'] = _gosiApiKeyCtrl.text.trim();
+    }
+    if (_gosiAuthCtrl.text.trim().isNotEmpty) {
+      llm['gosi_brain_authorization'] = _gosiAuthCtrl.text.trim();
+    }
+    return llm;
+  }
+
   Future<void> _save() async {
     setState(() {
       _saving = true;
       _saveMsg = null;
     });
     try {
-      final llm = <String, dynamic>{
-        'provider': _provider,
-        'gemini_model': _geminiModelCtrl.text.trim(),
-        'openai_url': _openaiUrlCtrl.text.trim(),
-        'openai_model': _openaiModelCtrl.text.trim(),
-        'gosi_brain_url': _gosiUrlCtrl.text.trim(),
-        'gosi_brain_model': _gosiModelCtrl.text.trim(),
-        'gosi_brain_oauth_identity_domain_name': _gosiOauthDomainCtrl.text.trim(),
-        'gosi_brain_user_id': _gosiUserIdCtrl.text.trim(),
-        'gosi_brain_temperature': _gosiTemperature,
-        'gosi_brain_streaming': _gosiStreaming,
-      };
-      if (_googleKeyCtrl.text.trim().isNotEmpty) {
-        llm['google_api_key'] = _googleKeyCtrl.text.trim();
-      }
-      if (_openaiKeyCtrl.text.trim().isNotEmpty) {
-        llm['openai_api_key'] = _openaiKeyCtrl.text.trim();
-      }
-      if (_gosiApiKeyCtrl.text.trim().isNotEmpty) {
-        llm['gosi_brain_api_key'] = _gosiApiKeyCtrl.text.trim();
-      }
-      if (_gosiAuthCtrl.text.trim().isNotEmpty) {
-        llm['gosi_brain_authorization'] = _gosiAuthCtrl.text.trim();
-      }
+      final llm = _llmTestBody();
       await ref.read(backendSettingsProvider.notifier).save({'llm': llm});
       _googleKeyCtrl.clear();
       _openaiKeyCtrl.clear();
@@ -623,6 +630,14 @@ class _LlmSectionState extends ConsumerState<_LlmSection> {
                 ),
               ],
               const SizedBox(height: AppSpacing.lg),
+              ConnectivityTestButton(
+                enabled: !s.repoDataReadonly && !_saving,
+                onTest: () => testLlmConnectivity(
+                  ref.read(apiClientProvider),
+                  body: _llmTestBody(),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
               if (_saveMsg != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -719,6 +734,28 @@ class _GlobalIntegrationsSectionState
     }
   }
 
+  Map<String, dynamic> _jiraTestBody() {
+    final body = <String, dynamic>{
+      'server_url': _jiraUrlCtrl.text.trim(),
+      'email': _jiraEmailCtrl.text.trim(),
+      'auth': _jiraAuthCtrl.text.trim(),
+    };
+    if (_jiraTokenCtrl.text.trim().isNotEmpty) {
+      body['token'] = _jiraTokenCtrl.text.trim();
+    }
+    return body;
+  }
+
+  Map<String, dynamic> _gitlabTestBody() {
+    final body = <String, dynamic>{
+      'server_url': _gitlabUrlCtrl.text.trim(),
+    };
+    if (_gitlabTokenCtrl.text.trim().isNotEmpty) {
+      body['token'] = _gitlabTokenCtrl.text.trim();
+    }
+    return body;
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -797,6 +834,14 @@ class _GlobalIntegrationsSectionState
                         : 'Not set',
                   ),
                 ),
+                const SizedBox(height: AppSpacing.md),
+                ConnectivityTestButton(
+                  enabled: !readonly && !_saving,
+                  onTest: () => testJiraConnectivity(
+                    ref.read(apiClientProvider),
+                    body: _jiraTestBody(),
+                  ),
+                ),
                 const SizedBox(height: AppSpacing.lg),
                 Text('GitLab', style: theme.titleMedium),
                 const SizedBox(height: AppSpacing.sm),
@@ -816,6 +861,14 @@ class _GlobalIntegrationsSectionState
                     helperText: gl['has_token'] == true
                         ? 'Token saved (enter new value to replace)'
                         : 'Not set',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                ConnectivityTestButton(
+                  enabled: !readonly && !_saving,
+                  onTest: () => testGitlabConnectivity(
+                    ref.read(apiClientProvider),
+                    body: _gitlabTestBody(),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),

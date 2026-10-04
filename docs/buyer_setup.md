@@ -55,7 +55,7 @@ Each login account has a **machine user ID** (`tenant_user_id`) that scopes priv
 3. Launch Fixora → complete the **Setup Wizard** (mock or production).
 4. Optional: host apps can seed settings once via `AI_CRASH_FIX_ENV_FILE` (see [host_app_launch.md](host_app_launch.md)).
 
-Data directory: `~/Library/Application Support/Fixora/` (legacy installs may still use `AI Crash Fix/`).
+Data directory: `~/Library/Application Support/Fixora/`.
 
 ## Path B — Source / local dev
 

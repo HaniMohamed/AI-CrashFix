@@ -6,7 +6,11 @@ class Endpoints {
   static const String setupProgress = '/api/setup/progress';
   static const String setupUseLocalStore = '/api/setup/use-local-store';
   static const String setupStore = '/api/setup/store';
+  static const String setupTestStore = '/api/setup/test/store';
   static const String settings = '/api/settings';
+  static const String settingsTestLlm = '/api/settings/test/llm';
+  static const String settingsTestJira = '/api/settings/test/jira';
+  static const String settingsTestGitlab = '/api/settings/test/gitlab';
   static const String runs = '/api/runs';
   static const String crashes = '/api/crashes';
   static const String analytics = '/api/analytics';

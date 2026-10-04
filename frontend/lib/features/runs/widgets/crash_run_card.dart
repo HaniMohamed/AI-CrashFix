@@ -202,13 +202,20 @@ class _CrashRunCardState extends ConsumerState<CrashRunCard> {
             Container(height: 1, color: palette.border),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              child: SizedBox(
-                height: 520,
-                child: PipelineGraphView(
-                  events: s.events,
-                  completed: s.completed,
-                  failed: s.failure != null,
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final viewportH = MediaQuery.sizeOf(context).height;
+                  final graphH = (viewportH * 0.52).clamp(360.0, 640.0);
+                  return SizedBox(
+                    height: graphH,
+                    width: constraints.maxWidth,
+                    child: PipelineGraphView(
+                      events: s.events,
+                      completed: s.completed,
+                      failed: s.failure != null,
+                    ),
+                  );
+                },
               ).animate().fadeIn(duration: 220.ms),
             ),
             if (s.failure != null) ...[

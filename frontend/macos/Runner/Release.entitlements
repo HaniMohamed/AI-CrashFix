@@ -4,7 +4,7 @@
 <dict>
 	<!-- Must stay false: sandbox redirects data to
 	     ~/Library/Containers/<bundle-id>/... and hides existing repos under
-	     ~/Library/Application Support/Fixora/ (legacy installs may use AI Crash Fix/). -->
+	     ~/Library/Application Support/Fixora/. -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<key>com.apple.security.network.client</key>

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/theme/motion.dart';
 import '../../../app/theme/spacing.dart';
 import '../../../app/theme/typography.dart';
 import '../../../core/models/run_event.dart';
@@ -13,12 +14,90 @@ import '../../../shared/widgets/json_tree_viewer.dart';
 
 enum _EdgeKind { normal, conditional }
 
-// Shared layout constants (used for both sizing + painting).
-const double _pad = 18;
-const double _nodeW = 190;
-const double _nodeH = 52;
-const double _colGap = 140;
-const double _rowGap = 34;
+/// Viewport-driven spacing so the DAG fits cleanly across screen widths.
+class _LayoutDensity {
+  final double pad;
+  final double nodeW;
+  final double nodeH;
+  final double colGap;
+  final double rowGap;
+  final double bandGap;
+  final double nodeRadius;
+  final double fontSize;
+
+  const _LayoutDensity({
+    required this.pad,
+    required this.nodeW,
+    required this.nodeH,
+    required this.colGap,
+    required this.rowGap,
+    required this.bandGap,
+    required this.nodeRadius,
+    required this.fontSize,
+  });
+
+  static _LayoutDensity forWidth(double width) {
+    if (width < 720) {
+      return const _LayoutDensity(
+        pad: 14,
+        nodeW: 148,
+        nodeH: 44,
+        colGap: 72,
+        rowGap: 22,
+        bandGap: 72,
+        nodeRadius: 12,
+        fontSize: 11.5,
+      );
+    }
+    if (width < 1100) {
+      return const _LayoutDensity(
+        pad: 16,
+        nodeW: 168,
+        nodeH: 48,
+        colGap: 100,
+        rowGap: 28,
+        bandGap: 96,
+        nodeRadius: 13,
+        fontSize: 12,
+      );
+    }
+    return const _LayoutDensity(
+      pad: 18,
+      nodeW: 190,
+      nodeH: 52,
+      colGap: 140,
+      rowGap: 34,
+      bandGap: 120,
+      nodeRadius: 14,
+      fontSize: 13,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _LayoutDensity &&
+          pad == other.pad &&
+          nodeW == other.nodeW &&
+          nodeH == other.nodeH &&
+          colGap == other.colGap &&
+          rowGap == other.rowGap &&
+          bandGap == other.bandGap &&
+          nodeRadius == other.nodeRadius &&
+          fontSize == other.fontSize;
+
+  @override
+  int get hashCode => Object.hash(
+        pad,
+        nodeW,
+        nodeH,
+        colGap,
+        rowGap,
+        bandGap,
+        nodeRadius,
+        fontSize,
+      );
+}
 
 class _GraphNode {
   final String id;
@@ -86,12 +165,7 @@ class PipelineGraphView extends StatefulWidget {
 class _PipelineGraphViewState extends State<PipelineGraphView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _flowCtrl;
-  final TransformationController _xform = TransformationController();
-  Size? _lastViewport;
-  bool _didInitTransform = false;
-  double _minScale = 0.5;
-  Matrix4? _fitMatrix;
-  bool _clamping = false;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -99,26 +173,39 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     _flowCtrl = AnimationController(
       vsync: this,
       duration: 1400.ms,
-    )..repeat();
-    _xform.addListener(_clampToFitMinScale);
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotion();
   }
 
   @override
   void didUpdateWidget(covariant PipelineGraphView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final animate = !(widget.completed || widget.failed);
-    if (animate) {
+    _syncMotion();
+  }
+
+  void _syncMotion() {
+    final reduce = AppMotion.reduceMotion(context);
+    _reduceMotion = reduce;
+    final shouldAnimate =
+        !reduce && !(widget.completed || widget.failed);
+    if (shouldAnimate) {
       if (!_flowCtrl.isAnimating) _flowCtrl.repeat();
     } else {
       if (_flowCtrl.isAnimating) _flowCtrl.stop();
+      if (reduce && _flowCtrl.value != 0) {
+        _flowCtrl.value = 0;
+      }
     }
   }
 
   @override
   void dispose() {
     _flowCtrl.dispose();
-    _xform.removeListener(_clampToFitMinScale);
-    _xform.dispose();
     super.dispose();
   }
 
@@ -127,7 +214,9 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     final palette = context.palette;
     final theme = Theme.of(context).textTheme;
     final model = _buildModel(widget.events);
-    final animateFlow = !(widget.completed || widget.failed) && model.hasInFlight;
+    final animateFlow = !_reduceMotion &&
+        !(widget.completed || widget.failed) &&
+        model.hasInFlight;
 
     if (model.nodes.isEmpty) {
       return Container(
@@ -149,6 +238,7 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
         : (widget.completed ? palette.success : palette.primary);
 
     final latestSnapshot = _latestStateSnapshot(widget.events);
+    final isRunning = !(widget.completed || widget.failed);
 
     return Container(
       decoration: BoxDecoration(
@@ -160,10 +250,25 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
         borderRadius: AppRadii.all(AppRadii.md),
         child: Stack(
           children: [
+            // Full-bleed atmosphere so the fitted graph never shows as a nested box.
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _flowCtrl,
+                builder: (ctx, _) => CustomPaint(
+                  painter: _AtmospherePainter(
+                    palette: palette,
+                    t: _flowCtrl.value,
+                    reduceMotion: _reduceMotion,
+                  ),
+                ),
+              ),
+            ),
             Positioned.fill(
               child: LayoutBuilder(
                 builder: (ctx, c) {
-                  final layout = _fixedLayoutForIds(model.nodes.map((e) => e.id).toSet());
+                  final density = _LayoutDensity.forWidth(c.maxWidth);
+                  final layout =
+                      _fixedLayoutForIds(model.nodes.map((e) => e.id).toSet());
                   final fallback = [
                     model.nodes.map((e) => e.id).toList()..sort(),
                   ];
@@ -171,73 +276,47 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
 
                   double bandWidth(List<List<String>> cols) {
                     final maxLevel = cols.length - 1;
-                    return _pad * 2 +
-                        cols.length * _nodeW +
-                        math.max(0, maxLevel) * _colGap;
+                    return density.pad * 2 +
+                        cols.length * density.nodeW +
+                        math.max(0, maxLevel) * density.colGap;
                   }
 
                   double bandHeight(List<List<String>> cols) {
-                    final maxRows = cols.fold<int>(0, (m, b) => math.max(m, b.length));
-                    return _pad * 2 +
-                        maxRows * _nodeH +
-                        math.max(0, maxRows - 1) * _rowGap;
+                    final maxRows =
+                        cols.fold<int>(0, (m, b) => math.max(m, b.length));
+                    return density.pad * 2 +
+                        maxRows * density.nodeH +
+                        math.max(0, maxRows - 1) * density.rowGap;
                   }
 
                   final widths = bands.map((b) => bandWidth(b)).toList();
                   final heights = bands.map((b) => bandHeight(b)).toList();
-                  final neededW = widths.fold<double>(0, (m, v) => math.max(m, v));
-                  const bandGap = 120.0;
-                  final neededH =
-                      heights.fold<double>(0, (s, v) => s + v) +
-                          bandGap * math.max(0, bands.length - 1) +
-                          56; // room for the status pill overlay
+                  final canvasW =
+                      widths.fold<double>(0, (m, v) => math.max(m, v));
+                  final canvasH = heights.fold<double>(0, (s, v) => s + v) +
+                      density.bandGap * math.max(0, bands.length - 1) +
+                      56; // room for the status pill overlay
 
-                  // Canvas is the full graph; viewport is the card.
-                  final canvasW = neededW;
-                  final canvasH = neededH;
-
-                  // Auto-fit the full graph into the current viewport once.
-                  final viewport = Size(c.maxWidth, c.maxHeight);
-                  if (!_didInitTransform || _lastViewport != viewport) {
-                    _lastViewport = viewport;
-                    final sx = viewport.width / canvasW;
-                    final sy = viewport.height / canvasH;
-                    final s = math.min(1.0, math.max(0.35, math.min(sx, sy)));
-                    _minScale = s;
-                    final dx = (viewport.width - canvasW * s) / 2;
-                    final dy = (viewport.height - canvasH * s) / 2;
-                    _fitMatrix = Matrix4.identity()
-                      ..translateByDouble(dx, dy, 0, 1)
-                      ..scaleByDouble(s, s, 1, 1);
-                    _xform.value = _fitMatrix!.clone();
-                    _didInitTransform = true;
-                  }
-
-                  return InteractiveViewer(
-                    transformationController: _xform,
-                    minScale: _minScale,
-                    maxScale: 3.2,
-                    boundaryMargin: const EdgeInsets.all(480),
-                    constrained: true,
-                    panEnabled: false,
-                    scaleEnabled: false,
-                    child: Align(
-                      alignment: Alignment.topLeft,
-                      child: RepaintBoundary(
-                        child: AnimatedBuilder(
-                          animation: _flowCtrl,
-                          builder: (ctx, _) => SizedBox(
-                            width: canvasW,
-                            height: canvasH,
-                            child: CustomPaint(
-                              painter: _PipelineGraphPainter(
-                                palette: palette,
-                                theme: theme,
-                                model: model,
-                                t: _flowCtrl.value,
-                                statusColor: statusColor,
-                                animateFlow: animateFlow,
-                              ),
+                  // Fit without InteractiveViewer — no scroll-wheel zoom / pan.
+                  return FittedBox(
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
+                    child: RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: _flowCtrl,
+                        builder: (ctx, _) => SizedBox(
+                          width: canvasW,
+                          height: canvasH,
+                          child: CustomPaint(
+                            painter: _PipelineGraphPainter(
+                              palette: palette,
+                              theme: theme,
+                              model: model,
+                              density: density,
+                              t: _flowCtrl.value,
+                              statusColor: statusColor,
+                              animateFlow: animateFlow,
+                              reduceMotion: _reduceMotion,
                             ),
                           ),
                         ),
@@ -250,39 +329,70 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
             Positioned(
               left: AppSpacing.md,
               top: AppSpacing.md,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: palette.surface2.withValues(alpha: 0.9),
-                  border: Border.all(color: palette.border),
-                  borderRadius: AppRadii.all(AppRadii.pill),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: statusColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: statusColor.withValues(alpha: 0.55),
-                            blurRadius: 10,
-                          ),
-                        ],
+              child: AnimatedBuilder(
+                animation: _flowCtrl,
+                builder: (ctx, _) {
+                  final pulse = isRunning && !_reduceMotion
+                      ? 0.55 + 0.45 * math.sin(_flowCtrl.value * math.pi * 2)
+                      : 1.0;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: palette.surface2.withValues(alpha: 0.92),
+                      border: Border.all(
+                        color: isRunning
+                            ? statusColor.withValues(alpha: 0.35 * pulse)
+                            : palette.border,
                       ),
+                      borderRadius: AppRadii.all(AppRadii.pill),
+                      boxShadow: isRunning
+                          ? [
+                              BoxShadow(
+                                color: statusColor.withValues(
+                                  alpha: 0.12 * pulse,
+                                ),
+                                blurRadius: 12,
+                              ),
+                            ]
+                          : null,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      widget.failed
-                          ? 'pipeline failed'
-                          : (widget.completed ? 'pipeline completed' : 'pipeline running'),
-                      style: theme.labelMedium?.copyWith(color: palette.textSecondary),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: statusColor.withValues(
+                                  alpha: 0.55 * pulse,
+                                ),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.failed
+                              ? 'pipeline failed'
+                              : (widget.completed
+                                  ? 'pipeline completed'
+                                  : 'pipeline running'),
+                          style: theme.labelMedium?.copyWith(
+                            color: palette.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
             if (latestSnapshot != null && latestSnapshot.isNotEmpty)
@@ -315,18 +425,6 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     return null;
   }
 
-  void _clampToFitMinScale() {
-    if (_clamping) return;
-    final fit = _fitMatrix;
-    if (fit == null) return;
-    final currentScale = _xform.value.getMaxScaleOnAxis();
-    if (currentScale + 1e-6 < _minScale) {
-      _clamping = true;
-      _xform.value = fit.clone();
-      _clamping = false;
-    }
-  }
-
   void _showState(BuildContext context, Map<String, dynamic> state) {
     final palette = context.palette;
     final pretty = const JsonEncoder.withIndent('  ').convert(state);
@@ -353,7 +451,8 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
                     IconButton(
                       tooltip: 'Copy JSON',
                       icon: const Icon(Icons.copy, size: 18),
-                      onPressed: () => Clipboard.setData(ClipboardData(text: pretty)),
+                      onPressed: () =>
+                          Clipboard.setData(ClipboardData(text: pretty)),
                     ),
                     IconButton(
                       onPressed: () => Navigator.of(ctx).pop(),
@@ -394,7 +493,11 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     _GraphNode(id: 'llm_analysis', label: 'LLM analysis', isRouter: false),
     _GraphNode(id: 'route_after_llm_analysis', label: 'Route', isRouter: true),
     _GraphNode(id: 'jira_create', label: 'Create Jira', isRouter: false),
-    _GraphNode(id: 'mark_skipped_no_mapped_frames', label: 'Skipped (no frames)', isRouter: false),
+    _GraphNode(
+      id: 'mark_skipped_no_mapped_frames',
+      label: 'Skipped (no frames)',
+      isRouter: false,
+    ),
     // Note: we intentionally do NOT render the parent "fix_generation" wrapper
     // node; the subgraph nodes below are the actual pipeline steps.
 
@@ -410,7 +513,11 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
 
   static const List<_GraphEdge> _specEdges = [
     // Main flow
-    _GraphEdge(from: 'map_stacktrace', to: 'route_after_map_stacktrace', kind: _EdgeKind.normal),
+    _GraphEdge(
+      from: 'map_stacktrace',
+      to: 'route_after_map_stacktrace',
+      kind: _EdgeKind.normal,
+    ),
     _GraphEdge(
       from: 'route_after_map_stacktrace',
       to: 'repo_context',
@@ -425,9 +532,21 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
       label: 'no frames',
       routerId: 'route_after_map_stacktrace',
     ),
-    _GraphEdge(from: 'repo_context', to: 'git_regression', kind: _EdgeKind.normal),
-    _GraphEdge(from: 'git_regression', to: 'llm_analysis', kind: _EdgeKind.normal),
-    _GraphEdge(from: 'llm_analysis', to: 'route_after_llm_analysis', kind: _EdgeKind.normal),
+    _GraphEdge(
+      from: 'repo_context',
+      to: 'git_regression',
+      kind: _EdgeKind.normal,
+    ),
+    _GraphEdge(
+      from: 'git_regression',
+      to: 'llm_analysis',
+      kind: _EdgeKind.normal,
+    ),
+    _GraphEdge(
+      from: 'llm_analysis',
+      to: 'route_after_llm_analysis',
+      kind: _EdgeKind.normal,
+    ),
     _GraphEdge(
       from: 'route_after_llm_analysis',
       to: 'generate_fix',
@@ -446,7 +565,11 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
     _GraphEdge(from: 'jira_create', to: 'generate_fix', kind: _EdgeKind.normal),
     _GraphEdge(from: 'generate_fix', to: 'review_fix', kind: _EdgeKind.normal),
     _GraphEdge(from: 'review_fix', to: 'validate_fix', kind: _EdgeKind.normal),
-    _GraphEdge(from: 'validate_fix', to: 'route_after_validate_fix', kind: _EdgeKind.normal),
+    _GraphEdge(
+      from: 'validate_fix',
+      to: 'route_after_validate_fix',
+      kind: _EdgeKind.normal,
+    ),
     _GraphEdge(
       from: 'route_after_validate_fix',
       to: 'generate_pr',
@@ -612,21 +735,75 @@ class _PipelineGraphViewState extends State<PipelineGraphView>
   }
 }
 
+/// Full-bleed grid / vignette behind the fitted graph (avoids a nested canvas box).
+class _AtmospherePainter extends CustomPainter {
+  final AppPalette palette;
+  final double t;
+  final bool reduceMotion;
+
+  _AtmospherePainter({
+    required this.palette,
+    required this.t,
+    required this.reduceMotion,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Soft vignette that covers the entire host, not the scaled graph canvas.
+    final vignette = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(0, -0.12),
+        radius: 1.2,
+        colors: [
+          palette.surface1.withValues(alpha: 0.0),
+          Colors.black.withValues(alpha: 0.18),
+        ],
+        stops: const [0.55, 1.0],
+      ).createShader(Offset.zero & size);
+    canvas.drawRect(Offset.zero & size, vignette);
+
+    final breath = reduceMotion
+        ? 1.0
+        : (0.78 + 0.22 * math.sin(t * math.pi * 2));
+    final paint = Paint()
+      ..color = palette.border.withValues(alpha: 0.06 * breath)
+      ..strokeWidth = 1;
+    const step = 48.0;
+    for (double x = 0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AtmospherePainter oldDelegate) {
+    return oldDelegate.t != t ||
+        oldDelegate.palette != palette ||
+        oldDelegate.reduceMotion != reduceMotion;
+  }
+}
+
 class _PipelineGraphPainter extends CustomPainter {
   final AppPalette palette;
   final TextTheme theme;
   final _GraphModel model;
+  final _LayoutDensity density;
   final double t;
   final Color statusColor;
   final bool animateFlow;
+  final bool reduceMotion;
 
   _PipelineGraphPainter({
     required this.palette,
     required this.theme,
     required this.model,
+    required this.density,
     required this.t,
     required this.statusColor,
     required this.animateFlow,
+    required this.reduceMotion,
   });
 
   @override
@@ -644,9 +821,6 @@ class _PipelineGraphPainter extends CustomPainter {
 
     final nodeRects = <String, RRect>{};
 
-    // Paint subtle grid background.
-    _paintGrid(canvas, size);
-
     if (fixed == null) {
       final buckets = [
         // Fallback: bucket everything by id (single column).
@@ -662,14 +836,25 @@ class _PipelineGraphPainter extends CustomPainter {
       final a = nodeRects[e.from];
       final b = nodeRects[e.to];
       if (a == null || b == null) continue;
-      _paintEdge(canvas, a, b, e, isActive: model.activeEdge == e);
+      final isCompletedPath = model.completed.contains(e.from) &&
+          (model.completed.contains(e.to) ||
+              model.started.contains(e.to) ||
+              e.to == model.currentNodeId);
+      _paintEdge(
+        canvas,
+        a,
+        b,
+        e,
+        isActive: model.activeEdge == e,
+        isCompletedPath: isCompletedPath,
+      );
     }
 
     // Nodes.
     for (final n in nodes) {
       final rr = nodeRects[n.id];
       if (rr == null) continue;
-      final isCurrent = n.id == model.currentNodeId;
+      final isCurrent = n.id == model.currentNodeId && model.hasInFlight;
       final isCompleted = model.completed.contains(n.id);
       final isErrored = model.errored.contains(n.id);
       final isStarted = model.started.contains(n.id);
@@ -684,107 +869,148 @@ class _PipelineGraphPainter extends CustomPainter {
       );
     }
 
-    // Flow dot on active edge.
+    // Comet trail on active edge.
     final ae = animateFlow ? model.activeEdge : null;
     if (ae != null) {
       final a = nodeRects[ae.from];
       final b = nodeRects[ae.to];
       if (a != null && b != null) {
-        _paintFlowDot(canvas, a, b, ae);
+        _paintCometTrail(canvas, a, b, ae);
       }
     }
   }
 
-  void _paintGrid(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = palette.border.withValues(alpha: 0.10)
-      ..strokeWidth = 1;
-    const step = 64.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  void _paintNode(Canvas canvas, RRect rr, _GraphNode node,
-      {required bool isCurrent,
-      required bool isCompleted,
-      required bool isErrored,
-      required bool isStarted}) {
+  void _paintNode(
+    Canvas canvas,
+    RRect rr,
+    _GraphNode node, {
+    required bool isCurrent,
+    required bool isCompleted,
+    required bool isErrored,
+    required bool isStarted,
+  }) {
     final baseFill = node.isRouter ? palette.surface2 : palette.surface1;
     final border = node.isRouter ? palette.secondary : palette.border;
-    final glow = isCurrent ? statusColor : null;
 
     // Future nodes (not started yet) should be dimmed.
     final future = !(isStarted || isCompleted || isErrored || isCurrent);
-    final dim = future ? 0.45 : 1.0;
+    final dim = future ? 0.48 : 1.0;
 
-    if (glow != null) {
-      final pulse = 0.6 + 0.4 * math.sin(t * math.pi * 2);
-      final glowPaint = Paint()
-        ..color = glow.withValues(alpha: 0.15 * pulse)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
-      canvas.drawRRect(rr.inflate(4 + 3 * pulse), glowPaint);
+    if (isCurrent) {
+      final pulse = reduceMotion
+          ? 0.85
+          : (0.55 + 0.45 * math.sin(t * math.pi * 2));
+      // Outer glow
+      canvas.drawRRect(
+        rr.inflate(8 + 4 * pulse),
+        Paint()
+          ..color = statusColor.withValues(alpha: 0.10 * pulse)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22),
+      );
+      // Inner halo
+      canvas.drawRRect(
+        rr.inflate(3 + 2 * pulse),
+        Paint()
+          ..color = (palette.glow).withValues(alpha: 0.18 * pulse)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+      );
+    } else if (isErrored && !reduceMotion) {
+      final pulse = 0.7 + 0.3 * math.sin(t * math.pi * 2);
+      canvas.drawRRect(
+        rr.inflate(3),
+        Paint()
+          ..color = palette.danger.withValues(alpha: 0.08 * pulse)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+      );
     }
 
-    final fillPaint = Paint()..color = baseFill.withValues(alpha: dim);
-    canvas.drawRRect(rr, fillPaint);
+    // Soft glass fill.
+    canvas.drawRRect(
+      rr,
+      Paint()..color = baseFill.withValues(alpha: dim * 0.96),
+    );
+    // Top sheen for non-future nodes.
+    if (!future) {
+      final sheen = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: 0.04 * dim),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+        ).createShader(rr.outerRect);
+      canvas.drawRRect(rr, sheen);
+    }
 
     final Color stateBorderColor = isErrored
         ? palette.danger
-        : (isCompleted ? palette.success : (isCurrent ? statusColor : border));
-    final borderPaint = Paint()
-      ..color = stateBorderColor.withValues(alpha: dim == 1.0 ? 1.0 : 0.8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = isCurrent ? 2.2 : 1.2;
-    canvas.drawRRect(rr, borderPaint);
+        : (isCompleted
+            ? palette.success
+            : (isCurrent
+                ? statusColor
+                : (future ? border.withValues(alpha: 0.7) : border)));
+    final borderWidth = isCurrent ? 2.4 : (isCompleted || isErrored ? 1.6 : 1.15);
+    canvas.drawRRect(
+      rr,
+      Paint()
+        ..color = stateBorderColor.withValues(alpha: dim == 1.0 ? 1.0 : 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = borderWidth,
+    );
 
-    // If current, we render a badge on the right side; reserve width so it
-    // never overlaps the node label.
-    TextPainter? badge;
-    double reservedRight = 0;
-    if (isCurrent) {
-      badge = TextPainter(
-        text: TextSpan(
-          text: 'CURRENT',
-          style: theme.labelSmall?.copyWith(
-            color: statusColor,
-            letterSpacing: 0.8,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      const padX = 8.0;
-      reservedRight = badge.width + padX * 2 + 12; // badge + padding + gap
+    // Breathing progress ring for current node.
+    if (isCurrent && !reduceMotion) {
+      final ringPulse = 0.4 + 0.6 * math.sin(t * math.pi * 2);
+      canvas.drawRRect(
+        rr.inflate(1.5),
+        Paint()
+          ..color = statusColor.withValues(alpha: 0.22 * ringPulse)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
     }
 
-    // Title text.
+    // Title text — full width (CURRENT badge floats above).
     final textPainter = TextPainter(
       text: TextSpan(
         text: node.label,
         style: AppTypography.mono(
           color: palette.text.withValues(alpha: dim),
-          size: 13,
+          size: density.fontSize,
         ),
       ),
       maxLines: 2,
       ellipsis: '…',
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: math.max(20, rr.width - 42 - reservedRight));
+    )..layout(maxWidth: math.max(20, rr.width - 42));
 
     final iconPaint = Paint()
       ..color = (isErrored
               ? palette.danger
-              : (isCompleted ? palette.success : (node.isRouter ? palette.secondary : palette.primary)))
+              : (isCompleted
+                  ? palette.success
+                  : (node.isRouter ? palette.secondary : palette.primary)))
           .withValues(alpha: dim);
     final iconCenter = Offset(rr.left + 14, rr.top + rr.height / 2);
-    final iconSize = 10.0;
-    // Simple circle/icon marker (avoid IconPainter overhead in CustomPainter).
+    const iconSize = 10.0;
     canvas.drawCircle(iconCenter, iconSize / 2.2, iconPaint);
-    if (node.isRouter) {
+
+    if (isCompleted) {
+      // Tiny checkmark in the status disc.
+      final check = Paint()
+        ..color = palette.surface2.withValues(alpha: dim)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round;
+      canvas.drawPath(
+        Path()
+          ..moveTo(iconCenter.dx - 2.4, iconCenter.dy)
+          ..lineTo(iconCenter.dx - 0.4, iconCenter.dy + 2.0)
+          ..lineTo(iconCenter.dx + 2.8, iconCenter.dy - 2.2),
+        check,
+      );
+    } else if (node.isRouter) {
       final p = Paint()
         ..color = palette.surface2.withValues(alpha: dim)
         ..strokeWidth = 2;
@@ -799,15 +1025,28 @@ class _PipelineGraphPainter extends CustomPainter {
     final ty = rr.top + (rr.height - textPainter.height) / 2;
     textPainter.paint(canvas, Offset(tx, ty));
 
+    // Floating CURRENT badge above the node.
     if (isCurrent) {
-      final padX = 8.0;
-      final padY = 4.0;
-      final bW = (badge?.width ?? 0) + padX * 2;
-      final bH = (badge?.height ?? 0) + padY * 2;
+      final badge = TextPainter(
+        text: TextSpan(
+          text: 'CURRENT',
+          style: theme.labelSmall?.copyWith(
+            color: statusColor,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w600,
+            fontSize: 10,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      const padX = 8.0;
+      const padY = 3.5;
+      final bW = badge.width + padX * 2;
+      final bH = badge.height + padY * 2;
       final bRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
-          rr.right - bW - 10,
-          rr.top + (rr.height - bH) / 2,
+          rr.left + (rr.width - bW) / 2,
+          rr.top - bH - 6,
           bW,
           bH,
         ),
@@ -815,54 +1054,73 @@ class _PipelineGraphPainter extends CustomPainter {
       );
       canvas.drawRRect(
         bRect,
-        Paint()..color = statusColor.withValues(alpha: 0.10),
+        Paint()..color = statusColor.withValues(alpha: 0.12),
       );
       canvas.drawRRect(
         bRect,
         Paint()
-          ..color = statusColor.withValues(alpha: 0.35)
+          ..color = statusColor.withValues(alpha: 0.45)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1,
       );
-      badge?.paint(canvas, Offset(bRect.left + padX, bRect.top + padY));
+      badge.paint(canvas, Offset(bRect.left + padX, bRect.top + padY));
     }
   }
 
-  void _paintEdge(Canvas canvas, RRect from, RRect to, _GraphEdge e,
-      {required bool isActive}) {
-    final _EdgeGeom geom = _edgePath(from, to, e);
+  void _paintEdge(
+    Canvas canvas,
+    RRect from,
+    RRect to,
+    _GraphEdge e, {
+    required bool isActive,
+    required bool isCompletedPath,
+  }) {
+    final geom = _edgePath(from, to, e);
     final path = geom.path;
     final tanAnchor = geom.tangentAnchor;
 
     final baseColor = e.kind == _EdgeKind.conditional
         ? palette.secondary
         : palette.border;
-    final color = isActive
-        ? statusColor.withValues(alpha: 0.95)
-        : baseColor.withValues(alpha: 0.9);
+    Color color;
+    if (isActive) {
+      color = statusColor.withValues(alpha: 0.95);
+    } else if (isCompletedPath) {
+      color = palette.success.withValues(alpha: 0.72);
+    } else {
+      color = baseColor.withValues(alpha: 0.85);
+    }
 
     final isCrossBand = geom.kind == _EdgeRouteKind.crossBand;
     final thickness = isActive
-        ? 2.2
-        : (isCrossBand ? 2.0 : 1.4);
+        ? 2.6
+        : (isCompletedPath ? 2.0 : (isCrossBand ? 2.0 : 1.35));
 
-    // Slight glow on the important cross-band connectors (Jira → Fix gen → Generate fix).
-    if (isCrossBand) {
-      final glowPaint = Paint()
-        ..color = (isActive ? statusColor : palette.primary).withValues(alpha: 0.10)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = thickness + 6
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
-      canvas.drawPath(path, glowPaint);
+    // Soft outer glow for active / completed / cross-band edges.
+    if (isActive || isCompletedPath || isCrossBand) {
+      final glowColor = isActive
+          ? statusColor
+          : (isCompletedPath ? palette.success : palette.primary);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = glowColor.withValues(alpha: isActive ? 0.22 : 0.10)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = thickness + (isActive ? 8 : 5)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10)
+          ..strokeCap = StrokeCap.round,
+      );
     }
 
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = thickness;
+      ..strokeWidth = thickness
+      ..strokeCap = StrokeCap.round;
 
     if (e.kind == _EdgeKind.conditional) {
-      _drawDashedPath(canvas, path, paint, dash: 8, gap: 6);
+      final phase = (reduceMotion || !animateFlow) ? 0.0 : t * 14;
+      _drawDashedPath(canvas, path, paint, dash: 8, gap: 6, phase: phase);
     } else {
       canvas.drawPath(path, paint);
     }
@@ -871,8 +1129,10 @@ class _PipelineGraphPainter extends CustomPainter {
     final end = geom.end;
     final tan = _tangentAtEnd(tanAnchor, end);
     final arrowP = end;
-    final a1 = arrowP - Offset(tan.dx, tan.dy) * 10 + Offset(-tan.dy, tan.dx) * 4;
-    final a2 = arrowP - Offset(tan.dx, tan.dy) * 10 + Offset(tan.dy, -tan.dx) * 4;
+    final a1 =
+        arrowP - Offset(tan.dx, tan.dy) * 10 + Offset(-tan.dy, tan.dx) * 4;
+    final a2 =
+        arrowP - Offset(tan.dx, tan.dy) * 10 + Offset(tan.dy, -tan.dx) * 4;
     final arrow = Path()
       ..moveTo(arrowP.dx, arrowP.dy)
       ..lineTo(a1.dx, a1.dy)
@@ -881,7 +1141,6 @@ class _PipelineGraphPainter extends CustomPainter {
     canvas.drawPath(arrow, Paint()..color = color);
 
     if (e.kind == _EdgeKind.conditional && e.label != null) {
-      // Place label near the middle of the rendered path (works for loops too).
       Offset mid = Offset(
         (from.center.dx + to.center.dx) / 2,
         (from.center.dy + to.center.dy) / 2,
@@ -897,6 +1156,7 @@ class _PipelineGraphPainter extends CustomPainter {
           text: e.label,
           style: theme.labelSmall?.copyWith(
             color: palette.textSecondary,
+            fontSize: density.fontSize - 1.5,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -904,11 +1164,18 @@ class _PipelineGraphPainter extends CustomPainter {
         ellipsis: '…',
       )..layout(maxWidth: 140);
       final bg = RRect.fromRectAndRadius(
-        Rect.fromLTWH(mid.dx - tp.width / 2 - 6, mid.dy - tp.height / 2 - 4,
-            tp.width + 12, tp.height + 8),
+        Rect.fromLTWH(
+          mid.dx - tp.width / 2 - 6,
+          mid.dy - tp.height / 2 - 4,
+          tp.width + 12,
+          tp.height + 8,
+        ),
         const Radius.circular(999),
       );
-      canvas.drawRRect(bg, Paint()..color = palette.surface2.withValues(alpha: 0.86));
+      canvas.drawRRect(
+        bg,
+        Paint()..color = palette.surface2.withValues(alpha: 0.88),
+      );
       canvas.drawRRect(
         bg,
         Paint()
@@ -920,24 +1187,58 @@ class _PipelineGraphPainter extends CustomPainter {
     }
   }
 
-  void _paintFlowDot(Canvas canvas, RRect from, RRect to, _GraphEdge e) {
+  void _paintCometTrail(Canvas canvas, RRect from, RRect to, _GraphEdge e) {
     final geom = _edgePath(from, to, e);
     final metrics = geom.path.computeMetrics().toList();
-    Offset dotPos = Offset((from.left + to.left) / 2, (from.top + to.top) / 2);
-    if (metrics.isNotEmpty) {
-      final m = metrics.first;
-      final pos = m.getTangentForOffset(m.length * t);
-      if (pos != null) dotPos = pos.position;
+    if (metrics.isEmpty) return;
+    final m = metrics.first;
+    if (m.length <= 0) return;
+
+    const trailCount = 6;
+    const spacing = 0.035;
+
+    for (var i = trailCount - 1; i >= 0; i--) {
+      final frac = (t - i * spacing) % 1.0;
+      final pos = m.getTangentForOffset(m.length * frac);
+      if (pos == null) continue;
+      final fade = 1.0 - (i / trailCount);
+      final radius = 1.4 + 2.4 * fade;
+      canvas.drawCircle(
+        pos.position,
+        radius + 2.5,
+        Paint()
+          ..color = statusColor.withValues(alpha: 0.18 * fade)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+      canvas.drawCircle(
+        pos.position,
+        radius,
+        Paint()..color = statusColor.withValues(alpha: 0.35 + 0.55 * fade),
+      );
     }
-    final alpha = 0.35 + 0.65 * math.sin((t * math.pi * 2));
-    canvas.drawCircle(
-      dotPos,
-      4.2,
-      Paint()
-        ..color = statusColor.withValues(alpha: alpha)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
-    canvas.drawCircle(dotPos, 2.6, Paint()..color = statusColor);
+
+    // Bright head.
+    final head = m.getTangentForOffset(m.length * t);
+    if (head != null) {
+      final alpha = 0.45 + 0.55 * math.sin(t * math.pi * 2);
+      canvas.drawCircle(
+        head.position,
+        5.5,
+        Paint()
+          ..color = palette.glow.withValues(alpha: 0.35 * alpha)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+      );
+      canvas.drawCircle(
+        head.position,
+        3.0,
+        Paint()..color = statusColor.withValues(alpha: 0.95),
+      );
+      canvas.drawCircle(
+        head.position,
+        1.3,
+        Paint()..color = Colors.white.withValues(alpha: 0.85),
+      );
+    }
   }
 
   Offset _tangentAtEnd(Offset p2, Offset p3) {
@@ -953,14 +1254,23 @@ class _PipelineGraphPainter extends CustomPainter {
     Paint paint, {
     required double dash,
     required double gap,
+    double phase = 0,
   }) {
     for (final metric in path.computeMetrics()) {
-      var dist = 0.0;
+      final period = dash + gap;
+      var dist = phase % period;
+      if (dist < 0) dist += period;
+      // If phase lands in a gap, skip to next dash start.
+      if (dist > dash) {
+        dist = dist - period;
+      }
       while (dist < metric.length) {
-        final a = dist;
+        final a = math.max(0.0, dist);
         final b = math.min(dist + dash, metric.length);
-        canvas.drawPath(metric.extractPath(a, b), paint);
-        dist += dash + gap;
+        if (b > a) {
+          canvas.drawPath(metric.extractPath(a, b), paint);
+        }
+        dist += period;
       }
     }
   }
@@ -970,7 +1280,10 @@ class _PipelineGraphPainter extends CustomPainter {
     return oldDelegate.model != model ||
         oldDelegate.t != t ||
         oldDelegate.statusColor != statusColor ||
-        oldDelegate.palette != palette;
+        oldDelegate.palette != palette ||
+        oldDelegate.animateFlow != animateFlow ||
+        oldDelegate.reduceMotion != reduceMotion ||
+        oldDelegate.density != density;
   }
 
   void _layoutBucketsSingleBand(
@@ -979,19 +1292,22 @@ class _PipelineGraphPainter extends CustomPainter {
     Map<String, RRect> out,
   ) {
     final maxLevel = buckets.length - 1;
-    final totalW = _pad * 2 + buckets.length * _nodeW + maxLevel * _colGap;
-    final x0 = math.max(_pad, (size.width - totalW) / 2);
+    final totalW = density.pad * 2 +
+        buckets.length * density.nodeW +
+        maxLevel * density.colGap;
+    final x0 = math.max(density.pad, (size.width - totalW) / 2);
     for (var col = 0; col < buckets.length; col++) {
       final ids = buckets[col];
-      final colH = ids.length * _nodeH + math.max(0, ids.length - 1) * _rowGap;
-      final y0 = math.max(_pad + 26, (size.height - colH) / 2);
+      final colH = ids.length * density.nodeH +
+          math.max(0, ids.length - 1) * density.rowGap;
+      final y0 = math.max(density.pad + 26, (size.height - colH) / 2);
       for (var row = 0; row < ids.length; row++) {
         final id = ids[row];
-        final x = x0 + col * (_nodeW + _colGap);
-        final y = y0 + row * (_nodeH + _rowGap);
+        final x = x0 + col * (density.nodeW + density.colGap);
+        final y = y0 + row * (density.nodeH + density.rowGap);
         out[id] = RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, y, _nodeW, _nodeH),
-          const Radius.circular(14),
+          Rect.fromLTWH(x, y, density.nodeW, density.nodeH),
+          Radius.circular(density.nodeRadius),
         );
       }
     }
@@ -1002,34 +1318,34 @@ class _PipelineGraphPainter extends CustomPainter {
     List<List<List<String>>> bands,
     Map<String, RRect> out,
   ) {
-    const bandGap = 120.0;
-
     double bandWidth(List<List<String>> b) {
       final maxLevel = b.length - 1;
-      return _pad * 2 + b.length * _nodeW + math.max(0, maxLevel) * _colGap;
+      return density.pad * 2 +
+          b.length * density.nodeW +
+          math.max(0, maxLevel) * density.colGap;
     }
 
     double bandHeight(List<List<String>> b) {
       final maxRows = b.fold<int>(0, (m, c) => math.max(m, c.length));
-      return _pad * 2 +
-          maxRows * _nodeH +
-          math.max(0, maxRows - 1) * _rowGap;
+      return density.pad * 2 +
+          maxRows * density.nodeH +
+          math.max(0, maxRows - 1) * density.rowGap;
     }
 
     final widths = bands.map(bandWidth).toList();
     final heights = bands.map(bandHeight).toList();
     final maxW = widths.fold<double>(0, (m, v) => math.max(m, v));
-    final x0 = math.max(_pad, (size.width - maxW) / 2);
+    final x0 = math.max(density.pad, (size.width - maxW) / 2);
 
     final totalH = heights.fold<double>(0, (s, v) => s + v) +
-        bandGap * math.max(0, bands.length - 1);
-    final yStart = math.max(_pad + 26, (size.height - totalH) / 2);
+        density.bandGap * math.max(0, bands.length - 1);
+    final yStart = math.max(density.pad + 26, (size.height - totalH) / 2);
 
     var y = yStart;
     for (var i = 0; i < bands.length; i++) {
       final b = bands[i];
       _placeBand(band: b, x0: x0, y0: y, out: out);
-      y += bandHeight(b) + (i == bands.length - 1 ? 0 : bandGap);
+      y += bandHeight(b) + (i == bands.length - 1 ? 0 : density.bandGap);
     }
   }
 
@@ -1041,15 +1357,16 @@ class _PipelineGraphPainter extends CustomPainter {
   }) {
     for (var col = 0; col < band.length; col++) {
       final ids = band[col];
-      final colH = ids.length * _nodeH + math.max(0, ids.length - 1) * _rowGap;
+      final colH = ids.length * density.nodeH +
+          math.max(0, ids.length - 1) * density.rowGap;
       final colY0 = y0 + math.max(0, (_bandMaxHeight(band) - colH) / 2);
       for (var row = 0; row < ids.length; row++) {
         final id = ids[row];
-        final x = x0 + col * (_nodeW + _colGap);
-        final y = colY0 + row * (_nodeH + _rowGap);
+        final x = x0 + col * (density.nodeW + density.colGap);
+        final y = colY0 + row * (density.nodeH + density.rowGap);
         out[id] = RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, y, _nodeW, _nodeH),
-          const Radius.circular(14),
+          Rect.fromLTWH(x, y, density.nodeW, density.nodeH),
+          Radius.circular(density.nodeRadius),
         );
       }
     }
@@ -1057,7 +1374,8 @@ class _PipelineGraphPainter extends CustomPainter {
 
   double _bandMaxHeight(List<List<String>> band) {
     final maxRows = band.fold<int>(0, (m, c) => math.max(m, c.length));
-    return maxRows * _nodeH + math.max(0, maxRows - 1) * _rowGap;
+    return maxRows * density.nodeH +
+        math.max(0, maxRows - 1) * density.rowGap;
   }
 
   _EdgeGeom _edgePath(RRect from, RRect to, _GraphEdge e) {
@@ -1199,4 +1517,3 @@ _FixedLayout? _fixedLayoutForIds(Set<String> ids) {
   ];
   return _FixedLayout(bands: bands);
 }
-

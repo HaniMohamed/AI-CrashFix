@@ -28,6 +28,7 @@ _SETUP_STORE_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("GET", "/api/setup/store"),
         ("POST", "/api/setup/store"),
+        ("POST", "/api/setup/test/store"),
     }
 )
 

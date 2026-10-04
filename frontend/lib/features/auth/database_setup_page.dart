@@ -6,7 +6,9 @@ import '../../app/brand.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/api/connectivity_checks.dart';
 import '../../core/providers/auth_provider.dart'; // baseApiClientProvider
+import '../../shared/widgets/connectivity_test_button.dart';
 import '../../shared/widgets/gradient_button.dart';
 import '../setup/store_config_panel.dart';
 import 'auth_scaffold.dart';
@@ -168,6 +170,26 @@ class _DatabaseSetupPageState extends ConsumerState<DatabaseSetupPage> {
               const SizedBox(height: AppSpacing.md),
               Text(_error!, style: theme.bodySmall?.copyWith(color: palette.danger)),
             ],
+            const SizedBox(height: AppSpacing.md),
+            ConnectivityTestButton(
+              enabled: !_busy,
+              onTest: () => testStoreConnectivity(
+                ref.read(baseApiClientProvider),
+                backend: _storeBackend,
+                dbUrl: _dbUrlCtrl.text.trim().isEmpty
+                    ? null
+                    : _dbUrlCtrl.text.trim(),
+                username: _dbUserCtrl.text.trim().isEmpty
+                    ? null
+                    : _dbUserCtrl.text.trim(),
+                password: _dbPasswordCtrl.text.isEmpty
+                    ? null
+                    : _dbPasswordCtrl.text,
+                userId: _machineUserIdCtrl.text.trim().isEmpty
+                    ? null
+                    : _machineUserIdCtrl.text.trim(),
+              ),
+            ),
             const SizedBox(height: AppSpacing.xl),
             GradientButton(
               label: _busy

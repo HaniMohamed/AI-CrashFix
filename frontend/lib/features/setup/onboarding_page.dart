@@ -9,12 +9,15 @@ import '../../core/providers/backend_settings_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import '../../core/providers/run_session_provider.dart';
 import '../../core/providers/setup_status_provider.dart';
+import '../../core/providers/api_provider.dart';
+import '../../core/api/connectivity_checks.dart';
 import '../../core/models/run_request.dart';
 import '../../app/theme/motion.dart';
 import '../../shared/widgets/aurora_background.dart';
 import '../../shared/widgets/fixora_mark.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
+import '../../shared/widgets/connectivity_test_button.dart';
 import '../../shared/widgets/soft_panel.dart';
 import '../../shared/widgets/step_rail.dart';
 import 'store_config_panel.dart';
@@ -186,35 +189,60 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     _gitlabUrlCtrl.text = (gl['server_url'] ?? '').toString();
   }
 
+  Map<String, dynamic> _llmTestBody() {
+    final llm = <String, dynamic>{'provider': _provider};
+    if (_provider == 'gemini') {
+      llm['gemini_model'] = _geminiModelCtrl.text.trim();
+      if (_googleKeyCtrl.text.trim().isNotEmpty) {
+        llm['google_api_key'] = _googleKeyCtrl.text.trim();
+      }
+    } else if (_provider == 'openai') {
+      llm['openai_url'] = _openaiUrlCtrl.text.trim();
+      llm['openai_model'] = _openaiModelCtrl.text.trim();
+      if (_openaiKeyCtrl.text.trim().isNotEmpty) {
+        llm['openai_api_key'] = _openaiKeyCtrl.text.trim();
+      }
+    } else {
+      llm['gosi_brain_url'] = _gosiUrlCtrl.text.trim();
+      llm['gosi_brain_model'] = _gosiModelCtrl.text.trim();
+      if (_gosiAuthCtrl.text.trim().isNotEmpty) {
+        llm['gosi_brain_authorization'] = _gosiAuthCtrl.text.trim();
+      }
+      if (_gosiApiKeyCtrl.text.trim().isNotEmpty) {
+        llm['gosi_brain_api_key'] = _gosiApiKeyCtrl.text.trim();
+      }
+    }
+    return llm;
+  }
+
+  Map<String, dynamic> _jiraTestBody() {
+    final body = <String, dynamic>{
+      'server_url': _jiraUrlCtrl.text.trim(),
+      'email': _jiraEmailCtrl.text.trim(),
+    };
+    if (_jiraTokenCtrl.text.trim().isNotEmpty) {
+      body['token'] = _jiraTokenCtrl.text.trim();
+    }
+    return body;
+  }
+
+  Map<String, dynamic> _gitlabTestBody() {
+    final body = <String, dynamic>{
+      'server_url': _gitlabUrlCtrl.text.trim(),
+    };
+    if (_gitlabTokenCtrl.text.trim().isNotEmpty) {
+      body['token'] = _gitlabTokenCtrl.text.trim();
+    }
+    return body;
+  }
+
   Future<void> _saveLlm() async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final llm = <String, dynamic>{'provider': _provider};
-      if (_provider == 'gemini') {
-        llm['gemini_model'] = _geminiModelCtrl.text.trim();
-        if (_googleKeyCtrl.text.trim().isNotEmpty) {
-          llm['google_api_key'] = _googleKeyCtrl.text.trim();
-        }
-      } else if (_provider == 'openai') {
-        llm['openai_url'] = _openaiUrlCtrl.text.trim();
-        llm['openai_model'] = _openaiModelCtrl.text.trim();
-        if (_openaiKeyCtrl.text.trim().isNotEmpty) {
-          llm['openai_api_key'] = _openaiKeyCtrl.text.trim();
-        }
-      } else {
-        llm['gosi_brain_url'] = _gosiUrlCtrl.text.trim();
-        llm['gosi_brain_model'] = _gosiModelCtrl.text.trim();
-        if (_gosiAuthCtrl.text.trim().isNotEmpty) {
-          llm['gosi_brain_authorization'] = _gosiAuthCtrl.text.trim();
-        }
-        if (_gosiApiKeyCtrl.text.trim().isNotEmpty) {
-          llm['gosi_brain_api_key'] = _gosiApiKeyCtrl.text.trim();
-        }
-      }
-      await ref.read(backendSettingsProvider.notifier).save({'llm': llm});
+      await ref.read(backendSettingsProvider.notifier).save({'llm': _llmTestBody()});
       await ref.read(setupStatusProvider.notifier).refresh();
       setState(() => _step = 3);
     } catch (e) {
@@ -624,6 +652,26 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 style: theme.bodySmall?.copyWith(color: palette.success),
               ),
             ],
+            const SizedBox(height: AppSpacing.md),
+            ConnectivityTestButton(
+              enabled: !_busy,
+              onTest: () => testStoreConnectivity(
+                ref.read(apiClientProvider),
+                backend: _storeBackend,
+                dbUrl: _dbUrlCtrl.text.trim().isEmpty
+                    ? null
+                    : _dbUrlCtrl.text.trim(),
+                username: _dbUserCtrl.text.trim().isEmpty
+                    ? null
+                    : _dbUserCtrl.text.trim(),
+                password: _dbPasswordCtrl.text.isEmpty
+                    ? null
+                    : _dbPasswordCtrl.text,
+                userId: _machineUserIdCtrl.text.trim().isEmpty
+                    ? null
+                    : _machineUserIdCtrl.text.trim(),
+              ),
+            ),
             const SizedBox(height: AppSpacing.xl),
             Row(
               children: [
@@ -738,6 +786,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 decoration: const InputDecoration(labelText: 'API key header'),
               ),
             ],
+            const SizedBox(height: AppSpacing.md),
+            ConnectivityTestButton(
+              enabled: !_busy,
+              onTest: () => testLlmConnectivity(
+                ref.read(apiClientProvider),
+                body: _llmTestBody(),
+              ),
+            ),
             const SizedBox(height: AppSpacing.xl),
             Row(
               children: [
@@ -793,6 +849,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 helperText: 'Server/DC PATs often need bearer auth (Settings)',
               ),
             ),
+            const SizedBox(height: AppSpacing.md),
+            ConnectivityTestButton(
+              enabled: !_busy,
+              onTest: () => testJiraConnectivity(
+                ref.read(apiClientProvider),
+                body: _jiraTestBody(),
+              ),
+            ),
             const SizedBox(height: AppSpacing.xl),
             Text('GitLab', style: theme.titleMedium),
             const SizedBox(height: AppSpacing.sm),
@@ -807,6 +871,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               controller: _gitlabTokenCtrl,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'GitLab token'),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ConnectivityTestButton(
+              enabled: !_busy,
+              onTest: () => testGitlabConnectivity(
+                ref.read(apiClientProvider),
+                body: _gitlabTestBody(),
+              ),
             ),
             const SizedBox(height: AppSpacing.xl),
             Row(

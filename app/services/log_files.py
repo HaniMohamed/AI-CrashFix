@@ -73,7 +73,7 @@ def read_log_chunk(
     """
     src = (source or "").strip().lower()
     path = resolve_log_path(src)
-    base = resolve_data_dir()
+    base = path.parent if path is not None else resolve_data_dir()
     if path is None:
         return LogReadResult(
             source=src,
@@ -92,9 +92,8 @@ def read_log_chunk(
     if not path.is_file():
         hint = (
             f"Log file not found at {path_str}. "
-            "The macOS app launcher writes backend.log and launcher.log under "
-            "~/Library/Application Support/Fixora/ when started from the .app bundle "
-            "(legacy installs may still use AI Crash Fix/)."
+            "The Fixora backend writes backend.log under "
+            "~/Library/Application Support/Fixora/ when started from the app."
         )
         return LogReadResult(
             source=src,
