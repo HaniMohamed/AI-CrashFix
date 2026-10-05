@@ -2,13 +2,47 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
+import shlex
 import ssl
+import sys
 import urllib.error
 import urllib.request
 from typing import Any
 
 from app.services.settings_resolver import EffectiveJiraConfig, SettingsResolver
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+if not any(getattr(h, "_fixora_jira_console", False) for h in log.handlers):
+    # Debug-terminal visibility doesn't depend on root logging config (e.g. python
+    # debugger / plain `uvicorn` runs without our backend_logging StreamHandler).
+    _console_handler = logging.StreamHandler(sys.stdout)
+    _console_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+    _console_handler._fixora_jira_console = True  # type: ignore[attr-defined]
+    log.addHandler(_console_handler)
+
+
+def _log_curl(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    data: bytes | None,
+    *,
+    insecure: bool = False,
+) -> None:
+    """Log an equivalent curl command for a Jira request (auth header redacted)."""
+    parts = ["curl", "-X", method.upper()]
+    if insecure:
+        parts.append("-k")
+    for key, value in headers.items():
+        shown = "***REDACTED***" if key.lower() == "authorization" else value
+        parts += ["-H", shlex.quote(f"{key}: {shown}")]
+    if data is not None:
+        parts += ["-d", shlex.quote(data.decode("utf-8", errors="replace"))]
+    parts.append(shlex.quote(url))
+    log.info("Jira request curl: %s", " ".join(parts))
 
 
 def _parse_bool(value: Any, default: bool = True) -> bool:
@@ -238,16 +272,13 @@ def create_jira_issue(
     }
 
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": _jira_auth_header(eff),
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
-    )
+    headers = {
+        "Authorization": _jira_auth_header(eff),
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    _log_curl("POST", url, headers, data, insecure=not _parse_bool(eff.verify_ssl, default=True))
+    req = urllib.request.Request(url, data=data, method="POST", headers=headers)
 
     try:
         with urllib.request.urlopen(req, timeout=30, context=_jira_ssl_context(eff)) as resp:
@@ -330,6 +361,7 @@ def _jira_request(
     }
     if data is not None:
         headers["Content-Type"] = "application/json"
+    _log_curl(method, url, headers, data, insecure=not _parse_bool(eff.verify_ssl, default=True))
     req = urllib.request.Request(url, data=data, method=method.upper(), headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30, context=_jira_ssl_context(eff)) as resp:
