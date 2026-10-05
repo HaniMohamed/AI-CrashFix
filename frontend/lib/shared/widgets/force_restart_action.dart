@@ -25,7 +25,7 @@ Future<void> confirmAndForceRestart(
 
   try {
     final api = ref.read(apiClientProvider);
-    await api.postJson(Endpoints.crashRestart(crashId));
+    await api.postJson(Endpoints.crashRestart(crashId), body: const {});
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

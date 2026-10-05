@@ -725,7 +725,7 @@ class RestartRequest(BaseModel):
 
 
 @app.post("/api/crashes/{crash_id}/restart")
-async def post_crash_restart(crash_id: str, req: RestartRequest) -> Dict[str, Any]:
+async def post_crash_restart(crash_id: str, req: RestartRequest = RestartRequest()) -> Dict[str, Any]:
     """
     Force-restart a crash's fix cycle: close the existing MR, refresh the Jira
     ticket, and clear the pipeline flags that mark it "done". The caller is
