@@ -11,6 +11,7 @@ import '../../core/models/crash.dart';
 import '../../core/providers/api_provider.dart';
 import '../../core/providers/repo_registry_provider.dart';
 import '../../core/utils/format.dart';
+import '../feedback/fix_copilot_dialog.dart';
 import '../../shared/widgets/error_banner.dart';
 
 /// Strips boilerplate prefixes and leading crash hashes so titles read like a headline.
@@ -450,14 +451,9 @@ class _MrCardState extends State<_MrCard> {
                         label: const Text('Crash Details'),
                       ),
                       TextButton.icon(
-                        onPressed: () => context.go('/crashes/${c.crashId}/changes'),
-                        icon: const Icon(Icons.difference_outlined, size: 18),
-                        label: const Text('View changes'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => context.go('/crashes/${c.crashId}/feedback'),
-                        icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                        label: const Text('Refine with notes'),
+                        onPressed: () => showFixCopilotDialog(context, crashId: c.crashId),
+                        icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                        label: const Text('Fix Copilot'),
                       ),
                       const Spacer(),
                       FilledButton.tonalIcon(

@@ -14,6 +14,7 @@ import '../../core/models/run_request.dart';
 import '../../core/providers/run_session_provider.dart';
 import '../../core/utils/crashlytics_console_url.dart';
 import '../../core/utils/format.dart';
+import '../feedback/fix_copilot_dialog.dart';
 import '../../shared/widgets/copyable_text.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/glass_card.dart';
@@ -404,16 +405,9 @@ class _Header extends ConsumerWidget {
               ],
               _ExternalChip(
                 withCopy: false,
-                icon: Icons.difference_outlined,
-                label: 'View changes',
-                onTap: () => context.go('/crashes/${c.crashId}/changes'),
-              ),
-              const SizedBox(height: 8),
-              _ExternalChip(
-                withCopy: false,
-                icon: Icons.chat_bubble_outline_rounded,
-                label: 'Refine with notes',
-                onTap: () => context.go('/crashes/${c.crashId}/feedback'),
+                icon: Icons.auto_awesome_rounded,
+                label: 'Fix Copilot',
+                onTap: () => showFixCopilotDialog(context, crashId: c.crashId),
               ),
               const SizedBox(height: 8),
               GradientButton(

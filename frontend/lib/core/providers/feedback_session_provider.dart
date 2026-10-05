@@ -271,7 +271,7 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
     }
     if (obj == null) return;
 
-    if (obj.containsKey('pr_url') || obj.containsKey('pr_body')) {
+    if (obj['type'] == 'feedback_summary') {
       state = state.copyWith(
         status: FeedbackStreamStatus.done,
         summary: FeedbackRegenerationSummary.fromJson(obj),

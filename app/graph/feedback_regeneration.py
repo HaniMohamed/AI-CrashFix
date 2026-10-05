@@ -18,6 +18,7 @@ from app.api.events import (
     CRASH_FAILED,
     CRASH_STARTED,
     ERROR,
+    FEEDBACK_SUMMARY,
     RUN_STARTED,
     RUN_SUMMARY,
     STATE_SNAPSHOT,
@@ -41,6 +42,7 @@ from app.prompts.feedback_validation_prompts import (
 from app.services.ai_service import LLMService
 from app.services.crash_store import CrashStore
 from app.services.git_service import GitService
+from app.utils.diff_parser import diff_stats, parse_unified_diff
 from app.utils.llm_helpers import parse_json_object
 
 _MIN_NOTE_LEN = 3
@@ -273,6 +275,18 @@ def run_feedback_regeneration(crash_id: str, note: str, *, crash_store: CrashSto
             "crash_id": crash_id,
             "final_state": redact_state(final_state),
         }
+
+        generated_diff = final_state.get("generated_diff") or ""
+        stats = diff_stats(parse_unified_diff(generated_diff)) if generated_diff.strip() else None
+        yield {
+            "type": FEEDBACK_SUMMARY,
+            "run_id": run_id,
+            "crash_id": crash_id,
+            "pr_url": final_state.get("pr_url"),
+            "pr_body": final_state.get("pr_body"),
+            "stats": stats,
+        }
+
         yield {
             "type": RUN_SUMMARY,
             "run_id": run_id,

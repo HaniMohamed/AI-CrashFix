@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/spacing.dart';
@@ -17,69 +16,99 @@ import '../../shared/widgets/loading_shimmer.dart';
 /// Below this width the chat and changes panels stack instead of sitting side by side.
 const double _kTwoPanelBreakpoint = 960;
 
-class FixFeedbackPage extends ConsumerWidget {
+/// Opens the AI fix-refinement conversation (chat + live changes) as a
+/// dismissible dialog over whatever page the user is already on.
+Future<void> showFixCopilotDialog(BuildContext context, {required String crashId}) {
+  return showDialog(
+    context: context,
+    barrierDismissible: true,
+    builder: (_) => FixCopilotDialog(crashId: crashId),
+  );
+}
+
+class FixCopilotDialog extends ConsumerWidget {
   final String crashId;
-  const FixFeedbackPage({super.key, required this.crashId});
+  const FixCopilotDialog({super.key, required this.crashId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final crashAsync = ref.watch(crashDetailProvider(crashId));
+    final palette = context.palette;
     final theme = Theme.of(context).textTheme;
+    final crashAsync = ref.watch(crashDetailProvider(crashId));
+    final media = MediaQuery.sizeOf(context);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.xxl,
-        AppSpacing.xl,
-        AppSpacing.xxl,
-        AppSpacing.xl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextButton.icon(
-            onPressed: () => context.go('/crashes/$crashId'),
-            icon: const Icon(Icons.arrow_back, size: 16),
-            label: const Text('Back to crash'),
+    return Dialog(
+      backgroundColor: palette.bg,
+      insetPadding: const EdgeInsets.all(AppSpacing.xl),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.all(AppRadii.xl)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 1200,
+          maxHeight: media.height - 2 * AppSpacing.xl,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.xl,
           ),
-          const SizedBox(height: AppSpacing.sm),
-          Text('Refine with notes', style: theme.displaySmall),
-          const SizedBox(height: AppSpacing.lg),
-          crashAsync.when(
-            loading: () => const ShimmerCard(height: 100),
-            error: (e, _) => ErrorBanner(
-              message: 'Failed to load crash $crashId: $e',
-              onRetry: () => ref.invalidate(crashDetailProvider(crashId)),
-            ),
-            data: (c) => _FeedbackHeader(crash: c),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome_rounded, color: palette.primary, size: 22),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text('Fix Copilot', style: theme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(Icons.close_rounded, color: palette.textSecondary),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              crashAsync.when(
+                loading: () => const ShimmerCard(height: 90),
+                error: (e, _) => ErrorBanner(
+                  message: 'Failed to load crash $crashId: $e',
+                  onRetry: () => ref.invalidate(crashDetailProvider(crashId)),
+                ),
+                data: (c) => _FeedbackHeader(crash: c),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final chat = _FeedbackChat(crashId: crashId);
+                    final changes = _ChangesPanel(crashId: crashId);
+                    if (constraints.maxWidth >= _kTwoPanelBreakpoint) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(flex: 3, child: chat),
+                          const SizedBox(width: AppSpacing.lg),
+                          Expanded(flex: 2, child: changes),
+                        ],
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(flex: 3, child: chat),
+                        const SizedBox(height: AppSpacing.lg),
+                        Expanded(flex: 2, child: changes),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: AppSpacing.lg),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final chat = _FeedbackChat(crashId: crashId);
-                final changes = _ChangesPanel(crashId: crashId);
-                if (constraints.maxWidth >= _kTwoPanelBreakpoint) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(flex: 3, child: chat),
-                      const SizedBox(width: AppSpacing.lg),
-                      Expanded(flex: 2, child: changes),
-                    ],
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(flex: 3, child: chat),
-                    const SizedBox(height: AppSpacing.lg),
-                    Expanded(flex: 2, child: changes),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -223,12 +252,6 @@ class _ChangesPanel extends ConsumerWidget {
                   onPressed: () => ref.invalidate(crashDiffProvider(crashId)),
                   icon: Icon(Icons.refresh_rounded, size: 18, color: palette.textSecondary),
                 ),
-                IconButton(
-                  tooltip: 'Open full view',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => GoRouter.of(context).go('/crashes/$crashId/changes'),
-                  icon: Icon(Icons.open_in_full_rounded, size: 16, color: palette.textSecondary),
-                ),
               ],
             ),
           ),
@@ -349,11 +372,15 @@ class _FeedbackChatState extends ConsumerState<_FeedbackChat> {
                         padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                         child: _ChatBubble(message: m),
                       ),
-                    if (session.isActive) ...[
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
-                        child: _RegeneratingIndicator(),
-                      ),
+                    // Keep the step-by-step trail once the stream ends (not just while
+                    // active) — otherwise a finished regeneration leaves no trace in the
+                    // chat besides the validation verdict.
+                    if (session.isActive || session.progressEvents.isNotEmpty) ...[
+                      if (session.isActive)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                          child: _RegeneratingIndicator(),
+                        ),
                       for (final ev in session.progressEvents)
                         Padding(
                           padding: const EdgeInsets.symmetric(
@@ -369,14 +396,18 @@ class _FeedbackChatState extends ConsumerState<_FeedbackChat> {
                         padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                         child: ErrorBanner(message: session.error!),
                       ),
-                    if (session.status == FeedbackStreamStatus.done &&
-                        session.summary != null)
+                    if (session.status == FeedbackStreamStatus.done)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                        child: _RegenerationResultCard(
-                          crashId: widget.crashId,
-                          summary: session.summary!,
-                        ),
+                        child: session.summary != null
+                            ? _RegenerationResultCard(summary: session.summary!)
+                            : Text(
+                                'Regeneration finished.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: palette.textMuted),
+                              ),
                       ),
                   ],
                 );
@@ -566,9 +597,8 @@ class _ProgressBubble extends StatelessWidget {
 }
 
 class _RegenerationResultCard extends StatelessWidget {
-  final String crashId;
   final FeedbackRegenerationSummary summary;
-  const _RegenerationResultCard({required this.crashId, required this.summary});
+  const _RegenerationResultCard({required this.summary});
 
   @override
   Widget build(BuildContext context) {
@@ -594,12 +624,6 @@ class _RegenerationResultCard extends StatelessWidget {
               const _ResultChip(icon: Icons.merge_outlined, label: 'MR updated'),
               const _ResultChip(icon: Icons.confirmation_number_outlined, label: 'Jira updated'),
             ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          OutlinedButton.icon(
-            onPressed: () => GoRouter.of(context).go('/crashes/$crashId/changes'),
-            icon: const Icon(Icons.open_in_full_rounded, size: 16),
-            label: const Text('Open full changes view'),
           ),
         ],
       ),

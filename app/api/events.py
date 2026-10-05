@@ -31,6 +31,10 @@ CRASH_COMPLETED = "crash_completed"
 CRASH_FAILED = "crash_failed"
 RUN_SUMMARY = "run_summary"
 ERROR = "error"
+# Terminal event for `app.graph.feedback_regeneration`: carries the refreshed
+# pr_url/pr_body/diff stats so the frontend doesn't have to infer "done" from
+# `crash_completed`'s nested `final_state`.
+FEEDBACK_SUMMARY = "feedback_summary"
 
 # Keys that should never leave the process body in a state snapshot.
 # Mirrors (and slightly extends) the redaction list in observability.summarize_state.
