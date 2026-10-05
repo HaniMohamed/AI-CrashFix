@@ -625,6 +625,100 @@ async def get_crash(
     return row
 
 
+@app.get("/api/crashes/{crash_id}/diff")
+async def get_crash_diff(
+    crash_id: str,
+    repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
+) -> Dict[str, Any]:
+    from app.utils.diff_parser import diff_stats, parse_unified_diff
+
+    key = _resolve_repo_key(repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=True)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+    result = row.get("result") if isinstance(row.get("result"), dict) else {}
+    diff_text = (result.get("generated_diff") or "").strip() if isinstance(result, dict) else ""
+    if not diff_text:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} has no stored diff yet")
+    files = parse_unified_diff(diff_text)
+    return {"files": files, "stats": diff_stats(files)}
+
+
+@app.get("/api/crashes/{crash_id}/feedback")
+async def get_crash_feedback(
+    crash_id: str,
+    repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
+) -> Dict[str, Any]:
+    from app.services import crash_feedback_store
+
+    key = _resolve_repo_key(repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=False)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+    messages = crash_feedback_store.list_messages(
+        crash_id, db_path=None, repo_key=key, project_id=store.project_id
+    )
+    return {
+        "messages": messages,
+        "feedback_iteration_count": row.get("feedback_iteration_count", 0),
+        "feedback_locked": row.get("feedback_locked", False),
+    }
+
+
+class FeedbackRequest(BaseModel):
+    note: str
+    repo_key: Optional[str] = None
+    locale: Optional[str] = "en"
+
+
+@app.post("/api/crashes/{crash_id}/feedback")
+async def post_crash_feedback(crash_id: str, req: FeedbackRequest) -> Any:
+    from app.graph.feedback_regeneration import validate_feedback_note
+    from app.services import crash_feedback_store
+
+    key = _resolve_repo_key(req.repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=True)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+    if row.get("feedback_locked"):
+        raise HTTPException(status_code=409, detail="A feedback regeneration is already in progress for this crash.")
+
+    note = (req.note or "").strip()
+    crash_feedback_store.add_message(
+        crash_id, "user", note, iteration=row.get("feedback_iteration_count", 0),
+        repo_key=key, project_id=store.project_id,
+    )
+
+    state = row.get("result") if isinstance(row.get("result"), dict) else {}
+    verdict = validate_feedback_note(note, state)
+    crash_feedback_store.add_message(
+        crash_id,
+        "ai",
+        verdict.get("reason") or ("Note accepted." if verdict.get("valid") else "Note rejected."),
+        status="valid" if verdict.get("valid") else "invalid",
+        iteration=row.get("feedback_iteration_count", 0),
+        repo_key=key,
+        project_id=store.project_id,
+    )
+
+    if not verdict.get("valid"):
+        return {"valid": False, "reason": verdict.get("reason")}
+
+    store.set_feedback_lock(crash_id, True)
+
+    return StreamingResponse(
+        _feedback_ndjson_stream(crash_id, note, repo_key=key, crash_store=store, locale=req.locale),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.get("/api/analytics")
 async def get_analytics(
     no_cache: bool = Query(False, description="Bypass the 5s in-process cache"),
@@ -1496,6 +1590,102 @@ async def _ndjson_stream(req: RunRequest) -> AsyncIterator[bytes]:
         if item is sentinel:
             break
         yield to_ndjson(item)
+
+
+async def _feedback_ndjson_stream(
+    crash_id: str,
+    note: str,
+    *,
+    repo_key: str | None,
+    crash_store: CrashStore,
+    locale: str | None = "en",
+) -> AsyncIterator[bytes]:
+    """Bridge `run_feedback_regeneration` into an async NDJSON stream; always clears the lock on exit."""
+    from app.api.events import CRASH_COMPLETED, CRASH_FAILED
+    from app.graph.feedback_regeneration import run_feedback_regeneration
+    from app.services import crash_feedback_store
+    from app.services.jira_service import add_comment
+    from app.utils.friendly_errors import bilingual_feedback_summary, feedback_summary
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=512)
+    sentinel = object()
+    outcome: Dict[str, Any] = {"ok": False, "pr_url": None}
+
+    def _producer() -> None:
+        try:
+            for ev in run_feedback_regeneration(crash_id, note, crash_store=crash_store):
+                if ev.get("type") == CRASH_COMPLETED:
+                    outcome["ok"] = True
+                    final_state = ev.get("final_state") or {}
+                    outcome["pr_url"] = final_state.get("pr_url")
+                elif ev.get("type") == CRASH_FAILED:
+                    outcome["error"] = ev.get("error")
+                fut = asyncio.run_coroutine_threadsafe(queue.put(ev), loop)
+                fut.result()
+        except Exception as e:
+            try:
+                fut = asyncio.run_coroutine_threadsafe(
+                    queue.put({"type": ERROR, "error": {"type": type(e).__name__, "message": str(e)}}),
+                    loop,
+                )
+                fut.result()
+            except Exception:
+                pass
+        finally:
+            try:
+                asyncio.run_coroutine_threadsafe(queue.put(sentinel), loop).result()
+            except Exception:
+                pass
+
+    thread = threading.Thread(target=_producer, name="ai-crash-fix-feedback", daemon=True)
+    thread.start()
+
+    try:
+        while True:
+            item = await queue.get()
+            if item is sentinel:
+                break
+            yield to_ndjson(item)
+    finally:
+        crash_store.set_feedback_lock(crash_id, False)
+        iteration = crash_store.bump_feedback_iteration(crash_id)
+        status = "applied" if outcome.get("ok") else "error"
+        raw_error = (outcome.get("error") or {}).get("message")
+        if raw_error:
+            logging.getLogger(__name__).warning(
+                "feedback regeneration failed crash_id=%s iteration=%s: %s", crash_id, iteration, raw_error
+            )
+        summary = feedback_summary(
+            ok=bool(outcome.get("ok")),
+            iteration=iteration,
+            pr_url=outcome.get("pr_url"),
+            raw_error=raw_error,
+            locale=locale,
+        )
+        crash_feedback_store.add_message(
+            crash_id, "system", summary, status=status, iteration=iteration,
+            repo_key=repo_key, project_id=crash_store.project_id,
+        )
+        row = crash_store.get_crash(crash_id, include_result=True)
+        result = row.get("result") if row and isinstance(row.get("result"), dict) else {}
+        jira_issue_id = (result or {}).get("jira_issue_id") or row.get("jira_issue_id") if row else None
+        if jira_issue_id:
+            try:
+                jira_summary = bilingual_feedback_summary(
+                    ok=bool(outcome.get("ok")),
+                    iteration=iteration,
+                    pr_url=outcome.get("pr_url"),
+                    raw_error=raw_error,
+                )
+                add_comment(
+                    str(jira_issue_id),
+                    f"Fixora feedback iteration {iteration}:\n\n{jira_summary}\n\nUser note: {note}",
+                    mock=bool((result or {}).get("mock")),
+                    repo_key=repo_key,
+                )
+            except Exception:
+                pass
 
 
 def _resolve_repo_key(explicit: str | None) -> str | None:

@@ -16,6 +16,8 @@ class Crash {
   final bool branchCreated;
   final bool mrCreated;
   final bool pipelineComplete;
+  final int feedbackIterationCount;
+  final bool feedbackLocked;
 
   /// Parsed `result` JSON (final CrashState). May be null when not requested
   /// or when the run hasn't finished.
@@ -37,6 +39,8 @@ class Crash {
     this.branchCreated = false,
     this.mrCreated = false,
     this.pipelineComplete = false,
+    this.feedbackIterationCount = 0,
+    this.feedbackLocked = false,
     this.result,
   });
 
@@ -61,6 +65,9 @@ class Crash {
         branchCreated: j['branch_created'] == true,
         mrCreated: j['mr_created'] == true,
         pipelineComplete: j['pipeline_complete'] == true,
+        feedbackIterationCount:
+            (j['feedback_iteration_count'] as num?)?.toInt() ?? 0,
+        feedbackLocked: j['feedback_locked'] == true,
         result: j['result'] is Map<String, dynamic>
             ? j['result'] as Map<String, dynamic>
             : null,

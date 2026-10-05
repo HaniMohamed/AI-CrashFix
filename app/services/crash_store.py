@@ -42,6 +42,10 @@ class CrashStoreBackend(Protocol):
 
     def is_processed(self, crash_id: str) -> bool: ...
 
+    def set_feedback_lock(self, crash_id: str, locked: bool) -> None: ...
+
+    def bump_feedback_iteration(self, crash_id: str) -> int: ...
+
     def list_crashes(
         self,
         *,
@@ -256,6 +260,12 @@ class CrashStore:
 
     def is_processed(self, crash_id: str) -> bool:
         return self._impl.is_processed(crash_id)
+
+    def set_feedback_lock(self, crash_id: str, locked: bool) -> None:
+        self._impl.set_feedback_lock(crash_id, locked)
+
+    def bump_feedback_iteration(self, crash_id: str) -> int:
+        return self._impl.bump_feedback_iteration(crash_id)
 
     def list_crashes(
         self,

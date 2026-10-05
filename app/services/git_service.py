@@ -669,3 +669,57 @@ class GitService:
             "pr_title": normalized_title,
             "pr_url": response.get("web_url") or "",
         }
+
+    def find_open_merge_request(self, source_branch: str) -> dict[str, Any] | None:
+        if not source_branch or not source_branch.strip():
+            raise ValueError("source_branch is required")
+
+        project_id = self._gitlab_project_id()
+        response = self._gitlab_request(
+            "GET",
+            f"/projects/{project_id}/merge_requests",
+            params={"source_branch": source_branch.strip(), "state": "opened"},
+        )
+        if isinstance(response, list) and response:
+            return response[0]
+        return None
+
+    def update_merge_request(
+        self,
+        mr_iid: int | str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        if not mr_iid:
+            raise ValueError("mr_iid is required")
+
+        payload: dict[str, Any] = {}
+        if title is not None and title.strip():
+            payload["title"] = title.strip()
+        if description is not None:
+            payload["description"] = description.strip()
+        if not payload:
+            raise ValueError("At least one of title or description is required")
+
+        project_id = self._gitlab_project_id()
+        return self._gitlab_request(
+            "PUT",
+            f"/projects/{project_id}/merge_requests/{mr_iid}",
+            json_data=payload,
+        )
+
+    def checkout_existing_branch(self, branch_name: str) -> None:
+        if not branch_name or not branch_name.strip():
+            raise ValueError("branch_name is required")
+        branch = branch_name.strip()
+
+        self.git_fetch()
+        origin_branch = f"origin/{branch}"
+        try:
+            self._run_git(["checkout", "--force", "-B", branch, origin_branch])
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                f"Failed to checkout existing branch {branch!r} from {origin_branch!r}. "
+                f"Confirm the remote branch still exists.\n\n{e.output}"
+            ) from e

@@ -449,6 +449,16 @@ class _MrCardState extends State<_MrCard> {
                         icon: const Icon(Icons.visibility_outlined, size: 18),
                         label: const Text('Crash Details'),
                       ),
+                      TextButton.icon(
+                        onPressed: () => context.go('/crashes/${c.crashId}/changes'),
+                        icon: const Icon(Icons.difference_outlined, size: 18),
+                        label: const Text('View changes'),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => context.go('/crashes/${c.crashId}/feedback'),
+                        icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                        label: const Text('Refine with notes'),
+                      ),
                       const Spacer(),
                       FilledButton.tonalIcon(
                         onPressed: prUrl == null

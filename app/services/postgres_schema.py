@@ -38,10 +38,25 @@ CREATE TABLE IF NOT EXISTS crashes (
   mr_created BOOLEAN NOT NULL DEFAULT FALSE,
   pipeline_complete BOOLEAN NOT NULL DEFAULT FALSE,
   created_by_user_id TEXT,
+  feedback_iteration_count INTEGER NOT NULL DEFAULT 0,
+  feedback_locked BOOLEAN NOT NULL DEFAULT FALSE,
   PRIMARY KEY (firebase_project_id, crash_id)
 );
 CREATE INDEX IF NOT EXISTS idx_crashes_project_updated
   ON crashes (firebase_project_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS crash_feedback (
+  id SERIAL PRIMARY KEY,
+  firebase_project_id TEXT NOT NULL,
+  crash_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT,
+  iteration INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_crash_feedback_crash
+  ON crash_feedback (firebase_project_id, crash_id, created_at);
 
 CREATE TABLE IF NOT EXISTS repos (
   user_id TEXT NOT NULL,
@@ -119,6 +134,12 @@ def ensure_app_postgres_schema(conn: psycopg.Connection) -> None:
         # Existing DBs may predate created_by_user_id — add then index.
         cur.execute(
             "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS created_by_user_id TEXT"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS feedback_iteration_count INTEGER NOT NULL DEFAULT 0"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS feedback_locked BOOLEAN NOT NULL DEFAULT FALSE"
         )
         cur.execute(
             "ALTER TABLE repos ADD COLUMN IF NOT EXISTS google_application_credentials TEXT"

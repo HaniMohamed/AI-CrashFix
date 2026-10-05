@@ -100,3 +100,52 @@ def build_graph():
     graph.add_edge("fallback", END)
 
     return graph.compile()
+
+
+def build_feedback_graph():
+    """
+    Smaller graph for user-driven refinement: generate_fix -> review_fix -> validate_fix
+    (loop on failure, same edges as the full pipeline) -> generate_pr -> jira_update.
+
+    Skips map_stacktrace/repo_context/git_regression/llm_analysis/jira_create — the crash
+    state is already hydrated from a prior run's persisted result.
+    """
+    graph = StateGraph(CrashState)
+
+    graph.add_node("generate_fix", instrument_node("generate_fix", generate_fix_node))
+    graph.add_node("review_fix", instrument_node("review_fix", review_fix_node))
+    graph.add_node("validate_fix", instrument_node("validate_fix", validate_fix_node))
+    graph.add_node("generate_pr", instrument_node("generate_pr", generate_pr_node))
+    graph.add_node("jira_update", instrument_node("jira_update", jira_update))
+    graph.add_node("fallback", instrument_node("fallback", fallback_node))
+
+    graph.set_entry_point("generate_fix")
+
+    graph.add_edge("generate_fix", "review_fix")
+    graph.add_edge("review_fix", "validate_fix")
+    graph.add_conditional_edges(
+        "validate_fix",
+        instrument_router(
+            "route_after_validate_fix_feedback",
+            lambda state: (
+                "valid"
+                if state.get("fix_validation_result")
+                else (
+                    "fail"
+                    if state.get("fix_iteration_count", 0) >= state.get("fix_max_iterations", 3)
+                    else "retry"
+                )
+            ),
+        ),
+        {
+            "valid": "generate_pr",
+            "retry": "generate_fix",
+            "fail": "fallback",
+        },
+    )
+
+    graph.add_edge("generate_pr", "jira_update")
+    graph.add_edge("jira_update", END)
+    graph.add_edge("fallback", END)
+
+    return graph.compile()

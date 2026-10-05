@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.config import BQ_PROJECT_ID
 from app.services.crash_store_common import (
+    FEEDBACK_COLUMNS,
     PIPELINE_FLAG_COLUMNS,
     row_to_dict,
     recompute_pipeline_complete,
@@ -29,6 +30,7 @@ _ALL_COLUMNS = (
     "updated_at",
     "created_by_user_id",
     *PIPELINE_FLAG_COLUMNS,
+    *FEEDBACK_COLUMNS,
 )
 
 
@@ -116,7 +118,22 @@ class SqliteCrashStore:
             diff_applied INTEGER NOT NULL DEFAULT 0,
             branch_created INTEGER NOT NULL DEFAULT 0,
             mr_created INTEGER NOT NULL DEFAULT 0,
-            pipeline_complete INTEGER NOT NULL DEFAULT 0
+            pipeline_complete INTEGER NOT NULL DEFAULT 0,
+            feedback_iteration_count INTEGER NOT NULL DEFAULT 0,
+            feedback_locked INTEGER NOT NULL DEFAULT 0
+        )
+        """
+        )
+        conn.execute(
+            """
+        CREATE TABLE IF NOT EXISTS crash_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            crash_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT,
+            iteration INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """
         )
@@ -131,6 +148,14 @@ class SqliteCrashStore:
                 )
         if "created_by_user_id" not in existing:
             conn.execute("ALTER TABLE crashes ADD COLUMN created_by_user_id TEXT")
+        if "feedback_iteration_count" not in existing:
+            conn.execute(
+                "ALTER TABLE crashes ADD COLUMN feedback_iteration_count INTEGER NOT NULL DEFAULT 0"
+            )
+        if "feedback_locked" not in existing:
+            conn.execute(
+                "ALTER TABLE crashes ADD COLUMN feedback_locked INTEGER NOT NULL DEFAULT 0"
+            )
 
     def insert_crash(self, crash_id: str) -> None:
         now = datetime.utcnow().isoformat()
@@ -226,6 +251,33 @@ class SqliteCrashStore:
                 )
             recompute_pipeline_complete(conn, crash_id, now_iso=now, dialect="sqlite")
             conn.commit()
+
+    def set_feedback_lock(self, crash_id: str, locked: bool) -> None:
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE crashes SET feedback_locked = ?, updated_at = ? WHERE crash_id = ?",
+                (1 if locked else 0, now, crash_id),
+            )
+            conn.commit()
+
+    def bump_feedback_iteration(self, crash_id: str) -> int:
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE crashes
+                SET feedback_iteration_count = feedback_iteration_count + 1, updated_at = ?
+                WHERE crash_id = ?
+                """,
+                (now, crash_id),
+            )
+            row = conn.execute(
+                "SELECT feedback_iteration_count FROM crashes WHERE crash_id = ?",
+                (crash_id,),
+            ).fetchone()
+            conn.commit()
+        return int(row[0]) if row else 0
 
     def is_processed(self, crash_id: str) -> bool:
         with self._connect() as conn:

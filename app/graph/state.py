@@ -75,3 +75,6 @@ class CrashState(TypedDict, total=False):
     pr_url: str | None
     pr_branch: str | None
     pr_error: str | None
+
+    # User-driven refinement note applied to a feedback regeneration (None on first-time generation).
+    user_feedback_note: str | None

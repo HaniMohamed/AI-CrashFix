@@ -38,6 +38,15 @@ def _stacktrace_section(prompt_input) -> str:
     return ""
 
 
+def _user_feedback_section(prompt_input) -> str:
+    note = (prompt_input.get("user_feedback_note") or "").strip() if isinstance(prompt_input, dict) else ""
+    if not note:
+        return ""
+    return f"""
+    - additional_context_from_user: Additional context from the user to address in this revision: {note}
+"""
+
+
 def USER_PROMPT(prompt_input):
     return f"""
     You are modifying an existing codebase (paths and snippets appear in REPO CONTEXT below).
@@ -75,7 +84,7 @@ def USER_PROMPT(prompt_input):
     - review_feedback: {prompt_input.get("fix_review_feedback")}
     - required_changes: {json_prompt(prompt_input.get("fix_required_changes"))}
     - reviewer_questions: {json_prompt(prompt_input.get("fix_review_questions"))}
-
+{_user_feedback_section(prompt_input)}
     ---
 
     ## Unified diff rules (for the JSON "fix" string)

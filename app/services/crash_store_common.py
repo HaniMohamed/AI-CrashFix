@@ -14,6 +14,11 @@ PIPELINE_FLAG_COLUMNS = (
     "pipeline_complete",
 )
 
+FEEDBACK_COLUMNS = (
+    "feedback_iteration_count",
+    "feedback_locked",
+)
+
 
 def row_to_dict(row: Any, *, include_result: bool) -> dict:
     all_columns = (
@@ -25,6 +30,7 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
         "updated_at",
         "created_by_user_id",
         *PIPELINE_FLAG_COLUMNS,
+        *FEEDBACK_COLUMNS,
     )
     if hasattr(row, "keys"):
         out = {k: row[k] for k in all_columns if k in row.keys()}
@@ -33,6 +39,10 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
     for col in PIPELINE_FLAG_COLUMNS:
         if col in out:
             out[col] = bool(out[col])
+    if "feedback_locked" in out:
+        out["feedback_locked"] = bool(out["feedback_locked"])
+    if "feedback_iteration_count" in out and out["feedback_iteration_count"] is None:
+        out["feedback_iteration_count"] = 0
     if "created_by_user_id" in out:
         raw_uid = out["created_by_user_id"]
         if raw_uid is None:

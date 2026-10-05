@@ -6,9 +6,11 @@ import '../features/auth/change_password_page.dart';
 import '../features/auth/database_setup_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/admin/admin_page.dart';
+import '../features/crashes/crash_changes_page.dart';
 import '../features/crashes/crash_detail_page.dart';
 import '../features/crashes/crashes_list_page.dart';
 import '../features/dashboard/dashboard_page.dart';
+import '../features/feedback/fix_feedback_page.dart';
 import '../features/mrs/generated_mrs_page.dart';
 import '../features/runs/new_run_page.dart';
 import '../features/runs/run_live_page.dart';
@@ -94,6 +96,18 @@ GoRouter createAppRouter() => GoRouter(
               path: '/crashes/:id',
               pageBuilder: (ctx, state) => AuroraPage(
                 child: CrashDetailPage(crashId: state.pathParameters['id']!),
+              ),
+            ),
+            GoRoute(
+              path: '/crashes/:id/changes',
+              pageBuilder: (ctx, state) => AuroraPage(
+                child: CrashChangesPage(crashId: state.pathParameters['id']!),
+              ),
+            ),
+            GoRoute(
+              path: '/crashes/:id/feedback',
+              pageBuilder: (ctx, state) => AuroraPage(
+                child: FixFeedbackPage(crashId: state.pathParameters['id']!),
               ),
             ),
             GoRoute(

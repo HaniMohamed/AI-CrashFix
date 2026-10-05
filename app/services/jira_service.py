@@ -513,6 +513,32 @@ def transition_jira_issue(
     }
 
 
+def add_comment(
+    issue_key: str,
+    comment_body: str,
+    *,
+    mock: bool = False,
+    repo_key: str | None = None,
+) -> dict[str, Any]:
+    """Post a comment via POST /rest/api/2/issue/{key}/comment."""
+    key = (issue_key or "").strip().upper()
+    if not key:
+        raise RuntimeError("Missing Jira issue key.")
+    body = (comment_body or "").strip()
+    if not body:
+        raise RuntimeError("Missing comment body.")
+    if mock:
+        return {"key": key, "commented": True, "body": body, "mock": True}
+    eff = _resolve_eff(repo_key=repo_key)
+    result = _jira_request(
+        eff,
+        "POST",
+        f"/rest/api/2/issue/{urllib.request.quote(key, safe='')}/comment",
+        payload={"body": body},
+    )
+    return {"key": key, "commented": True, "response": result or {}}
+
+
 def format_mr_description_block(*, pr_url: str, pr_branch: str | None = None) -> str:
     """Wiki-markup block appended to a Jira description after MR creation."""
     url = (pr_url or "").strip()

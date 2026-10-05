@@ -59,16 +59,22 @@ def generate_pr_node(state: CrashState):
         state["pr_body"] = pr_meta.get("pr_body") or ""
         state["commit_message"] = (pr_meta.get("commit_message") or "").strip() or None
 
-        # --- Step 2: feature branch from main (GitService slugifies the raw LLM pr_title for the branch name). ---
-        branch_slug_title = (state["pr_title"] or "").strip() or "CrashLens fix"
+        # --- Step 2: reuse the existing feature branch on a feedback regeneration; otherwise branch from main. ---
+        is_regeneration = bool((state.get("pr_branch") or "").strip() and (state.get("pr_url") or "").strip())
         base_branch = (state.get("repo_ref") or "").strip() or None
-        branch_info = git.create_branch_from_main(
-            jira_ticket_id=jira,
-            title=branch_slug_title,
-            base_branch=base_branch,
-        )
-        branch = branch_info["branch"]
-        state["pr_branch"] = branch
+        if is_regeneration:
+            branch = state["pr_branch"].strip()
+            git.checkout_existing_branch(branch)
+            branch_info = {"branch": branch, "base": base_branch or "main"}
+        else:
+            branch_slug_title = (state["pr_title"] or "").strip() or "CrashLens fix"
+            branch_info = git.create_branch_from_main(
+                jira_ticket_id=jira,
+                title=branch_slug_title,
+                base_branch=base_branch,
+            )
+            branch = branch_info["branch"]
+            state["pr_branch"] = branch
         if crash_id:
             crash_store.set_pipeline_flags(crash_id, branch_created=True)
 
@@ -91,14 +97,25 @@ def generate_pr_node(state: CrashState):
         git.commit_changes(commit_msg, impacted if isinstance(impacted, list) else [])
         git.push_current_branch(branch_name=branch)
 
-        mr = git.create_merge_request(
-            source_branch=branch,
-            target_branch=branch_info.get("base") or "main",
-            title=pr_title,
-            body=pr_body,
-            draft=True,
-        )
-        state["pr_url"] = mr.get("pr_url")
+        if is_regeneration:
+            existing_mr = git.find_open_merge_request(branch)
+            if not existing_mr or not existing_mr.get("iid"):
+                raise RuntimeError(f"No open merge request found for branch {branch!r} to update.")
+            mr = git.update_merge_request(
+                existing_mr["iid"],
+                title=pr_title,
+                description=pr_body,
+            )
+            state["pr_url"] = mr.get("web_url") or state.get("pr_url")
+        else:
+            mr = git.create_merge_request(
+                source_branch=branch,
+                target_branch=branch_info.get("base") or "main",
+                title=pr_title,
+                body=pr_body,
+                draft=True,
+            )
+            state["pr_url"] = mr.get("pr_url")
         state["generated_diff"] = patch
         if crash_id:
             crash_store.set_pipeline_flags(

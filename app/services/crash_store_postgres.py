@@ -11,6 +11,7 @@ from psycopg.types.json import Json
 
 from app.config import AI_CRASH_FIX_CRASH_DB_URL, BQ_PROJECT_ID
 from app.services.crash_store_common import (
+    FEEDBACK_COLUMNS,
     PIPELINE_FLAG_COLUMNS,
     recompute_pipeline_complete,
     row_to_dict,
@@ -27,6 +28,7 @@ _ALL_COLUMNS = (
     "updated_at",
     "created_by_user_id",
     *PIPELINE_FLAG_COLUMNS,
+    *FEEDBACK_COLUMNS,
 )
 
 
@@ -196,6 +198,37 @@ class PostgresCrashStore:
                     project_id=self.project_id,
                 )
             conn.commit()
+
+    def set_feedback_lock(self, crash_id: str, locked: bool) -> None:
+        now = datetime.utcnow()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET feedback_locked = %s, updated_at = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    """,
+                    (bool(locked), now, self.project_id, crash_id),
+                )
+            conn.commit()
+
+    def bump_feedback_iteration(self, crash_id: str) -> int:
+        now = datetime.utcnow()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET feedback_iteration_count = feedback_iteration_count + 1, updated_at = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    RETURNING feedback_iteration_count
+                    """,
+                    (now, self.project_id, crash_id),
+                )
+                row = cur.fetchone()
+            conn.commit()
+        return int(row["feedback_iteration_count"]) if row else 0
 
     def is_processed(self, crash_id: str) -> bool:
         with self._connect() as conn:

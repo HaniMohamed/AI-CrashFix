@@ -46,4 +46,6 @@ class Endpoints {
       '/api/auth/security-settings/repo-readonly';
 
   static String crashById(String id) => '$crashes/$id';
+  static String crashDiff(String id) => '${crashById(id)}/diff';
+  static String crashFeedback(String id) => '${crashById(id)}/feedback';
 }

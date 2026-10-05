@@ -402,6 +402,20 @@ class _Header extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
               ],
+              _ExternalChip(
+                withCopy: false,
+                icon: Icons.difference_outlined,
+                label: 'View changes',
+                onTap: () => context.go('/crashes/${c.crashId}/changes'),
+              ),
+              const SizedBox(height: 8),
+              _ExternalChip(
+                withCopy: false,
+                icon: Icons.chat_bubble_outline_rounded,
+                label: 'Refine with notes',
+                onTap: () => context.go('/crashes/${c.crashId}/feedback'),
+              ),
+              const SizedBox(height: 8),
               GradientButton(
                 label: 'Re-run this crash',
                 icon: Icons.refresh,
