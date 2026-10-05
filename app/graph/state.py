@@ -18,6 +18,9 @@ class CrashState(TypedDict, total=False):
     mock: bool
     skip_jira_creation: bool
     crash_id: str
+    # Bumped by `POST /api/crashes/{id}/restart`; disambiguates the branch name from a
+    # closed prior attempt instead of colliding with it on push.
+    restart_epoch: int
     exception: str
     stacktrace: list[dict[str, Any]]
 

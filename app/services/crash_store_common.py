@@ -19,6 +19,8 @@ FEEDBACK_COLUMNS = (
     "feedback_locked",
 )
 
+RESTART_COLUMNS = ("restart_count",)
+
 
 def row_to_dict(row: Any, *, include_result: bool) -> dict:
     all_columns = (
@@ -31,6 +33,7 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
         "created_by_user_id",
         *PIPELINE_FLAG_COLUMNS,
         *FEEDBACK_COLUMNS,
+        *RESTART_COLUMNS,
     )
     if hasattr(row, "keys"):
         out = {k: row[k] for k in all_columns if k in row.keys()}
@@ -43,6 +46,8 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
         out["feedback_locked"] = bool(out["feedback_locked"])
     if "feedback_iteration_count" in out and out["feedback_iteration_count"] is None:
         out["feedback_iteration_count"] = 0
+    if "restart_count" in out and out["restart_count"] is None:
+        out["restart_count"] = 0
     if "created_by_user_id" in out:
         raw_uid = out["created_by_user_id"]
         if raw_uid is None:

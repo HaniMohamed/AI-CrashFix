@@ -230,6 +230,23 @@ class PostgresCrashStore:
             conn.commit()
         return int(row["feedback_iteration_count"]) if row else 0
 
+    def bump_restart_count(self, crash_id: str) -> int:
+        now = datetime.utcnow()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET restart_count = restart_count + 1, updated_at = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    RETURNING restart_count
+                    """,
+                    (now, self.project_id, crash_id),
+                )
+                row = cur.fetchone()
+            conn.commit()
+        return int(row["restart_count"]) if row else 0
+
     def is_processed(self, crash_id: str) -> bool:
         with self._connect() as conn:
             with conn.cursor() as cur:

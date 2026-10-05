@@ -175,6 +175,11 @@ def _hydrate_rerun_state(
     else:
         state["skip_jira_creation"] = bool(skip_jira_creation)
 
+    try:
+        state["restart_epoch"] = int(prev.get("restart_count") or 0)
+    except (TypeError, ValueError):
+        state["restart_epoch"] = 0
+
     return state
 
 

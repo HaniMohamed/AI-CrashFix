@@ -690,6 +690,7 @@ class GitService:
         *,
         title: str | None = None,
         description: str | None = None,
+        state_event: str | None = None,
     ) -> dict[str, Any]:
         if not mr_iid:
             raise ValueError("mr_iid is required")
@@ -699,8 +700,10 @@ class GitService:
             payload["title"] = title.strip()
         if description is not None:
             payload["description"] = description.strip()
+        if state_event is not None and state_event.strip():
+            payload["state_event"] = state_event.strip()
         if not payload:
-            raise ValueError("At least one of title or description is required")
+            raise ValueError("At least one of title, description, or state_event is required")
 
         project_id = self._gitlab_project_id()
         return self._gitlab_request(
@@ -708,6 +711,19 @@ class GitService:
             f"/projects/{project_id}/merge_requests/{mr_iid}",
             json_data=payload,
         )
+
+    def close_merge_request(self, mr_iid: int | str, *, comment: str | None = None) -> dict[str, Any]:
+        """Close an open MR, optionally leaving a note explaining why first."""
+        if not mr_iid:
+            raise ValueError("mr_iid is required")
+        if comment and comment.strip():
+            project_id = self._gitlab_project_id()
+            self._gitlab_request(
+                "POST",
+                f"/projects/{project_id}/merge_requests/{mr_iid}/notes",
+                json_data={"body": comment.strip()},
+            )
+        return self.update_merge_request(mr_iid, state_event="close")
 
     def checkout_existing_branch(self, branch_name: str) -> None:
         if not branch_name or not branch_name.strip():

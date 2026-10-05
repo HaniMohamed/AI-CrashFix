@@ -16,6 +16,7 @@ import '../../core/utils/crashlytics_console_url.dart';
 import '../../core/utils/format.dart';
 import '../feedback/fix_copilot_dialog.dart';
 import '../../shared/widgets/copyable_text.dart';
+import '../../shared/widgets/force_restart_action.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/glass_card.dart';
 import '../../shared/widgets/gradient_button.dart';
@@ -426,6 +427,20 @@ class _Header extends ConsumerWidget {
                       }
                     : null,
               ),
+              if (c.pipelineComplete) ...[
+                const SizedBox(height: 8),
+                _ExternalChip(
+                  withCopy: false,
+                  icon: Icons.restart_alt_rounded,
+                  label: 'Force restart',
+                  onTap: () => confirmAndForceRestart(
+                    context,
+                    ref,
+                    crashId: c.crashId,
+                    skipJiraCreation: c.skipJiraCreation,
+                  ),
+                ),
+              ],
             ],
           ),
         ],

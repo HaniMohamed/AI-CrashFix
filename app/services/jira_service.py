@@ -572,3 +572,40 @@ def append_mr_block_to_description(
     if current.strip():
         return current.rstrip() + "\n\n" + block, True
     return block, True
+
+
+_MR_BLOCK_RE = re.compile(
+    r"----\s*\nh3\.\s*Fixora\s*—\s*Merge Request.*?(?=\n----|\Z)",
+    re.DOTALL,
+)
+
+
+def format_restart_block(*, restart_count: int, reason: str | None = None) -> str:
+    """Wiki-markup block replacing a stale MR block when the fix cycle is restarted."""
+    lines = [
+        "----",
+        "h3. Fixora — Fix Cycle Restarted",
+        f"The previous merge request was closed and a fresh fix (revision {restart_count}) is being generated.",
+    ]
+    if reason and reason.strip():
+        lines.append(f"*Reason:* {reason.strip()}")
+    return "\n".join(lines)
+
+
+def replace_mr_block_with_restart_note(
+    description: str | None,
+    *,
+    restart_count: int,
+    reason: str | None = None,
+) -> str:
+    """
+    Fully refresh ``description`` for a restart: drop any stale "Merge Request" block
+    (it points at an MR we're about to close) and append a restart note instead. The
+    next successful run appends a fresh MR block via `append_mr_block_to_description`.
+    """
+    current = description if isinstance(description, str) else ("" if description is None else str(description))
+    stripped = _MR_BLOCK_RE.sub("", current).rstrip()
+    block = format_restart_block(restart_count=restart_count, reason=reason)
+    if stripped:
+        return stripped + "\n\n" + block
+    return block

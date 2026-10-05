@@ -719,6 +719,84 @@ async def post_crash_feedback(crash_id: str, req: FeedbackRequest) -> Any:
     )
 
 
+class RestartRequest(BaseModel):
+    repo_key: Optional[str] = None
+    reason: Optional[str] = None
+
+
+@app.post("/api/crashes/{crash_id}/restart")
+async def post_crash_restart(crash_id: str, req: RestartRequest) -> Dict[str, Any]:
+    """
+    Force-restart a crash's fix cycle: close the existing MR, refresh the Jira
+    ticket, and clear the pipeline flags that mark it "done". The caller is
+    expected to follow this with a normal ``POST /api/runs`` (mode=single) —
+    this endpoint only does the teardown, not the fresh run itself.
+    """
+    import logging
+
+    from app.services.git_service import GitService
+    from app.services.jira_service import (
+        get_jira_issue,
+        replace_mr_block_with_restart_note,
+        update_jira_issue_description,
+    )
+
+    key = _resolve_repo_key(req.repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=True)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+    if row.get("feedback_locked"):
+        raise HTTPException(status_code=409, detail="A feedback regeneration is already in progress for this crash.")
+
+    result = row.get("result") if isinstance(row.get("result"), dict) else {}
+    restart_count = store.bump_restart_count(crash_id)
+    mock = bool(result.get("mock"))
+
+    pr_branch = str(result.get("pr_branch") or "").strip()
+    repo_root = str(result.get("repo_root") or "").strip()
+    if pr_branch and repo_root:
+        try:
+            git = GitService(repo_root=repo_root, repo_key=key)
+            existing_mr = git.find_open_merge_request(pr_branch)
+            if existing_mr and existing_mr.get("iid"):
+                git.close_merge_request(
+                    existing_mr["iid"],
+                    comment=f"Closed automatically: restarting the fix cycle (revision {restart_count}).",
+                )
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to close MR for crash_id=%s on restart", crash_id, exc_info=True
+            )
+
+    jira_issue_id = str(result.get("jira_issue_id") or row.get("jira_issue_id") or "").strip()
+    if jira_issue_id:
+        try:
+            issue = get_jira_issue(jira_issue_id, fields="description", mock=mock, repo_key=key)
+            fields = issue.get("fields") if isinstance(issue, dict) else {}
+            current_desc = fields.get("description") if isinstance(fields, dict) else None
+            new_desc = replace_mr_block_with_restart_note(
+                current_desc, restart_count=restart_count, reason=req.reason
+            )
+            update_jira_issue_description(jira_issue_id, new_desc, mock=mock, repo_key=key)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to refresh Jira description for crash_id=%s on restart", crash_id, exc_info=True
+            )
+
+    store.set_pipeline_flags(
+        crash_id,
+        fix_generated=False,
+        fix_validated=False,
+        diff_applied=False,
+        branch_created=False,
+        mr_created=False,
+        pr_url="",
+    )
+
+    return {"ok": True, "restart_count": restart_count}
+
+
 @app.get("/api/analytics")
 async def get_analytics(
     no_cache: bool = Query(False, description="Bypass the 5s in-process cache"),

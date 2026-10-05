@@ -46,6 +46,8 @@ class CrashStoreBackend(Protocol):
 
     def bump_feedback_iteration(self, crash_id: str) -> int: ...
 
+    def bump_restart_count(self, crash_id: str) -> int: ...
+
     def list_crashes(
         self,
         *,
@@ -266,6 +268,9 @@ class CrashStore:
 
     def bump_feedback_iteration(self, crash_id: str) -> int:
         return self._impl.bump_feedback_iteration(crash_id)
+
+    def bump_restart_count(self, crash_id: str) -> int:
+        return self._impl.bump_restart_count(crash_id)
 
     def list_crashes(
         self,

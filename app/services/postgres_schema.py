@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS crashes (
   created_by_user_id TEXT,
   feedback_iteration_count INTEGER NOT NULL DEFAULT 0,
   feedback_locked BOOLEAN NOT NULL DEFAULT FALSE,
+  restart_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (firebase_project_id, crash_id)
 );
 CREATE INDEX IF NOT EXISTS idx_crashes_project_updated
@@ -140,6 +141,9 @@ def ensure_app_postgres_schema(conn: psycopg.Connection) -> None:
         )
         cur.execute(
             "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS feedback_locked BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS restart_count INTEGER NOT NULL DEFAULT 0"
         )
         cur.execute(
             "ALTER TABLE repos ADD COLUMN IF NOT EXISTS google_application_credentials TEXT"

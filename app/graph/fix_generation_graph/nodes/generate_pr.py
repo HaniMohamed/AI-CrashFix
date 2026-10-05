@@ -68,6 +68,11 @@ def generate_pr_node(state: CrashState):
             branch_info = {"branch": branch, "base": base_branch or "main"}
         else:
             branch_slug_title = (state["pr_title"] or "").strip() or "CrashLens fix"
+            restart_epoch = int(state.get("restart_epoch") or 0)
+            if restart_epoch:
+                # Disambiguate from a prior (now-closed) attempt's branch, which may still
+                # exist on the remote with diverged history that `git push` would reject.
+                branch_slug_title = f"{branch_slug_title} r{restart_epoch}"
             branch_info = git.create_branch_from_main(
                 jira_ticket_id=jira,
                 title=branch_slug_title,

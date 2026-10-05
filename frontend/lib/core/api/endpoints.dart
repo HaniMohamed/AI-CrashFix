@@ -48,4 +48,5 @@ class Endpoints {
   static String crashById(String id) => '$crashes/$id';
   static String crashDiff(String id) => '${crashById(id)}/diff';
   static String crashFeedback(String id) => '${crashById(id)}/feedback';
+  static String crashRestart(String id) => '${crashById(id)}/restart';
 }

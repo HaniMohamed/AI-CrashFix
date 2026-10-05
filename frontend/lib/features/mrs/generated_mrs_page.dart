@@ -13,6 +13,7 @@ import '../../core/providers/repo_registry_provider.dart';
 import '../../core/utils/format.dart';
 import '../feedback/fix_copilot_dialog.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../../shared/widgets/force_restart_action.dart';
 
 /// Strips boilerplate prefixes and leading crash hashes so titles read like a headline.
 String mrDisplayHeadline(String rawTitle) {
@@ -455,6 +456,19 @@ class _MrCardState extends State<_MrCard> {
                         icon: const Icon(Icons.auto_awesome_rounded, size: 18),
                         label: const Text('Fix Copilot'),
                       ),
+                      if (c.pipelineComplete)
+                        Consumer(
+                          builder: (context, ref, _) => TextButton.icon(
+                            onPressed: () => confirmAndForceRestart(
+                              context,
+                              ref,
+                              crashId: c.crashId,
+                              skipJiraCreation: c.skipJiraCreation,
+                            ),
+                            icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                            label: const Text('Force restart'),
+                          ),
+                        ),
                       const Spacer(),
                       FilledButton.tonalIcon(
                         onPressed: prUrl == null

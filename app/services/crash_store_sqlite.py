@@ -120,7 +120,8 @@ class SqliteCrashStore:
             mr_created INTEGER NOT NULL DEFAULT 0,
             pipeline_complete INTEGER NOT NULL DEFAULT 0,
             feedback_iteration_count INTEGER NOT NULL DEFAULT 0,
-            feedback_locked INTEGER NOT NULL DEFAULT 0
+            feedback_locked INTEGER NOT NULL DEFAULT 0,
+            restart_count INTEGER NOT NULL DEFAULT 0
         )
         """
         )
@@ -155,6 +156,10 @@ class SqliteCrashStore:
         if "feedback_locked" not in existing:
             conn.execute(
                 "ALTER TABLE crashes ADD COLUMN feedback_locked INTEGER NOT NULL DEFAULT 0"
+            )
+        if "restart_count" not in existing:
+            conn.execute(
+                "ALTER TABLE crashes ADD COLUMN restart_count INTEGER NOT NULL DEFAULT 0"
             )
 
     def insert_crash(self, crash_id: str) -> None:
@@ -274,6 +279,24 @@ class SqliteCrashStore:
             )
             row = conn.execute(
                 "SELECT feedback_iteration_count FROM crashes WHERE crash_id = ?",
+                (crash_id,),
+            ).fetchone()
+            conn.commit()
+        return int(row[0]) if row else 0
+
+    def bump_restart_count(self, crash_id: str) -> int:
+        now = datetime.utcnow().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE crashes
+                SET restart_count = restart_count + 1, updated_at = ?
+                WHERE crash_id = ?
+                """,
+                (now, crash_id),
+            )
+            row = conn.execute(
+                "SELECT restart_count FROM crashes WHERE crash_id = ?",
                 (crash_id,),
             ).fetchone()
             conn.commit()
