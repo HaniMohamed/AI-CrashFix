@@ -71,6 +71,11 @@ async def auth_middleware(request: Request, call_next: Callable) -> Response:
     method = request.method.upper()
     path = request.url.path
 
+    if method == "OPTIONS":
+        # CORS preflight requests never carry credentials; let CORSMiddleware
+        # handle them downstream instead of rejecting with 401.
+        return await call_next(request)
+
     def _authenticate(token: str | None) -> AuthenticatedSession | None | str:
         """Return session, None if invalid token, or ``'store_error'`` on store failure."""
         if not token:

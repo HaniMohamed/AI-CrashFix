@@ -56,6 +56,16 @@ class GosiBrainGatewayError(RuntimeError):
     pass
 
 
+class GosiBrainCookieChallengeError(RuntimeError):
+    """Raised on a 401 that issued a fresh Set-Cookie (F5/WAF session challenge).
+
+    The caller should retry once with the newly stored cookie attached before
+    treating this as a genuine auth failure.
+    """
+
+    pass
+
+
 class GosiBrainRateLimitError(RuntimeError):
     """Raised on HTTP 429."""
 
@@ -163,12 +173,15 @@ def _normalize_authorization(value: str) -> str:
     return v
 
 
-def _store_cookies(host: str, headers: list[tuple[str, str]]) -> None:
+def _store_cookies(host: str, headers: list[tuple[str, str]]) -> bool:
+    """Store Set-Cookie values; return True if any new/changed cookie was captured."""
     parsed = _parse_set_cookie(headers)
     if not parsed:
-        return
+        return False
     jar = _COOKIE_JAR.setdefault(host, {})
+    changed = any(jar.get(k) != v for k, v in parsed.items())
     jar.update(parsed)
+    return changed
 
 
 def _headers_dict(resp_headers: list[tuple[str, str]]) -> dict[str, str]:
@@ -452,6 +465,10 @@ class GosiBrainProvider(LLMProvider):
         headers: list[tuple[str, str]] = [
             ("Content-Type", "application/json;charset=UTF-8"),
             ("Accept", accept),
+            # http.client sends no User-Agent by default; the gateway's WAF
+            # appears to reject/challenge requests without a recognizable one
+            # (curl/Postman both send one and work).
+            ("User-Agent", "curl/8.4.0"),
             ("Authorization", self._authorization),
             ("x-apikey", self._api_key),
         ]
@@ -490,6 +507,17 @@ class GosiBrainProvider(LLMProvider):
                     log.warning("GOSI Brain gateway HTML/cookie challenge; retrying once")
                     continue
                 raise
+            except GosiBrainCookieChallengeError as e:
+                if attempt == 0:
+                    log.warning("GOSI Brain 401 cookie challenge; retrying once with new cookie")
+                    continue
+                raise RuntimeError(
+                    "GOSI Brain HTTP 401 Unauthorized (persisted after retrying with the "
+                    "gateway-issued session cookie). Copy the Cookie header from a working "
+                    "Postman/curl request into GOSI_BRAIN_COOKIE, confirm GOSI_BRAIN_MODEL "
+                    "matches Postman, and that GOSI_BRAIN_AUTHORIZATION is a valid, "
+                    f"non-expired Bearer JWT. {e}"
+                ) from e
             except GosiBrainRateLimitError as e:
                 if attempt == 0:
                     time.sleep(5.0)
@@ -520,7 +548,7 @@ class GosiBrainProvider(LLMProvider):
             resp = conn.getresponse()
             status = int(resp.status)
             resp_headers_list = resp.getheaders()
-            _store_cookies(host, resp_headers_list)
+            got_new_cookie = _store_cookies(host, resp_headers_list)
             hdrs = _headers_dict(resp_headers_list)
             ctype = (hdrs.get("content-type") or "").lower()
 
@@ -534,6 +562,15 @@ class GosiBrainProvider(LLMProvider):
                 raw_bytes = resp.read()
                 raw = _read_response_text(hdrs, raw_bytes)
                 if status == 401:
+                    if got_new_cookie:
+                        # F5/WAF session challenge: gateway just issued a fresh
+                        # TS* cookie alongside the 401. Let the caller retry once
+                        # with that cookie attached before treating this as a
+                        # genuine auth failure.
+                        raise GosiBrainCookieChallengeError(
+                            "GOSI Brain HTTP 401 with fresh Set-Cookie; retrying with cookie. "
+                            f"Body: {raw[:400]!r}"
+                        )
                     raise RuntimeError(
                         "GOSI Brain HTTP 401 Unauthorized. "
                         "Copy the Cookie header from a working Postman/curl request into "

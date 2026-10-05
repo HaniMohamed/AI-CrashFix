@@ -15,10 +15,12 @@ class ConfigNotifier extends AsyncNotifier<ConfigView> {
 
   Future<ConfigView> _fetch(String? activeKey) async {
     final api = ref.read(apiClientProvider);
-    final path = (activeKey != null && activeKey.isNotEmpty)
-        ? Endpoints.configForRepo(activeKey)
-        : Endpoints.config;
-    final res = await api.getJson(path);
+    final res = await api.getJson(
+      Endpoints.config,
+      query: activeKey != null && activeKey.isNotEmpty
+          ? {'repo_key': activeKey}
+          : null,
+    );
     return ConfigView.fromJson((res as Map).cast<String, dynamic>());
   }
 
