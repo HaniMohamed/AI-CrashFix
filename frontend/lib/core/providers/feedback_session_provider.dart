@@ -43,6 +43,7 @@ class FeedbackMessage {
   bool get isAi => role == 'ai';
   bool get isValid => status == 'valid' || status == 'applied';
   bool get isInvalid => status == 'invalid' || status == 'error';
+  bool get isAnswer => status == 'answered';
 }
 
 class FeedbackHistory {
@@ -184,8 +185,8 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
           response.headers['content-type'] ?? response.headers['Content-Type'] ?? '';
 
       if (!contentType.contains('ndjson')) {
-        final raw = await response.stream.bytesToString();
-        _handleNonStreamingResponse(raw);
+        await response.stream.drain<void>();
+        _handleNonStreamingResponse();
         return;
       }
 
@@ -217,47 +218,13 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
     }
   }
 
-  void _handleNonStreamingResponse(String raw) {
-    if (raw.trim().isEmpty) {
-      state = state.copyWith(status: FeedbackStreamStatus.rejected);
-      return;
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      final newMessages = <FeedbackMessage>[];
-      if (decoded is Map) {
-        final j = decoded.cast<String, dynamic>();
-        if (j['messages'] is List) {
-          newMessages.addAll(
-            (j['messages'] as List)
-                .whereType<Map>()
-                .map((e) => FeedbackMessage.fromJson(e.cast<String, dynamic>())),
-          );
-        } else if (j['role'] != null) {
-          newMessages.add(FeedbackMessage.fromJson(j));
-        } else {
-          final reason = (j['reason'] ?? j['message'] ?? j['detail'] ?? raw).toString();
-          newMessages.add(FeedbackMessage(
-            crashId: arg,
-            role: 'ai',
-            message: reason,
-            status: 'invalid',
-          ));
-        }
-      }
-      state = state.copyWith(
-        status: FeedbackStreamStatus.rejected,
-        messages: [...state.messages, ...newMessages],
-      );
-    } catch (_) {
-      state = state.copyWith(
-        status: FeedbackStreamStatus.rejected,
-        messages: [
-          ...state.messages,
-          FeedbackMessage(crashId: arg, role: 'ai', message: raw, status: 'invalid'),
-        ],
-      );
-    }
+  /// The backend persists the user note and its AI verdict/answer as `crash_feedback`
+  /// rows before this response is even sent, and `_send()` refetches history right
+  /// after `sendNote()` resolves — so this response body only needs to flip the
+  /// status; the actual message content comes from `crashFeedbackHistoryProvider`,
+  /// not from here (keeping one source of truth instead of showing it twice).
+  void _handleNonStreamingResponse() {
+    state = state.copyWith(status: FeedbackStreamStatus.rejected);
   }
 
   void _handleLine(String line) {

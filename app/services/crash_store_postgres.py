@@ -109,7 +109,7 @@ class PostgresCrashStore:
         now = datetime.utcnow()
         with self._connect() as conn:
             with conn.cursor() as cur:
-                if result.get("graph_error"):
+                if result.get("graph_error") or result.get("pr_error"):
                     cur.execute(
                         """
                         UPDATE crashes

@@ -694,6 +694,17 @@ async def post_crash_feedback(crash_id: str, req: FeedbackRequest) -> Any:
 
     state = row.get("result") if isinstance(row.get("result"), dict) else {}
     verdict = validate_feedback_note(note, state)
+    intent = verdict.get("intent") or ("refinement" if verdict.get("valid") else "invalid")
+
+    if intent == "question":
+        answer = verdict.get("answer") or "I don't have enough context to answer that."
+        crash_feedback_store.add_message(
+            crash_id, "ai", answer, status="answered",
+            iteration=row.get("feedback_iteration_count", 0),
+            repo_key=key, project_id=store.project_id,
+        )
+        return {"valid": False, "intent": "question", "answer": answer}
+
     crash_feedback_store.add_message(
         crash_id,
         "ai",
@@ -705,7 +716,7 @@ async def post_crash_feedback(crash_id: str, req: FeedbackRequest) -> Any:
     )
 
     if not verdict.get("valid"):
-        return {"valid": False, "reason": verdict.get("reason")}
+        return {"valid": False, "intent": "invalid", "reason": verdict.get("reason")}
 
     store.set_feedback_lock(crash_id, True)
 

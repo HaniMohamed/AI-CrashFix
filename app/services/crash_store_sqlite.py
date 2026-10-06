@@ -179,7 +179,7 @@ class SqliteCrashStore:
         now = datetime.utcnow().isoformat()
         payload = json.dumps(result)
         with self._connect() as conn:
-            if result.get("graph_error"):
+            if result.get("graph_error") or result.get("pr_error"):
                 conn.execute(
                     """
                     UPDATE crashes

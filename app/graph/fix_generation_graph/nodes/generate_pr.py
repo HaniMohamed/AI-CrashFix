@@ -1,12 +1,68 @@
 from app.brand import PR_BODY_FOOTER as _PR_BODY_AI_FOOTER
 from app.brand import PR_TITLE_PREFIX as _PR_TITLE_AI_HEADER
 from app.graph.state import CrashState
+from app.prompts.diff_repair_prompts import DIFF_REPAIR_PROMPT_INPUT, DIFF_REPAIR_SYSTEM_PROMPT
 from app.prompts.pr_fix_prompts import PR_FIX_PROMPT_INPUT, PR_SYSTEM_PROMPT
 from app.services.ai_service import LLMService
 from app.services.crash_store import CrashStore
 from app.services.git_service import GitService
+from app.utils.line_numbering import annotate_with_line_numbers
 from app.utils.llm_helpers import parse_json_object
 from app import config as cfg
+
+
+def _attempt_diff_repair(
+    state: CrashState,
+    git: GitService,
+    llm: LLMService,
+    *,
+    failed_patch: str,
+    error_message: str,
+) -> str | None:
+    """
+    One-shot recovery when `git apply` rejects the generated diff (the file's current
+    content no longer matches the diff's context lines — e.g. it drifted between analysis
+    and apply time). Re-derives a diff against the CURRENT on-disk content instead of
+    just failing. Returns the repaired diff, or None if repair isn't possible.
+    """
+    impacted = state.get("fix_impacted_files") or []
+    if not isinstance(impacted, list) or not impacted:
+        return None
+
+    current_files: dict[str, str] = {}
+    for path in impacted:
+        try:
+            raw = git.read_repo_file(path)
+        except Exception:
+            continue
+        current_files[path] = annotate_with_line_numbers(raw)
+    if not current_files:
+        return None
+
+    try:
+        parsed = parse_json_object(
+            llm.call(
+                system_prompt=DIFF_REPAIR_SYSTEM_PROMPT(),
+                user_prompt=DIFF_REPAIR_PROMPT_INPUT(
+                    root_cause=state.get("root_cause") or "",
+                    fix_rationale=state.get("fix_rationale") or "",
+                    failed_patch=failed_patch,
+                    error_message=error_message,
+                    current_files=current_files,
+                ),
+            ),
+            context="diff_repair",
+        )
+    except Exception:
+        return None
+
+    fix = parsed.get("fix")
+    if not isinstance(fix, str):
+        return None
+    fix = fix.strip()
+    if not fix or fix.lower() == "insufficient evidence":
+        return None
+    return fix
 
 
 def generate_pr_node(state: CrashState):
@@ -84,7 +140,21 @@ def generate_pr_node(state: CrashState):
             crash_store.set_pipeline_flags(crash_id, branch_created=True)
 
         # --- Step 3: apply the fixer's unified diff to REPO_ROOT (normalization + git apply inside GitService). ---
-        git.apply_unified_diff(patch)
+        # The branch is only now at its final commit (fresh from main, or an existing branch
+        # checked out above), so this is the first point the diff's context lines are checked
+        # against the real current file content — retry once against that content on failure
+        # rather than surfacing a git-apply dump as the terminal error.
+        try:
+            git.apply_unified_diff(patch)
+        except Exception as apply_exc:
+            repaired = _attempt_diff_repair(
+                state, git, llm, failed_patch=patch, error_message=str(apply_exc)
+            )
+            if repaired is None:
+                raise
+            patch = repaired
+            state["generated_fix"] = patch
+            git.apply_unified_diff(patch)
         if crash_id:
             crash_store.set_pipeline_flags(crash_id, diff_applied=True)
 

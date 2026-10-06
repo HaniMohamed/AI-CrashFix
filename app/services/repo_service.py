@@ -1,6 +1,8 @@
 
 import os
 
+from app.utils.line_numbering import annotate_with_line_numbers
+
 class RepoService:
     def __init__(self, repo_root: str) -> None:
         if not repo_root or not str(repo_root).strip():
@@ -20,7 +22,9 @@ class RepoService:
         start = max(0, line - radius)
         end = line + radius
 
-        return "".join(lines[start:end])
+        # Line numbers are real (1-indexed) file line numbers, not snippet-relative —
+        # the fix-generation prompt relies on these to produce accurate `@@` hunk headers.
+        return annotate_with_line_numbers("".join(lines[start:end]), start_line=start + 1)
 
 
 
@@ -35,4 +39,4 @@ class RepoService:
 
         block = lines[start:end]
 
-        return "".join(block)
+        return annotate_with_line_numbers("".join(block), start_line=start + 1)

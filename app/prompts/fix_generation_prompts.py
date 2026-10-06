@@ -90,11 +90,17 @@ def USER_PROMPT(prompt_input):
     ## Unified diff rules (for the JSON "fix" string)
     You are modifying an existing codebase. The "fix" value must be ONLY the patch text: a valid unified diff, no prose inside that string.
 
+    REPO CONTEXT's `code_snippet` / `method_block` lines are prefixed with their REAL file line
+    number followed by `: ` (e.g. `480: final x = foo();`) — this is the actual 1-indexed line
+    number in the file on disk, not relative to the snippet. Use these numbers directly as the
+    `@@ -start,count +start,count @@` hunk header values. The `N: ` prefix is reference only —
+    never include it in the diff's `-`/`+`/context line content itself.
+
     Rules:
     - Include file paths using git prefixes: lines starting with `--- a/<path>` and `+++ b/<path>` for each file (paths must exist in REPO CONTEXT).
-    - Use correct unified diff format: `---`, `+++`, and `@@ -start,count +start,count @@` hunk headers with accurate line counts.
+    - Use correct unified diff format: `---`, `+++`, and `@@ -start,count +start,count @@` hunk headers with accurate line counts, derived from the real line numbers shown in REPO CONTEXT.
     - Only include changed lines (minimal diff); do not paste unchanged full files.
-    - Context lines in hunks must match the current code shown in REPO CONTEXT exactly (whitespace-sensitive).
+    - Context lines in hunks must match the current code shown in REPO CONTEXT exactly (whitespace-sensitive), with the `N: ` line-number prefix stripped off.
     - Prefer also including a `diff --git a/<path> b/<path>` header per file when multiple files change (recommended for `git apply`).
     - Use LF newlines between every diff line (the string must contain real newline characters, not a single long line with spaces where newlines belong).
     - End the patch with a trailing newline.

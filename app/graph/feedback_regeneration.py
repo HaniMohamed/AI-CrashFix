@@ -69,11 +69,20 @@ def _guardrail_reject_reason(note: str) -> str | None:
     return None
 
 
+_VALID_INTENTS = frozenset({"question", "refinement", "invalid"})
+
+
 def validate_feedback_note(note: str, state: Dict[str, Any]) -> Dict[str, Any]:
-    """Guardrails first (no LLM call), then an LLM verdict on whether the note is actionable."""
+    """
+    Guardrails first (no LLM call), then one LLM call that classifies the message as a
+    "question" (answered inline, no code change), a "refinement" (triggers regeneration),
+    or "invalid" (rejected). Returns ``{valid, intent, reason, answer}`` — ``valid`` is kept
+    for backward compatibility and is only true for "refinement" (the one intent that should
+    proceed to regenerate the fix).
+    """
     reason = _guardrail_reject_reason(note or "")
     if reason:
-        return {"valid": False, "reason": reason}
+        return {"valid": False, "intent": "invalid", "reason": reason, "answer": None}
 
     llm = LLMService()
     parsed = parse_json_object(
@@ -83,9 +92,16 @@ def validate_feedback_note(note: str, state: Dict[str, Any]) -> Dict[str, Any]:
         ),
         context="validate_feedback_note",
     )
+    intent = str(parsed.get("intent") or "").strip().lower()
+    if intent not in _VALID_INTENTS:
+        # Back-compat with the older {valid: bool} shape, or a malformed response.
+        intent = "refinement" if parsed.get("valid") else "invalid"
+    answer = parsed.get("answer")
     return {
-        "valid": bool(parsed.get("valid")),
+        "valid": intent == "refinement",
+        "intent": intent,
         "reason": str(parsed.get("reason") or "").strip(),
+        "answer": str(answer).strip() if intent == "question" and answer else None,
     }
 
 

@@ -357,8 +357,8 @@ class _FeedbackChatState extends ConsumerState<_FeedbackChat> {
                         padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                         child: Center(
                           child: Text(
-                            'Describe what\'s wrong or missing and the AI will validate '
-                            'your note before regenerating the fix.',
+                            'Ask the AI about this fix, or describe what\'s wrong or missing — '
+                            'questions get answered inline, actionable notes regenerate the fix.',
                             textAlign: TextAlign.center,
                             style: Theme.of(context)
                                 .textTheme
@@ -428,7 +428,7 @@ class _FeedbackChatState extends ConsumerState<_FeedbackChat> {
                 decoration: InputDecoration(
                   hintText: locked
                       ? 'Regenerating fix…'
-                      : 'What\'s wrong or missing with this fix?',
+                      : 'Ask a question, or describe what should change…',
                 ),
                 onSubmitted: (_) => locked ? null : _send(),
               ),
@@ -456,10 +456,13 @@ class _ChatBubble extends StatelessWidget {
     final isUser = message.isUser;
 
     final IconData? leading = message.isAi
-        ? (message.isInvalid ? Icons.cancel_outlined : Icons.check_circle_outline)
+        ? (message.isInvalid
+            ? Icons.cancel_outlined
+            : (message.isAnswer ? Icons.lightbulb_outline_rounded : Icons.check_circle_outline))
         : null;
-    final leadingColor =
-        message.isInvalid ? palette.danger : palette.success;
+    final leadingColor = message.isInvalid
+        ? palette.danger
+        : (message.isAnswer ? palette.primary : palette.success);
 
     final bubble = Container(
       constraints: const BoxConstraints(maxWidth: 560),
