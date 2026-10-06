@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_theme.dart';
@@ -352,7 +353,9 @@ class _FeedbackChatState extends ConsumerState<_FeedbackChat> {
                   controller: _scrollCtrl,
                   padding: const EdgeInsets.all(AppSpacing.lg),
                   children: [
-                    if (messages.isEmpty && session.progressEvents.isEmpty)
+                    if (messages.isEmpty &&
+                        session.progressEvents.isEmpty &&
+                        session.pendingUserMessage == null)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                         child: Center(
@@ -372,14 +375,31 @@ class _FeedbackChatState extends ConsumerState<_FeedbackChat> {
                         padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                         child: _ChatBubble(message: m),
                       ),
+                    // Echo the just-sent note instantly — the real (persisted) copy only
+                    // shows up once `crashFeedbackHistoryProvider` refetches after this
+                    // round-trip resolves.
+                    if (session.pendingUserMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                        child: _ChatBubble(
+                          message: FeedbackMessage(
+                            crashId: widget.crashId,
+                            role: 'user',
+                            message: session.pendingUserMessage!,
+                            status: 'info',
+                          ),
+                        ),
+                      ),
                     // Keep the step-by-step trail once the stream ends (not just while
                     // active) — otherwise a finished regeneration leaves no trace in the
                     // chat besides the validation verdict.
                     if (session.isActive || session.progressEvents.isNotEmpty) ...[
                       if (session.isActive)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
-                          child: _RegeneratingIndicator(),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                          child: _RegeneratingIndicator(
+                            label: session.isThinking ? 'Thinking…' : 'Regenerating fix…',
+                          ),
                         ),
                       for (final ev in session.progressEvents)
                         Padding(
@@ -420,17 +440,30 @@ class _FeedbackChatState extends ConsumerState<_FeedbackChat> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
-              child: TextField(
-                controller: _noteCtrl,
-                enabled: !locked,
-                minLines: 1,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  hintText: locked
-                      ? 'Regenerating fix…'
-                      : 'Ask a question, or describe what should change…',
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is! KeyDownEvent ||
+                      event.logicalKey != LogicalKeyboardKey.enter) {
+                    return KeyEventResult.ignored;
+                  }
+                  if (HardwareKeyboard.instance.isShiftPressed) {
+                    return KeyEventResult.ignored; // Shift+Enter inserts a newline.
+                  }
+                  if (!locked) _send();
+                  return KeyEventResult.handled;
+                },
+                child: TextField(
+                  controller: _noteCtrl,
+                  enabled: !locked,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: locked
+                        ? (session.isThinking ? 'Thinking…' : 'Regenerating fix…')
+                        : 'Ask a question, or describe what should change… (Enter to send, Shift+Enter for a new line)',
+                  ),
                 ),
-                onSubmitted: (_) => locked ? null : _send(),
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
@@ -505,7 +538,8 @@ class _ChatBubble extends StatelessWidget {
 }
 
 class _RegeneratingIndicator extends StatelessWidget {
-  const _RegeneratingIndicator();
+  final String label;
+  const _RegeneratingIndicator({this.label = 'Regenerating fix…'});
 
   @override
   Widget build(BuildContext context) {
@@ -521,7 +555,7 @@ class _RegeneratingIndicator extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.sm),
         Text(
-          'Regenerating fix…',
+          label,
           style: theme.labelLarge?.copyWith(color: palette.textSecondary),
         ),
       ],

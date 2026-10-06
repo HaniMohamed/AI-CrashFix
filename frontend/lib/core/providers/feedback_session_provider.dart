@@ -111,6 +111,10 @@ class FeedbackSessionState {
   final List<RunEvent> progressEvents;
   final FeedbackRegenerationSummary? summary;
   final String? error;
+  // Echoes the just-sent note instantly, before the backend round-trip that
+  // actually persists it resolves — cleared once we know the outcome (by then
+  // `crashFeedbackHistoryProvider` has the real, persisted copy).
+  final String? pendingUserMessage;
 
   const FeedbackSessionState({
     this.status = FeedbackStreamStatus.idle,
@@ -118,11 +122,16 @@ class FeedbackSessionState {
     this.progressEvents = const [],
     this.summary,
     this.error,
+    this.pendingUserMessage,
   });
 
   bool get isActive =>
       status == FeedbackStreamStatus.sending ||
       status == FeedbackStreamStatus.streaming;
+
+  /// True only for the "waiting on the backend to classify the message"
+  /// window — before we know if it's a question, a refinement, or invalid.
+  bool get isThinking => status == FeedbackStreamStatus.sending;
 
   FeedbackSessionState copyWith({
     FeedbackStreamStatus? status,
@@ -130,6 +139,8 @@ class FeedbackSessionState {
     List<RunEvent>? progressEvents,
     FeedbackRegenerationSummary? summary,
     String? error,
+    String? pendingUserMessage,
+    bool clearPendingUserMessage = false,
   }) =>
       FeedbackSessionState(
         status: status ?? this.status,
@@ -137,6 +148,9 @@ class FeedbackSessionState {
         progressEvents: progressEvents ?? this.progressEvents,
         summary: summary ?? this.summary,
         error: error ?? this.error,
+        pendingUserMessage: clearPendingUserMessage
+            ? null
+            : (pendingUserMessage ?? this.pendingUserMessage),
       );
 }
 
@@ -160,6 +174,7 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
       progressEvents: const [],
       summary: null,
       error: null,
+      pendingUserMessage: note,
     );
 
     try {
@@ -173,6 +188,7 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
         state = state.copyWith(
           status: FeedbackStreamStatus.failed,
           error: raw.isEmpty ? 'Feedback is locked (regeneration in flight).' : raw,
+          clearPendingUserMessage: true,
         );
         return;
       }
@@ -190,7 +206,12 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
         return;
       }
 
-      state = state.copyWith(status: FeedbackStreamStatus.streaming);
+      // The user note is already persisted by now (the backend writes it before
+      // choosing to stream), so the real history has it — safe to drop the echo.
+      state = state.copyWith(
+        status: FeedbackStreamStatus.streaming,
+        clearPendingUserMessage: true,
+      );
       final lineStream = response.stream
           .transform(utf8.decoder)
           .transform(const LineSplitter());
@@ -214,6 +235,7 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
       state = state.copyWith(
         status: FeedbackStreamStatus.failed,
         error: e.toString(),
+        clearPendingUserMessage: true,
       );
     }
   }
@@ -224,7 +246,10 @@ class FeedbackSessionNotifier extends FamilyNotifier<FeedbackSessionState, Strin
   /// status; the actual message content comes from `crashFeedbackHistoryProvider`,
   /// not from here (keeping one source of truth instead of showing it twice).
   void _handleNonStreamingResponse() {
-    state = state.copyWith(status: FeedbackStreamStatus.rejected);
+    state = state.copyWith(
+      status: FeedbackStreamStatus.rejected,
+      clearPendingUserMessage: true,
+    );
   }
 
   void _handleLine(String line) {
