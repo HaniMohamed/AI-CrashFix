@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.services.crash_store import uses_postgres_crash_store
@@ -66,7 +66,7 @@ def _add_message_sqlite(
     from app.services.sqlite_util import connect_sqlite
 
     path = _sqlite_db_path(db_path=db_path, repo_key=repo_key, project_id=project_id)
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with connect_sqlite(path) as conn:
         conn.execute(
             """

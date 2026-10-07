@@ -22,15 +22,24 @@ class Fmt {
     return '${h}h ${m % 60}m';
   }
 
+  /// Parses an ISO timestamp from the backend. Backend timestamps are
+  /// always UTC; if the string has no timezone suffix (no `Z`/offset),
+  /// `DateTime.parse` would otherwise treat it as local time, so we
+  /// normalize those naive strings to be parsed as UTC explicitly.
+  static DateTime _parseUtc(String iso) {
+    final hasOffset = RegExp(r'(Z|[+-]\d{2}:?\d{2})$').hasMatch(iso);
+    final dt = DateTime.parse(hasOffset ? iso : '${iso}Z');
+    return dt.isUtc ? dt : dt.toUtc();
+  }
+
   static String relative(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     DateTime dt;
     try {
-      dt = DateTime.parse(iso);
+      dt = _parseUtc(iso);
     } catch (_) {
       return iso;
     }
-    if (dt.isUtc == false) dt = dt.toUtc();
     final diff = DateTime.now().toUtc().difference(dt);
     if (diff.inSeconds < 60) return 'just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
@@ -43,7 +52,7 @@ class Fmt {
   static String readableDateTime(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     try {
-      final dt = DateTime.parse(iso).toLocal();
+      final dt = _parseUtc(iso).toLocal();
       return DateFormat('MMM d, y · h:mm a').format(dt);
     } catch (_) {
       return iso;
@@ -52,7 +61,7 @@ class Fmt {
 
   static String shortDate(String iso) {
     try {
-      return DateFormat('MMM d').format(DateTime.parse(iso));
+      return DateFormat('MMM d').format(_parseUtc(iso).toLocal());
     } catch (_) {
       return iso;
     }

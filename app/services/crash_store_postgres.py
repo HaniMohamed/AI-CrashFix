@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import psycopg
@@ -89,7 +89,7 @@ class PostgresCrashStore:
         return connect_postgres(self.db_path, row_factory=dict_row)
 
     def insert_crash(self, crash_id: str) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         created_by = resolve_user_id(required=False)
         with self._connect() as conn:
             with conn.cursor() as cur:
@@ -106,7 +106,7 @@ class PostgresCrashStore:
             conn.commit()
 
     def update_result(self, crash_id: str, result: dict) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 if result.get("graph_error") or result.get("pr_error"):
@@ -176,7 +176,7 @@ class PostgresCrashStore:
             sets.append("pr_url = %s")
             vals.append(pr_url)
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 if sets:
@@ -200,7 +200,7 @@ class PostgresCrashStore:
             conn.commit()
 
     def set_feedback_lock(self, crash_id: str, locked: bool) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -214,7 +214,7 @@ class PostgresCrashStore:
             conn.commit()
 
     def bump_feedback_iteration(self, crash_id: str) -> int:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -231,7 +231,7 @@ class PostgresCrashStore:
         return int(row["feedback_iteration_count"]) if row else 0
 
     def bump_restart_count(self, crash_id: str) -> int:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(

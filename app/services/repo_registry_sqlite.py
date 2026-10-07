@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.services.repo_registry_store import (
     RepoEntry,
@@ -188,7 +188,7 @@ class SqliteRepoRegistryStore:
         cl_ios = (crashlytics_ios_bundle_id or "").strip() or None
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with self._connect() as conn:
             conn.execute(
@@ -339,7 +339,7 @@ class SqliteRepoRegistryStore:
         if entry is None:
             raise LookupError(f"repo_key={key!r} not found")
         creds = (path or "").strip() or None
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
@@ -362,7 +362,7 @@ class SqliteRepoRegistryStore:
         entry = self.get_repo(key)
         if entry is None:
             raise LookupError(f"repo_key={key!r} not found")
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
@@ -398,7 +398,7 @@ class SqliteRepoRegistryStore:
         entry = self.get_repo(key)
         if entry is None:
             raise LookupError(f"repo_key={key!r} not found")
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with self._connect() as conn:
             conn.execute(

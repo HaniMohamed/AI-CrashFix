@@ -6,7 +6,7 @@ import re
 import shutil
 from bisect import bisect_right
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -237,7 +237,7 @@ def build_symbol_index(
             "repo_key": repo_key,
             "commit_sha": commit_sha,
             "packages_dirs": list(packages_dirs),
-            "built_at": datetime.utcnow().isoformat(),
+            "built_at": datetime.now(timezone.utc).isoformat(),
             "version": 1,
         },
         "symbols": symbols,

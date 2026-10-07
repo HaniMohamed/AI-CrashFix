@@ -840,7 +840,7 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
     def _clone_and_save() -> Dict[str, Any]:
         # Git clone + SQLite writes are blocking; keep them off the event loop so
         # /api/health (and the Flutter "API offline" screen) stays responsive.
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         from app.services.dart_symbol_index import build_symbol_index
         from app.services.project_service import ProjectService
@@ -883,7 +883,7 @@ async def upsert_repo(req: RepoUpsertRequest) -> Dict[str, Any]:
                 reg.upsert_index_status(
                     repo_key=entry.repo_key,
                     indexed_sha=head_sha,
-                    last_indexed_at=datetime.utcnow().isoformat(),
+                    last_indexed_at=datetime.now(timezone.utc).isoformat(),
                     last_error=None,
                 )
         except Exception as e:
@@ -1133,7 +1133,7 @@ async def refresh_repo(repo_key: str) -> Dict[str, Any]:
     if head_sha and head_sha != indexed_sha_before:
         try:
             from app.services.dart_symbol_index import build_symbol_index
-            from datetime import datetime
+            from datetime import datetime, timezone
 
             def _reindex() -> None:
                 build_symbol_index(
@@ -1147,7 +1147,7 @@ async def refresh_repo(repo_key: str) -> Dict[str, Any]:
             reg.upsert_index_status(
                 repo_key=key,
                 indexed_sha=head_sha,
-                last_indexed_at=datetime.utcnow().isoformat(),
+                last_indexed_at=datetime.now(timezone.utc).isoformat(),
                 last_error=None,
             )
         except Exception as e:

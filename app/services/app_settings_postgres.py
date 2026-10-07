@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import psycopg
@@ -79,7 +79,7 @@ class PostgresAppSettingsStore:
         key = (k or "").strip()
         if not key:
             raise ValueError("k is required")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(

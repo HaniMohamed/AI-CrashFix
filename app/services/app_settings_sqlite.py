@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.services.app_settings_store import resolve_app_settings_db_path
@@ -71,7 +71,7 @@ class SqliteAppSettingsStore:
         key = (k or "").strip()
         if not key:
             raise ValueError("k is required")
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         payload = json.dumps(v, ensure_ascii=False)
         with self._connect() as conn:
             conn.execute(

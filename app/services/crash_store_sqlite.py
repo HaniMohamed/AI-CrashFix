@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import BQ_PROJECT_ID
@@ -163,7 +163,7 @@ class SqliteCrashStore:
             )
 
     def insert_crash(self, crash_id: str) -> None:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         created_by = resolve_user_id(required=False)
         with self._connect() as conn:
             conn.execute(
@@ -176,7 +176,7 @@ class SqliteCrashStore:
             conn.commit()
 
     def update_result(self, crash_id: str, result: dict) -> None:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         payload = json.dumps(result)
         with self._connect() as conn:
             if result.get("graph_error") or result.get("pr_error"):
@@ -244,7 +244,7 @@ class SqliteCrashStore:
             sets.append("pr_url = ?")
             vals.append(pr_url)
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             if sets:
                 sets.append("updated_at = ?")
@@ -258,7 +258,7 @@ class SqliteCrashStore:
             conn.commit()
 
     def set_feedback_lock(self, crash_id: str, locked: bool) -> None:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 "UPDATE crashes SET feedback_locked = ?, updated_at = ? WHERE crash_id = ?",
@@ -267,7 +267,7 @@ class SqliteCrashStore:
             conn.commit()
 
     def bump_feedback_iteration(self, crash_id: str) -> int:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
@@ -285,7 +285,7 @@ class SqliteCrashStore:
         return int(row[0]) if row else 0
 
     def bump_restart_count(self, crash_id: str) -> int:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 """

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import psycopg
@@ -127,7 +127,7 @@ class PostgresRepoRegistryStore:
         cl_ios = (crashlytics_ios_bundle_id or "").strip() or None
 
         repo_key = compute_repo_key(repo_url=url, repo_ref=ref)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         with self._connect() as conn:
             with conn.cursor() as cur:
@@ -291,7 +291,7 @@ class PostgresRepoRegistryStore:
         if entry is None:
             raise LookupError(f"repo_key={key!r} not found")
         creds = (path or "").strip() or None
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -315,7 +315,7 @@ class PostgresRepoRegistryStore:
         entry = self.get_repo(key)
         if entry is None:
             raise LookupError(f"repo_key={key!r} not found")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -355,7 +355,7 @@ class PostgresRepoRegistryStore:
         entry = self.get_repo(key)
         if entry is None:
             raise LookupError(f"repo_key={key!r} not found")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         with self._connect() as conn:
             with conn.cursor() as cur:
