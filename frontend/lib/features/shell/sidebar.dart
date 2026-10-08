@@ -42,6 +42,12 @@ const sidebarItems = <SidebarItem>[
     path: '/mrs',
   ),
   SidebarItem(
+    label: 'Fixed Crashes',
+    icon: Icons.task_alt_outlined,
+    activeIcon: Icons.task_alt,
+    path: '/fixed-crashes',
+  ),
+  SidebarItem(
     label: 'New Run',
     icon: Icons.play_circle_outline,
     activeIcon: Icons.play_circle,
@@ -120,6 +126,12 @@ List<SidebarItem> moreItemsForUser({required bool isAdmin}) {
       icon: Icons.merge_outlined,
       activeIcon: Icons.merge,
       path: '/mrs',
+    ),
+    const SidebarItem(
+      label: 'Fixed Crashes',
+      icon: Icons.task_alt_outlined,
+      activeIcon: Icons.task_alt,
+      path: '/fixed-crashes',
     ),
     const SidebarItem(
       label: 'New Run',

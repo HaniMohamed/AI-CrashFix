@@ -36,8 +36,13 @@ def _parse_iso(value: Any) -> datetime | None:
     if not value or not isinstance(value, str):
         return None
     try:
-        # Stored timestamps are naive UTC isoformat from `datetime.utcnow().isoformat()`.
-        return datetime.fromisoformat(value)
+        # Older rows store naive UTC isoformat (from `datetime.utcnow().isoformat()`);
+        # newer rows store timezone-aware isoformat (from `datetime.now(timezone.utc)`).
+        # Normalize to naive UTC so the two can be compared/subtracted safely.
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
     except Exception:
         return None
 
@@ -74,6 +79,12 @@ def compute_analytics(store: CrashStore, *, use_cache: bool = True) -> Dict[str,
     duration_sum = 0.0
     duration_n = 0
 
+    mr_status_counter: Counter[str] = Counter()
+    fixed_count = 0
+    fixed_with_android_version = 0
+    fixed_with_ios_version = 0
+    reopened_count = 0
+
     timeseries_created: Dict[str, int] = defaultdict(int)
     timeseries_completed: Dict[str, int] = defaultdict(int)
     timeseries_failed: Dict[str, int] = defaultdict(int)
@@ -99,6 +110,16 @@ def compute_analytics(store: CrashStore, *, use_cache: bool = True) -> Dict[str,
             with_jira += 1
         if row.get("pr_url"):
             with_pr += 1
+
+        mr_status_counter[row.get("mr_status") or "pending"] += 1
+        if row.get("fixed_marked_at"):
+            fixed_count += 1
+            if row.get("fixed_in_version_android"):
+                fixed_with_android_version += 1
+            if row.get("fixed_in_version_ios"):
+                fixed_with_ios_version += 1
+        if row.get("reopened"):
+            reopened_count += 1
 
         created = _parse_iso(row.get("created_at"))
         updated = _parse_iso(row.get("updated_at"))
@@ -156,6 +177,20 @@ def compute_analytics(store: CrashStore, *, use_cache: bool = True) -> Dict[str,
             "with_jira": with_jira,
             "with_pr": with_pr,
             "pipeline_complete": pipeline_complete_count,
+        },
+        "mr_status": {
+            "pending": mr_status_counter.get("pending", 0),
+            "merged": mr_status_counter.get("merged", 0),
+            "closed": mr_status_counter.get("closed", 0),
+        },
+        "fixed": {
+            "total": fixed_count,
+            "with_android_version": fixed_with_android_version,
+            "with_ios_version": fixed_with_ios_version,
+        },
+        "reopened": {
+            "count": reopened_count,
+            "rate": (reopened_count / total) if total else 0.0,
         },
         "pipeline_funnel": funnel,
         "step_success_rate": step_success_rate,

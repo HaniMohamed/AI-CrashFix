@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import os
@@ -48,6 +49,118 @@ from app.services.launch_settings import apply_launch_env_file, persist_launch_e
 from app.services.repo_registry_store import RepoRegistryStore
 from app.api.auth import router as auth_router
 from app.api.auth_middleware import auth_middleware
+
+MR_STATUS_POLL_INTERVAL_SECONDS = 600
+
+_mr_status_poll_task: asyncio.Task | None = None
+_mr_status_poll_running = False
+
+
+def _sync_mr_status_for_crash(store: CrashStore, git, row: Dict[str, Any]) -> Dict[str, Any] | None:
+    if not row.get("mr_created"):
+        raise HTTPException(status_code=400, detail="No merge request has been created for this crash yet.")
+
+    result = row.get("result") if isinstance(row.get("result"), dict) else {}
+    pr_branch = str(result.get("pr_branch") or "").strip()
+    existing_pr_url = str(row.get("pr_url") or "").strip()
+    if not pr_branch and not existing_pr_url:
+        raise HTTPException(status_code=400, detail="This crash has no merge request branch or URL to look up.")
+
+    mr_iid = None
+    if pr_branch:
+        mr = git.find_open_merge_request(pr_branch)
+        mr_iid = mr.get("iid") if mr else None
+    if not mr_iid and existing_pr_url:
+        mr_iid = existing_pr_url.rstrip("/").rsplit("/", 1)[-1]
+    if not mr_iid:
+        raise HTTPException(status_code=404, detail="Could not resolve a merge request iid for this crash.")
+
+    status_info = git.get_merge_request_status(mr_iid)
+    if status_info is None:
+        raise HTTPException(status_code=404, detail="Merge request not found in GitLab.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    store.set_mr_status(row["crash_id"], status_info["status"], now)
+    return store.get_crash(row["crash_id"], include_result=True)
+
+
+def _poll_mr_status_once() -> None:
+    import logging
+
+    from app.services.git_service import GitService
+
+    log = logging.getLogger(__name__)
+    synced = 0
+    changed = 0
+    for entry in RepoRegistryStore().list_repos():
+        key = entry.repo_key
+        try:
+            store = _crash_store_for_repo_key(key)
+        except Exception:
+            log.warning("MR status poll: failed to open crash store for repo_key=%r", key, exc_info=True)
+            continue
+
+        offset = 0
+        batch_size = 200
+        while True:
+            try:
+                rows = store.list_crashes(limit=batch_size, offset=offset, include_result=True)
+            except Exception:
+                log.warning("MR status poll: failed to list crashes for repo_key=%r", key, exc_info=True)
+                break
+            if not rows:
+                break
+            candidates = [
+                row
+                for row in rows
+                if row.get("mr_created") and row.get("mr_status") not in ("merged", "closed")
+            ]
+            for row in candidates:
+                try:
+                    result = row.get("result") if isinstance(row.get("result"), dict) else {}
+                    from app import config as cfg
+
+                    repo_root = str(result.get("repo_root") or "").strip() or (cfg.REPO_ROOT or "").strip()
+                    if not repo_root:
+                        continue
+                    git = GitService(repo_root=repo_root, repo_key=key)
+                    before_status = row.get("mr_status")
+                    updated = _sync_mr_status_for_crash(store, git, row)
+                    synced += 1
+                    if updated and updated.get("mr_status") != before_status:
+                        changed += 1
+                except HTTPException:
+                    pass
+                except Exception:
+                    log.warning(
+                        "MR status poll: failed to sync crash_id=%r repo_key=%r",
+                        row.get("crash_id"),
+                        key,
+                        exc_info=True,
+                    )
+            if len(rows) < batch_size:
+                break
+            offset += batch_size
+
+    log.info("MR status poll: synced=%d changed=%d", synced, changed)
+
+
+async def _mr_status_poll_loop() -> None:
+    global _mr_status_poll_running
+    import logging
+
+    log = logging.getLogger(__name__)
+    while True:
+        await asyncio.sleep(MR_STATUS_POLL_INTERVAL_SECONDS)
+        if _mr_status_poll_running:
+            continue
+        _mr_status_poll_running = True
+        try:
+            await asyncio.to_thread(_poll_mr_status_once)
+        except Exception:
+            log.warning("MR status poll pass failed", exc_info=True)
+        finally:
+            _mr_status_poll_running = False
 
 
 @asynccontextmanager
@@ -109,7 +222,24 @@ async def _lifespan(_app: FastAPI):
             "Skipping legacy repo integration cleanup migration",
             exc_info=True,
         )
+
+    global _mr_status_poll_task
+    _mr_status_poll_task = asyncio.create_task(_mr_status_poll_loop())
+    import logging
+
+    logging.getLogger(__name__).info(
+        "MR status background poll started (interval=%ds)", MR_STATUS_POLL_INTERVAL_SECONDS
+    )
+
     yield
+
+    if _mr_status_poll_task is not None:
+        _mr_status_poll_task.cancel()
+        try:
+            await _mr_status_poll_task
+        except asyncio.CancelledError:
+            pass
+        _mr_status_poll_task = None
 
 
 app = FastAPI(
@@ -667,6 +797,25 @@ async def get_crash_feedback(
     }
 
 
+@app.get("/api/crashes/{crash_id}/reopen-insight")
+async def get_crash_reopen_insight(
+    crash_id: str,
+    repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
+) -> Dict[str, Any]:
+    from app.services import crash_feedback_store
+
+    key = _resolve_repo_key(repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=False)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+    messages = crash_feedback_store.list_messages(
+        crash_id, db_path=None, repo_key=key, project_id=store.project_id
+    )
+    insights = [m for m in messages if m.get("status") == "reopen_analysis"]
+    return {"insights": insights}
+
+
 class FeedbackRequest(BaseModel):
     note: str
     repo_key: Optional[str] = None
@@ -806,6 +955,75 @@ async def post_crash_restart(crash_id: str, req: RestartRequest = RestartRequest
     )
 
     return {"ok": True, "restart_count": restart_count}
+
+
+@app.post("/api/crashes/{crash_id}/sync-mr-status")
+async def post_crash_sync_mr_status(
+    crash_id: str,
+    repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
+) -> Dict[str, Any]:
+    from app import config as cfg
+    from app.services.git_service import GitService
+
+    key = _resolve_repo_key(repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=True)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+
+    if not row.get("mr_created"):
+        raise HTTPException(status_code=400, detail="No merge request has been created for this crash yet.")
+
+    result = row.get("result") if isinstance(row.get("result"), dict) else {}
+    pr_branch = str(result.get("pr_branch") or "").strip()
+    existing_pr_url = str(row.get("pr_url") or "").strip()
+    if not pr_branch and not existing_pr_url:
+        raise HTTPException(status_code=400, detail="This crash has no merge request branch or URL to look up.")
+
+    repo_root = str(result.get("repo_root") or "").strip() or (cfg.REPO_ROOT or "").strip()
+    git = GitService(repo_root=repo_root, repo_key=key)
+    return _sync_mr_status_for_crash(store, git, row)
+
+
+class MarkFixedRequest(BaseModel):
+    repo_key: Optional[str] = None
+    android_version: Optional[str] = None
+    ios_version: Optional[str] = None
+
+
+@app.post("/api/crashes/{crash_id}/mark-fixed")
+async def post_crash_mark_fixed(crash_id: str, req: MarkFixedRequest = MarkFixedRequest()) -> Dict[str, Any]:
+    from app.services.user_context import resolve_user_id
+
+    key = _resolve_repo_key(req.repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=False)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+
+    user_id = resolve_user_id(required=False)
+    store.mark_fixed(
+        crash_id,
+        android_version=req.android_version,
+        ios_version=req.ios_version,
+        user_id=user_id,
+    )
+    return store.get_crash(crash_id, include_result=True)
+
+
+@app.post("/api/crashes/{crash_id}/unmark-fixed")
+async def post_crash_unmark_fixed(
+    crash_id: str,
+    repo_key: Optional[str] = Query(None, description="Scope lookup to this repo_key (defaults to active repo)."),
+) -> Dict[str, Any]:
+    key = _resolve_repo_key(repo_key)
+    store = _crash_store_for_repo_key(key)
+    row = store.get_crash(crash_id, include_result=False)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"crash_id={crash_id!r} not found")
+
+    store.unmark_fixed(crash_id)
+    return store.get_crash(crash_id, include_result=True)
 
 
 @app.get("/api/analytics")

@@ -11,6 +11,7 @@ from app.config import BQ_PROJECT_ID
 from app.services.crash_store_common import (
     FEEDBACK_COLUMNS,
     PIPELINE_FLAG_COLUMNS,
+    RELEASE_COLUMNS,
     row_to_dict,
     recompute_pipeline_complete,
 )
@@ -31,6 +32,7 @@ _ALL_COLUMNS = (
     "created_by_user_id",
     *PIPELINE_FLAG_COLUMNS,
     *FEEDBACK_COLUMNS,
+    *RELEASE_COLUMNS,
 )
 
 
@@ -121,7 +123,19 @@ class SqliteCrashStore:
             pipeline_complete INTEGER NOT NULL DEFAULT 0,
             feedback_iteration_count INTEGER NOT NULL DEFAULT 0,
             feedback_locked INTEGER NOT NULL DEFAULT 0,
-            restart_count INTEGER NOT NULL DEFAULT 0
+            restart_count INTEGER NOT NULL DEFAULT 0,
+            mr_status TEXT NOT NULL DEFAULT 'pending',
+            mr_status_checked_at TEXT,
+            mr_created_at TEXT,
+            fixed_in_version_android TEXT,
+            fixed_in_version_ios TEXT,
+            fixed_marked_at TEXT,
+            fixed_marked_by_user_id TEXT,
+            crash_fingerprint TEXT,
+            reopened INTEGER NOT NULL DEFAULT 0,
+            reopened_at TEXT,
+            reopen_count INTEGER NOT NULL DEFAULT 0,
+            reopened_from_crash_id TEXT
         )
         """
         )
@@ -161,6 +175,36 @@ class SqliteCrashStore:
             conn.execute(
                 "ALTER TABLE crashes ADD COLUMN restart_count INTEGER NOT NULL DEFAULT 0"
             )
+        if "mr_status" not in existing:
+            conn.execute(
+                "ALTER TABLE crashes ADD COLUMN mr_status TEXT NOT NULL DEFAULT 'pending'"
+            )
+        if "mr_status_checked_at" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN mr_status_checked_at TEXT")
+        if "mr_created_at" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN mr_created_at TEXT")
+        if "fixed_in_version_android" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN fixed_in_version_android TEXT")
+        if "fixed_in_version_ios" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN fixed_in_version_ios TEXT")
+        if "fixed_marked_at" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN fixed_marked_at TEXT")
+        if "fixed_marked_by_user_id" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN fixed_marked_by_user_id TEXT")
+        if "crash_fingerprint" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN crash_fingerprint TEXT")
+        if "reopened" not in existing:
+            conn.execute(
+                "ALTER TABLE crashes ADD COLUMN reopened INTEGER NOT NULL DEFAULT 0"
+            )
+        if "reopened_at" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN reopened_at TEXT")
+        if "reopen_count" not in existing:
+            conn.execute(
+                "ALTER TABLE crashes ADD COLUMN reopen_count INTEGER NOT NULL DEFAULT 0"
+            )
+        if "reopened_from_crash_id" not in existing:
+            conn.execute("ALTER TABLE crashes ADD COLUMN reopened_from_crash_id TEXT")
 
     def insert_crash(self, crash_id: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
@@ -246,6 +290,9 @@ class SqliteCrashStore:
 
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
+            if mr_created:
+                sets.append("mr_created_at = COALESCE(mr_created_at, ?)")
+                vals.append(now)
             if sets:
                 sets.append("updated_at = ?")
                 vals.append(now)
@@ -265,6 +312,103 @@ class SqliteCrashStore:
                 (1 if locked else 0, now, crash_id),
             )
             conn.commit()
+
+    def set_crash_fingerprint(self, crash_id: str, fingerprint: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE crashes SET crash_fingerprint = ? WHERE crash_id = ?",
+                (fingerprint, crash_id),
+            )
+            conn.commit()
+
+    def set_mr_status(self, crash_id: str, status: str, checked_at: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE crashes SET mr_status = ?, mr_status_checked_at = ?, updated_at = ? WHERE crash_id = ?",
+                (status, checked_at, checked_at, crash_id),
+            )
+            conn.commit()
+
+    def mark_fixed(
+        self,
+        crash_id: str,
+        *,
+        android_version: str | None = None,
+        ios_version: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE crashes
+                SET fixed_marked_at = ?,
+                    fixed_in_version_android = ?,
+                    fixed_in_version_ios = ?,
+                    fixed_marked_by_user_id = ?,
+                    updated_at = ?
+                WHERE crash_id = ?
+                """,
+                (now, android_version, ios_version, user_id, now, crash_id),
+            )
+            conn.commit()
+
+    def unmark_fixed(self, crash_id: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE crashes
+                SET fixed_marked_at = NULL,
+                    fixed_in_version_android = NULL,
+                    fixed_in_version_ios = NULL,
+                    fixed_marked_by_user_id = NULL,
+                    updated_at = ?
+                WHERE crash_id = ?
+                """,
+                (now, crash_id),
+            )
+            conn.commit()
+
+    def mark_reopened(self, crash_id: str, *, reopened_from_crash_id: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            prior = conn.execute(
+                "SELECT reopen_count FROM crashes WHERE crash_id = ?",
+                (reopened_from_crash_id,),
+            ).fetchone()
+            reopen_count = (int(prior[0]) if prior and prior[0] is not None else 0) + 1
+            conn.execute(
+                """
+                UPDATE crashes
+                SET reopened = 1,
+                    reopened_at = ?,
+                    reopen_count = ?,
+                    reopened_from_crash_id = ?,
+                    updated_at = ?
+                WHERE crash_id = ?
+                """,
+                (now, reopen_count, reopened_from_crash_id, now, crash_id),
+            )
+            conn.commit()
+
+    def find_fixed_crash_by_fingerprint(
+        self, fingerprint: str, *, exclude_crash_id: str | None = None
+    ) -> dict | None:
+        if not fingerprint:
+            return None
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT crash_id, reopen_count FROM crashes
+                WHERE crash_fingerprint = ? AND fixed_marked_at IS NOT NULL AND crash_id != ?
+                ORDER BY datetime(fixed_marked_at) DESC
+                LIMIT 1
+                """,
+                (fingerprint, exclude_crash_id or ""),
+            ).fetchone()
+        return dict(row) if row else None
 
     def bump_feedback_iteration(self, crash_id: str) -> int:
         now = datetime.now(timezone.utc).isoformat()

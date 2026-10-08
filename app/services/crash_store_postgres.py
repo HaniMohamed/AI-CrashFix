@@ -13,6 +13,7 @@ from app.config import AI_CRASH_FIX_CRASH_DB_URL, BQ_PROJECT_ID
 from app.services.crash_store_common import (
     FEEDBACK_COLUMNS,
     PIPELINE_FLAG_COLUMNS,
+    RELEASE_COLUMNS,
     recompute_pipeline_complete,
     row_to_dict,
 )
@@ -29,6 +30,7 @@ _ALL_COLUMNS = (
     "created_by_user_id",
     *PIPELINE_FLAG_COLUMNS,
     *FEEDBACK_COLUMNS,
+    *RELEASE_COLUMNS,
 )
 
 
@@ -179,6 +181,9 @@ class PostgresCrashStore:
         now = datetime.now(timezone.utc)
         with self._connect() as conn:
             with conn.cursor() as cur:
+                if mr_created:
+                    sets.append("mr_created_at = COALESCE(mr_created_at, %s)")
+                    vals.append(now)
                 if sets:
                     sets.append("updated_at = %s")
                     vals.extend([now, self.project_id, crash_id])
@@ -212,6 +217,127 @@ class PostgresCrashStore:
                     (bool(locked), now, self.project_id, crash_id),
                 )
             conn.commit()
+
+    def set_crash_fingerprint(self, crash_id: str, fingerprint: str) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET crash_fingerprint = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    """,
+                    (fingerprint, self.project_id, crash_id),
+                )
+            conn.commit()
+
+    def set_mr_status(self, crash_id: str, status: str, checked_at: str) -> None:
+        now = datetime.now(timezone.utc)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET mr_status = %s, mr_status_checked_at = %s, updated_at = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    """,
+                    (status, checked_at, now, self.project_id, crash_id),
+                )
+            conn.commit()
+
+    def mark_fixed(
+        self,
+        crash_id: str,
+        *,
+        android_version: str | None = None,
+        ios_version: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET fixed_marked_at = %s,
+                        fixed_in_version_android = %s,
+                        fixed_in_version_ios = %s,
+                        fixed_marked_by_user_id = %s,
+                        updated_at = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    """,
+                    (now, android_version, ios_version, user_id, now, self.project_id, crash_id),
+                )
+            conn.commit()
+
+    def unmark_fixed(self, crash_id: str) -> None:
+        now = datetime.now(timezone.utc)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET fixed_marked_at = NULL,
+                        fixed_in_version_android = NULL,
+                        fixed_in_version_ios = NULL,
+                        fixed_marked_by_user_id = NULL,
+                        updated_at = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    """,
+                    (now, self.project_id, crash_id),
+                )
+            conn.commit()
+
+    def mark_reopened(self, crash_id: str, *, reopened_from_crash_id: str) -> None:
+        now = datetime.now(timezone.utc)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT reopen_count FROM crashes
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    """,
+                    (self.project_id, reopened_from_crash_id),
+                )
+                prior = cur.fetchone()
+                reopen_count = (
+                    int(prior["reopen_count"]) if prior and prior.get("reopen_count") is not None else 0
+                ) + 1
+                cur.execute(
+                    """
+                    UPDATE crashes
+                    SET reopened = TRUE,
+                        reopened_at = %s,
+                        reopen_count = %s,
+                        reopened_from_crash_id = %s,
+                        updated_at = %s
+                    WHERE firebase_project_id = %s AND crash_id = %s
+                    """,
+                    (now, reopen_count, reopened_from_crash_id, now, self.project_id, crash_id),
+                )
+            conn.commit()
+
+    def find_fixed_crash_by_fingerprint(
+        self, fingerprint: str, *, exclude_crash_id: str | None = None
+    ) -> dict | None:
+        if not fingerprint:
+            return None
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT crash_id, reopen_count FROM crashes
+                    WHERE firebase_project_id = %s
+                      AND crash_fingerprint = %s
+                      AND fixed_marked_at IS NOT NULL
+                      AND crash_id != %s
+                    ORDER BY fixed_marked_at DESC
+                    LIMIT 1
+                    """,
+                    (self.project_id, fingerprint, exclude_crash_id or ""),
+                )
+                row = cur.fetchone()
+        return dict(row) if row else None
 
     def bump_feedback_iteration(self, crash_id: str) -> int:
         now = datetime.now(timezone.utc)

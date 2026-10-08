@@ -19,6 +19,19 @@ class Crash {
   final int feedbackIterationCount;
   final bool feedbackLocked;
 
+  /// MR lifecycle tracking populated once a merge request has been created.
+  final String? mrStatus;
+  final String? mrStatusCheckedAt;
+  final String? mrCreatedAt;
+  final String? fixedInVersionAndroid;
+  final String? fixedInVersionIos;
+  final String? fixedMarkedAt;
+  final String? fixedMarkedByUserId;
+  final bool reopened;
+  final String? reopenedAt;
+  final int reopenCount;
+  final String? reopenedFromCrashId;
+
   /// Parsed `result` JSON (final CrashState). May be null when not requested
   /// or when the run hasn't finished.
   final Map<String, dynamic>? result;
@@ -41,6 +54,17 @@ class Crash {
     this.pipelineComplete = false,
     this.feedbackIterationCount = 0,
     this.feedbackLocked = false,
+    this.mrStatus,
+    this.mrStatusCheckedAt,
+    this.mrCreatedAt,
+    this.fixedInVersionAndroid,
+    this.fixedInVersionIos,
+    this.fixedMarkedAt,
+    this.fixedMarkedByUserId,
+    this.reopened = false,
+    this.reopenedAt,
+    this.reopenCount = 0,
+    this.reopenedFromCrashId,
     this.result,
   });
 
@@ -68,6 +92,17 @@ class Crash {
         feedbackIterationCount:
             (j['feedback_iteration_count'] as num?)?.toInt() ?? 0,
         feedbackLocked: j['feedback_locked'] == true,
+        mrStatus: j['mr_status'] as String?,
+        mrStatusCheckedAt: j['mr_status_checked_at'] as String?,
+        mrCreatedAt: j['mr_created_at'] as String?,
+        fixedInVersionAndroid: j['fixed_in_version_android'] as String?,
+        fixedInVersionIos: j['fixed_in_version_ios'] as String?,
+        fixedMarkedAt: j['fixed_marked_at'] as String?,
+        fixedMarkedByUserId: j['fixed_marked_by_user_id'] as String?,
+        reopened: j['reopened'] == true,
+        reopenedAt: j['reopened_at'] as String?,
+        reopenCount: (j['reopen_count'] as num?)?.toInt() ?? 0,
+        reopenedFromCrashId: j['reopened_from_crash_id'] as String?,
         result: j['result'] is Map<String, dynamic>
             ? j['result'] as Map<String, dynamic>
             : null,

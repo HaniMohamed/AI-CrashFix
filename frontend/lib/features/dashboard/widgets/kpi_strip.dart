@@ -20,7 +20,7 @@ class KpiStrip extends StatelessWidget {
     if (loading || analytics == null) {
       return Row(
         children: List.generate(
-          4,
+          6,
           (_) => const Expanded(child: ShimmerCard(height: 132))
               .animate()
               .fadeIn(duration: 400.ms),
@@ -66,6 +66,22 @@ class KpiStrip extends StatelessWidget {
         caption: a.totals.failed > 0
             ? '${a.totals.failed} failed lifetime'
             : 'No failures lifetime',
+      ),
+      _Kpi(
+        title: 'Fixed in release',
+        value: a.fixed.total,
+        accent: palette.success,
+        icon: Icons.verified_outlined,
+        caption:
+            '${a.fixed.withAndroidVersion} android · ${a.fixed.withIosVersion} ios',
+      ),
+      _Kpi(
+        title: 'Reopen rate',
+        value: (a.reopened.rate * 100).round(),
+        suffix: '%',
+        accent: a.reopened.rate > 0.15 ? palette.danger : palette.secondary,
+        icon: Icons.replay_outlined,
+        caption: '${a.reopened.count} reopened crashes',
       ),
     ];
 

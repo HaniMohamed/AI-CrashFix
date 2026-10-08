@@ -21,6 +21,21 @@ FEEDBACK_COLUMNS = (
 
 RESTART_COLUMNS = ("restart_count",)
 
+RELEASE_COLUMNS = (
+    "mr_status",
+    "mr_status_checked_at",
+    "mr_created_at",
+    "fixed_in_version_android",
+    "fixed_in_version_ios",
+    "fixed_marked_at",
+    "fixed_marked_by_user_id",
+    "crash_fingerprint",
+    "reopened",
+    "reopened_at",
+    "reopen_count",
+    "reopened_from_crash_id",
+)
+
 
 def row_to_dict(row: Any, *, include_result: bool) -> dict:
     all_columns = (
@@ -34,6 +49,7 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
         *PIPELINE_FLAG_COLUMNS,
         *FEEDBACK_COLUMNS,
         *RESTART_COLUMNS,
+        *RELEASE_COLUMNS,
     )
     if hasattr(row, "keys"):
         out = {k: row[k] for k in all_columns if k in row.keys()}
@@ -48,6 +64,12 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
         out["feedback_iteration_count"] = 0
     if "restart_count" in out and out["restart_count"] is None:
         out["restart_count"] = 0
+    if "reopen_count" in out and out["reopen_count"] is None:
+        out["reopen_count"] = 0
+    if "reopened" in out:
+        out["reopened"] = bool(out["reopened"])
+    if "mr_status" in out and out["mr_status"] is None:
+        out["mr_status"] = "pending"
     if "created_by_user_id" in out:
         raw_uid = out["created_by_user_id"]
         if raw_uid is None:
@@ -71,7 +93,14 @@ def row_to_dict(row: Any, *, include_result: bool) -> dict:
                 out["result"] = None
         else:
             out["result"] = raw
-    for col in ("created_at", "updated_at"):
+    for col in (
+        "created_at",
+        "updated_at",
+        "mr_status_checked_at",
+        "mr_created_at",
+        "fixed_marked_at",
+        "reopened_at",
+    ):
         if col in out and out[col] is not None and not isinstance(out[col], str):
             try:
                 out[col] = out[col].isoformat()

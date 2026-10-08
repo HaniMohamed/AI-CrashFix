@@ -9,6 +9,7 @@ import '../../shared/widgets/error_banner.dart';
 import '../../shared/widgets/coach_mark.dart';
 import 'widgets/hero_header.dart';
 import 'widgets/kpi_strip.dart';
+import 'widgets/mr_status_card.dart';
 import 'widgets/pipeline_funnel.dart';
 import 'widgets/recent_activity.dart';
 import 'widgets/status_donut.dart';
@@ -96,6 +97,8 @@ class _ChartsRow extends StatelessWidget {
       const SizedBox(width: AppSpacing.lg, height: AppSpacing.lg),
       Expanded(flex: 2, child: StatusDonut(totals: analytics.totals)),
       const SizedBox(width: AppSpacing.lg, height: AppSpacing.lg),
+      Expanded(flex: 2, child: MrStatusCard(mrStatus: analytics.mrStatus)),
+      const SizedBox(width: AppSpacing.lg, height: AppSpacing.lg),
       Expanded(
         flex: 2,
         child: TopKeysCard(
@@ -117,6 +120,8 @@ class _ChartsRow extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         SizedBox(height: 280, child: StatusDonut(totals: analytics.totals)),
+        const SizedBox(height: AppSpacing.lg),
+        SizedBox(height: 280, child: MrStatusCard(mrStatus: analytics.mrStatus)),
         const SizedBox(height: AppSpacing.lg),
         SizedBox(
           height: 320,

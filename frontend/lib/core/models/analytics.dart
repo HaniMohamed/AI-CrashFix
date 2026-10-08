@@ -65,8 +65,59 @@ class TopKey {
       );
 }
 
+class MrStatus {
+  final int pending;
+  final int merged;
+  final int closed;
+
+  const MrStatus({
+    required this.pending,
+    required this.merged,
+    required this.closed,
+  });
+
+  factory MrStatus.fromJson(Map<String, dynamic> j) => MrStatus(
+        pending: (j['pending'] ?? 0) as int,
+        merged: (j['merged'] ?? 0) as int,
+        closed: (j['closed'] ?? 0) as int,
+      );
+}
+
+class FixedStats {
+  final int total;
+  final int withAndroidVersion;
+  final int withIosVersion;
+
+  const FixedStats({
+    required this.total,
+    required this.withAndroidVersion,
+    required this.withIosVersion,
+  });
+
+  factory FixedStats.fromJson(Map<String, dynamic> j) => FixedStats(
+        total: (j['total'] ?? 0) as int,
+        withAndroidVersion: (j['with_android_version'] ?? 0) as int,
+        withIosVersion: (j['with_ios_version'] ?? 0) as int,
+      );
+}
+
+class ReopenedStats {
+  final int count;
+  final double rate;
+
+  const ReopenedStats({required this.count, required this.rate});
+
+  factory ReopenedStats.fromJson(Map<String, dynamic> j) => ReopenedStats(
+        count: (j['count'] ?? 0) as int,
+        rate: (j['rate'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
 class Analytics {
   final AnalyticsTotals totals;
+  final MrStatus mrStatus;
+  final FixedStats fixed;
+  final ReopenedStats reopened;
   final Map<String, int> pipelineFunnel;
   final Map<String, double> stepSuccessRate;
   final double completionRate;
@@ -80,6 +131,9 @@ class Analytics {
 
   const Analytics({
     required this.totals,
+    required this.mrStatus,
+    required this.fixed,
+    required this.reopened,
     required this.pipelineFunnel,
     required this.stepSuccessRate,
     required this.completionRate,
@@ -114,6 +168,15 @@ class Analytics {
     return Analytics(
       totals: AnalyticsTotals.fromJson(
         (j['totals'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      mrStatus: MrStatus.fromJson(
+        (j['mr_status'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      fixed: FixedStats.fromJson(
+        (j['fixed'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      reopened: ReopenedStats.fromJson(
+        (j['reopened'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
       pipelineFunnel: intMap(j['pipeline_funnel']),
       stepSuccessRate: doubleMap(j['step_success_rate']),

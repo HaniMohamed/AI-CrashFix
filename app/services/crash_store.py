@@ -48,6 +48,27 @@ class CrashStoreBackend(Protocol):
 
     def bump_restart_count(self, crash_id: str) -> int: ...
 
+    def set_crash_fingerprint(self, crash_id: str, fingerprint: str) -> None: ...
+
+    def set_mr_status(self, crash_id: str, status: str, checked_at: str) -> None: ...
+
+    def mark_fixed(
+        self,
+        crash_id: str,
+        *,
+        android_version: str | None = None,
+        ios_version: str | None = None,
+        user_id: str | None = None,
+    ) -> None: ...
+
+    def unmark_fixed(self, crash_id: str) -> None: ...
+
+    def mark_reopened(self, crash_id: str, *, reopened_from_crash_id: str) -> None: ...
+
+    def find_fixed_crash_by_fingerprint(
+        self, fingerprint: str, *, exclude_crash_id: str | None = None
+    ) -> dict | None: ...
+
     def list_crashes(
         self,
         *,
@@ -271,6 +292,40 @@ class CrashStore:
 
     def bump_restart_count(self, crash_id: str) -> int:
         return self._impl.bump_restart_count(crash_id)
+
+    def set_crash_fingerprint(self, crash_id: str, fingerprint: str) -> None:
+        self._impl.set_crash_fingerprint(crash_id, fingerprint)
+
+    def set_mr_status(self, crash_id: str, status: str, checked_at: str) -> None:
+        self._impl.set_mr_status(crash_id, status, checked_at)
+
+    def mark_fixed(
+        self,
+        crash_id: str,
+        *,
+        android_version: str | None = None,
+        ios_version: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
+        self._impl.mark_fixed(
+            crash_id,
+            android_version=android_version,
+            ios_version=ios_version,
+            user_id=user_id,
+        )
+
+    def unmark_fixed(self, crash_id: str) -> None:
+        self._impl.unmark_fixed(crash_id)
+
+    def mark_reopened(self, crash_id: str, *, reopened_from_crash_id: str) -> None:
+        self._impl.mark_reopened(crash_id, reopened_from_crash_id=reopened_from_crash_id)
+
+    def find_fixed_crash_by_fingerprint(
+        self, fingerprint: str, *, exclude_crash_id: str | None = None
+    ) -> dict | None:
+        return self._impl.find_fixed_crash_by_fingerprint(
+            fingerprint, exclude_crash_id=exclude_crash_id
+        )
 
     def list_crashes(
         self,

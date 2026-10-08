@@ -41,6 +41,18 @@ CREATE TABLE IF NOT EXISTS crashes (
   feedback_iteration_count INTEGER NOT NULL DEFAULT 0,
   feedback_locked BOOLEAN NOT NULL DEFAULT FALSE,
   restart_count INTEGER NOT NULL DEFAULT 0,
+  mr_status TEXT NOT NULL DEFAULT 'pending',
+  mr_status_checked_at TIMESTAMPTZ,
+  mr_created_at TIMESTAMPTZ,
+  fixed_in_version_android TEXT,
+  fixed_in_version_ios TEXT,
+  fixed_marked_at TIMESTAMPTZ,
+  fixed_marked_by_user_id TEXT,
+  crash_fingerprint TEXT,
+  reopened BOOLEAN NOT NULL DEFAULT FALSE,
+  reopened_at TIMESTAMPTZ,
+  reopen_count INTEGER NOT NULL DEFAULT 0,
+  reopened_from_crash_id TEXT,
   PRIMARY KEY (firebase_project_id, crash_id)
 );
 CREATE INDEX IF NOT EXISTS idx_crashes_project_updated
@@ -144,6 +156,42 @@ def ensure_app_postgres_schema(conn: psycopg.Connection) -> None:
         )
         cur.execute(
             "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS restart_count INTEGER NOT NULL DEFAULT 0"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS mr_status TEXT NOT NULL DEFAULT 'pending'"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS mr_status_checked_at TIMESTAMPTZ"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS mr_created_at TIMESTAMPTZ"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS fixed_in_version_android TEXT"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS fixed_in_version_ios TEXT"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS fixed_marked_at TIMESTAMPTZ"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS fixed_marked_by_user_id TEXT"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS crash_fingerprint TEXT"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS reopened BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS reopen_count INTEGER NOT NULL DEFAULT 0"
+        )
+        cur.execute(
+            "ALTER TABLE crashes ADD COLUMN IF NOT EXISTS reopened_from_crash_id TEXT"
         )
         cur.execute(
             "ALTER TABLE repos ADD COLUMN IF NOT EXISTS google_application_credentials TEXT"

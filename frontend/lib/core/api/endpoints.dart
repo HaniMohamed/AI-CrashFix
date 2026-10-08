@@ -49,4 +49,8 @@ class Endpoints {
   static String crashDiff(String id) => '${crashById(id)}/diff';
   static String crashFeedback(String id) => '${crashById(id)}/feedback';
   static String crashRestart(String id) => '${crashById(id)}/restart';
+  static String crashSyncMrStatus(String id) => '${crashById(id)}/sync-mr-status';
+  static String crashMarkFixed(String id) => '${crashById(id)}/mark-fixed';
+  static String crashUnmarkFixed(String id) => '${crashById(id)}/unmark-fixed';
+  static String crashReopenInsight(String id) => '${crashById(id)}/reopen-insight';
 }

@@ -19,6 +19,7 @@ sink filters out events whose `run_id` does not match the current run.
 from __future__ import annotations
 
 import collections
+import hashlib
 import queue
 import threading
 import traceback
@@ -50,6 +51,53 @@ from app.graph.observability import (
 from app.graph.fix_generation_graph.nodes.fallback import FIX_VALIDATION_EXHAUSTED_PREFIX
 from app.services.crash_store import CrashStore, uses_postgres_crash_store
 from app.services.crashlytics_service import CrashlyticsService
+
+
+def _crash_fingerprint(crash: Dict[str, Any]) -> str:
+    """Stable signature for grouping recurrences of "the same" crash across runs."""
+    parts = [
+        str(crash.get("app_identifier") or ""),
+        str(crash.get("platform") or ""),
+        str(crash.get("exception") or ""),
+    ]
+    raw = "|".join(parts).strip("|")
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _detect_and_mark_reopen(crash_store: CrashStore, crash_id: str, crash: Dict[str, Any]) -> None:
+    """If a prior crash with the same fingerprint was marked fixed, flag this one as reopened."""
+    fingerprint = _crash_fingerprint(crash)
+    if not fingerprint:
+        return
+    try:
+        crash_store.set_crash_fingerprint(crash_id, fingerprint)
+        prior = crash_store.find_fixed_crash_by_fingerprint(fingerprint, exclude_crash_id=crash_id)
+        if prior and prior.get("crash_id"):
+            prior_crash_id = prior["crash_id"]
+            crash_store.mark_reopened(crash_id, reopened_from_crash_id=prior_crash_id)
+
+            original_crash = crash_store.get_crash(prior_crash_id, include_result=True) or prior
+            new_crash = crash_store.get_crash(crash_id, include_result=True) or crash
+
+            def _run_insight() -> None:
+                try:
+                    from app.graph import reopen_insight
+
+                    reopen_insight.run_reopen_insight(crash_id, original_crash, new_crash)
+                except Exception:
+                    import logging
+
+                    logging.getLogger(__name__).warning(
+                        "Failed to generate reopen insight for crash_id=%s", crash_id, exc_info=True
+                    )
+
+            threading.Thread(target=_run_insight, name="reopen.insight", daemon=True).start()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to detect/mark reopen for crash_id=%s", crash_id, exc_info=True
+        )
 
 
 # Same shape used by scripts/run_batch.py::_initial_state_for_crash; duplicated
@@ -531,6 +579,7 @@ def _run_batch(
         )
 
         crash_store.insert_crash(crash_id)
+        _detect_and_mark_reopen(crash_store, crash_id, crash)
         state = _initial_state_for_crash(
             crash,
             run_id=run_id,
@@ -581,6 +630,7 @@ def _run_single(
     crash_id = (crash.get("crash_id") or "").strip()
     if crash_id:
         crash_store.insert_crash(crash_id)
+        _detect_and_mark_reopen(crash_store, crash_id, crash)
 
     synced_root = _sync_repo_for_crash(
         repo_url=repo_url,

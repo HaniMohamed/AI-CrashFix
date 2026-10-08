@@ -670,6 +670,28 @@ class GitService:
             "pr_url": response.get("web_url") or "",
         }
 
+    def get_merge_request_status(self, mr_iid: str) -> dict[str, Any] | None:
+        if not mr_iid:
+            raise ValueError("mr_iid is required")
+
+        project_id = self._gitlab_project_id()
+        response = self._gitlab_request(
+            "GET",
+            f"/projects/{project_id}/merge_requests/{mr_iid}",
+        )
+        if not isinstance(response, dict) or not response:
+            return None
+
+        state = (response.get("state") or "").strip().lower()
+        status_map = {
+            "opened": "pending",
+            "merged": "merged",
+            "closed": "closed",
+            "locked": "closed",
+        }
+        response["status"] = status_map.get(state, "pending")
+        return response
+
     def find_open_merge_request(self, source_branch: str) -> dict[str, Any] | None:
         if not source_branch or not source_branch.strip():
             raise ValueError("source_branch is required")
